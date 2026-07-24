@@ -33,10 +33,14 @@ sessions:
   repo: panyam/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only
 
-# Repos cloned into /mnt/work/repos by `megh hydrate` (idempotent). Use standard
-# github.com URLs (the box authenticates via your forwarded SSH agent, not the
-# Mac's ~/.ssh/config host aliases). Canonical source is git; the volume copy is
-# disposable and reproducible from this list.
-repos:
-  - git@github.com:panyam/megh.git
+# Your PROJECT repos, cloned into /mnt/work/repos by `megh hydrate` (idempotent).
+# Use standard github.com URLs (the box authenticates via your forwarded SSH
+# agent, not the Mac's ~/.ssh/config host aliases). Canonical source is git; the
+# volume copy is disposable and reproducible from this list.
+#
+# Note: megh itself does NOT belong here. The CLI runs on your control machine
+# and the dev-env tooling is baked into the image; a box never needs the megh
+# repo (list it only if you want to develop megh on a box).
+repos: []
+  # - git@github.com:panyam/your-project.git
 
