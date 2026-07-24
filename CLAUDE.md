@@ -19,15 +19,18 @@ Run `megh` directly only after `source ~/personal/envvars`.
 ## Commands
 
 ```
-megh up --provider runpod --volume <id> --dc <dc> [--vcpu 2 --ram 8 --disk 20]
+megh up [--volume <id> --dc <dc>] # launch; all flags default from megh.yaml
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # ssh + tunnel localhost:7681 (shell) / 6080 (vnc)
+megh down [name] [-y]             # terminate a box (volume survives)
 megh storage list|create|rm       # network volumes, one global cross-provider view
+megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
 ```
 
 Make wrappers: `make up VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
-`make storage-ls`, `make image` (push -> CI builds image), `make registry`.
+`make down [BOX=.. YES=1]`, `make storage-ls`, `make image` (push -> CI builds
+image), `make registry`.
 
 `megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
 `$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default

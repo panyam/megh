@@ -114,6 +114,30 @@ func Find(ctx context.Context, idOrName string) (*Pod, error) {
 	}
 }
 
+// Terminate deletes a pod by id. The attached network volume and its contents
+// are not affected (they persist independently of the pod).
+func Terminate(ctx context.Context, id string) error {
+	key := os.Getenv("RUNPOD_API_KEY")
+	if key == "" {
+		return fmt.Errorf("RUNPOD_API_KEY is not set")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint+"/"+id, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("runpod: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // Sole returns the only megh-managed pod when exactly one exists.
 func Sole(ctx context.Context) (*Pod, error) {
 	all, err := List(ctx)

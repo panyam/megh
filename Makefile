@@ -92,6 +92,10 @@ up: build ## launch a RunPod box (requires VOLUME and DC)
 list: build ## list provisioned boxes (name, status, dc, cost, ssh)
 	@$(ENV) ./bin/megh list
 
+.PHONY: down
+down: build ## terminate a box (volume survives); BOX=<name-or-id> optional, YES=1 to skip confirm
+	@$(ENV) ./bin/megh down $(if $(YES),--yes,) $(BOX)
+
 .PHONY: storage-ls
 storage-ls: build ## list scratch volumes across providers
 	@$(ENV) ./bin/megh storage list
