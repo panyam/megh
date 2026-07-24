@@ -53,6 +53,8 @@ jobs:
           context: env/${{ matrix.flavor }}
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            MEGH_BUILD_REF=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-${{ matrix.flavor }}:latest
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-${{ matrix.flavor }}:${{ github.sha }}
