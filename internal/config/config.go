@@ -104,14 +104,16 @@ func (c Config) BoxEnv() map[string]string {
 }
 
 // Repo is a git repo to hydrate onto a box's volume, with the GitHub identity
-// (profile gh key name) it authenticates as. It accepts either a plain URL
-// string (uses DefaultGHKey) or an object {url, key} in YAML.
+// (profile gh key name) it authenticates as, and an optional destination path
+// under repos/ (for nested layouts). It accepts a plain URL string (uses
+// DefaultGHKey, dir derived from the URL) or an object {url, key, dir} in YAML.
 type Repo struct {
 	URL string `yaml:"url"`
 	Key string `yaml:"key"` // gh identity name; empty -> DefaultGHKey
+	Dir string `yaml:"dir"` // path under /mnt/work/repos; empty -> basename of URL
 }
 
-// UnmarshalYAML accepts a scalar URL or a {url, key} mapping.
+// UnmarshalYAML accepts a scalar URL or a {url, key, dir} mapping.
 func (r *Repo) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
 		r.URL = node.Value
@@ -120,11 +122,12 @@ func (r *Repo) UnmarshalYAML(node *yaml.Node) error {
 	var m struct {
 		URL string `yaml:"url"`
 		Key string `yaml:"key"`
+		Dir string `yaml:"dir"`
 	}
 	if err := node.Decode(&m); err != nil {
 		return err
 	}
-	r.URL, r.Key = m.URL, m.Key
+	r.URL, r.Key, r.Dir = m.URL, m.Key, m.Dir
 	return nil
 }
 

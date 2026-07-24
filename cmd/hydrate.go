@@ -79,16 +79,25 @@ undeclared (with origin url to copy into megh.yaml).`,
 	},
 }
 
+// repoDest is the path under /mnt/work/repos: explicit dir, else URL basename.
+func repoDest(r config.Repo) string {
+	if r.Dir != "" {
+		return r.Dir
+	}
+	return repoDir(r.URL)
+}
+
 func applyScript(c config.Config) string {
 	var b strings.Builder
 	b.WriteString("set -e\nexport GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\nmkdir -p /mnt/work/repos\n")
 	for _, r := range c.Repos {
-		d := repoDir(r.URL)
+		d := repoDest(r)
 		u := aliasedURL(r.URL, c.GHKey(r))
 		fmt.Fprintf(&b,
-			"if [ -d /mnt/work/repos/%s/.git ]; then echo 'exists  %s'; "+
-				"else echo 'clone   %s'; git clone %q /mnt/work/repos/%s; fi\n",
-			d, d, d, u, d)
+			"dest=/mnt/work/repos/%s; mkdir -p \"$(dirname \"$dest\")\"; "+
+				"if [ -d \"$dest/.git\" ]; then echo 'exists  %s'; "+
+				"else echo 'clone   %s'; git clone %q \"$dest\"; fi\n",
+			d, d, d, u)
 	}
 	return b.String()
 }
@@ -97,7 +106,7 @@ func checkScript(c config.Config) string {
 	var b strings.Builder
 	b.WriteString("declared=(")
 	for _, r := range c.Repos {
-		fmt.Fprintf(&b, "%q ", repoDir(r.URL))
+		fmt.Fprintf(&b, "%q ", repoDest(r))
 	}
 	b.WriteString(")\n")
 	b.WriteString(`echo "== declared in megh.yaml =="` + "\n")
