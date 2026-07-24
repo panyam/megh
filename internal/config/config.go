@@ -38,7 +38,7 @@ func Default() Config {
 				Host:      "ghcr.io",
 				Namespace: env("MEGH_GHCR_NAMESPACE", "panyam"),
 				Username:  env("MEGH_GHCR_USER", "panyam"),
-				TokenEnv:  "GH_PERSONAL_TOKEN",
+				TokenEnv:  "GH_MEGH_TOKEN",
 			},
 		},
 		Flavors: []string{"base"},

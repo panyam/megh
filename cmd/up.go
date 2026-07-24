@@ -40,7 +40,7 @@ func init() {
 	f.StringVar(&upOpts.Name, "name", "", "box name (default megh-<user>-box)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 4, "vCPU count")
 	f.IntVar(&upOpts.RAMGiB, "ram", 16, "RAM in GiB")
-	f.IntVar(&upOpts.DiskGiB, "disk", 100, "container disk in GiB")
+	f.IntVar(&upOpts.DiskGiB, "disk", 20, "ephemeral container disk in GiB (RunPod caps this by instance size, ~20-60; persistent scratch is the network volume)")
 	f.StringVar(&upOpts.Image, "image", os.Getenv("MEGH_IMAGE"), "container image (default $MEGH_IMAGE)")
 	f.StringVar(&upOpts.VolumeID, "volume", os.Getenv("MEGH_VOLUME_ID"), "network volume id (default $MEGH_VOLUME_ID)")
 	f.StringVar(&upOpts.DataCenter, "dc", os.Getenv("MEGH_DC"), "data center id (default $MEGH_DC)")

@@ -13,13 +13,22 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"strings"
 	"time"
 )
 
 const endpoint = "https://rest.runpod.io/v1/pods"
 
-// Ports exposes SSH over raw TCP and the two web surfaces over the HTTP proxy.
-const ports = "22/tcp,7681/http,6080/http"
+// NamePrefix marks a pod/volume as megh-managed. RunPod has no pod tags/labels,
+// so the name is the only durable identifier the CLI can filter on without a
+// local state file. `megh up` enforces it; list/ssh filter to it by default.
+const NamePrefix = "megh-"
+
+// ports exposes ONLY SSH over raw TCP as a key-auth break-glass path. The web
+// surfaces (ttyd, noVNC) are not exposed on RunPod's public proxy; they bind to
+// localhost and are reached over Tailscale (or an SSH tunnel). The RunPod REST
+// API wants an array of "<port>/<proto>" strings.
+var ports = []string{"22/tcp"}
 
 // Options configures a RunPod CPU pod launch.
 type Options struct {
@@ -33,9 +42,11 @@ type Options struct {
 	PubKey     string
 }
 
-// Result is a successful launch.
+// Result is a successful launch. Name is the Tailscale hostname the box comes up
+// as (set from the requested pod name), used for the tailnet URLs.
 type Result struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Name string `json:"-"`
 }
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -50,27 +61,47 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 	if o.Image == "" {
 		return nil, fmt.Errorf("image is required (--image or $MEGH_IMAGE)")
 	}
-	if o.VolumeID == "" || o.DataCenter == "" {
-		return nil, fmt.Errorf("volume id and data center are required (--volume/--dc or $MEGH_VOLUME_ID/$MEGH_DC)")
+	if o.DataCenter == "" {
+		return nil, fmt.Errorf("data center is required (--dc or $MEGH_DC)")
 	}
+	// A volume is optional: without one the box is ephemeral (scratch on the
+	// container disk, lost on termination). The volume is pinned to its data
+	// center, so if it is set the DC must match it.
 	if o.Name == "" {
 		o.Name = defaultName()
+	} else if !strings.HasPrefix(o.Name, NamePrefix) {
+		// Enforce the marker so the box is discoverable as megh-managed.
+		o.Name = NamePrefix + o.Name
 	}
 
 	payload := map[string]any{
 		"name":              o.Name,
 		"imageName":         o.Image,
-		"cpuCount":          o.VCPU,
-		"memoryInGb":        o.RAMGiB,
+		"computeType":       "CPU",
+		"vcpuCount":         o.VCPU,
+		"cpuFlavorIds":      cpuFlavorIDs(o.VCPU, o.RAMGiB),
+		"cpuFlavorPriority": "availability",
 		"containerDiskInGb": o.DiskGiB,
-		"networkVolumeId":   o.VolumeID,
-		"dataCenterId":      o.DataCenter,
+		"dataCenterIds":     []string{o.DataCenter},
 		"ports":             ports,
-		"env": []map[string]string{
-			{"key": "PUBLIC_KEY", "value": o.PubKey},
-			{"key": "WORK_MOUNT", "value": "/workspace"},
-			{"key": "ARCH_TAG", "value": "x86_64"},
+		"env": map[string]string{
+			"PUBLIC_KEY":          o.PubKey,
+			"WORK_MOUNT":          "/workspace",
+			"ARCH_TAG":            "x86_64",
+			"TS_AUTHKEY":          os.Getenv("TS_AUTHKEY"),
+			"TS_HOSTNAME":         o.Name,
+			"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
+			"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
 		},
+	}
+	// Attach the network volume when provided; otherwise the box is ephemeral.
+	if o.VolumeID != "" {
+		payload["networkVolumeId"] = o.VolumeID
+		payload["volumeMountPath"] = "/workspace"
+	}
+	// Attach the registry credential so the private image pulls on first boot.
+	if authID := registryAuthID(ctx, apiKey, o.Image); authID != "" {
+		payload["containerRegistryAuthId"] = authID
 	}
 	buf, err := json.Marshal(payload)
 	if err != nil {
@@ -107,6 +138,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 	if res.ID == "" {
 		return nil, fmt.Errorf("runpod: could not parse pod id from response: %s", string(body))
 	}
+	res.Name = o.Name
 	return &res, nil
 }
 
@@ -114,13 +146,91 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 func (r *Result) Summary() string {
 	return fmt.Sprintf(`pod created: %s
 
-  web shell : https://%[1]s-7681.proxy.runpod.net
-  headed vnc: https://%[1]s-6080.proxy.runpod.net/vnc.html
+Access (after ~1-2 min to pull the image and bring up Tailscale):
+  tailnet   : http://%[2]s:7681            web shell (tmux)
+              http://%[2]s:6080/vnc.html   headed browser
   ssh       : RunPod console > Connect > TCP for ip:port, then
-              ssh -A root@<ip> -p <port>
+              ssh -A root@<ip> -p <port>   (break-glass; works even if Tailscale is down)
 
-Give it a minute to pull the image and start services.
-`, r.ID)
+The web surfaces are private (Tailscale only). Nothing is exposed on the public
+proxy; only SSH (key auth) is public.
+`, r.ID, r.Name)
+}
+
+// cpuFlavorIDs maps a requested RAM-per-vCPU ratio to RunPod CPU flavor classes.
+// RunPod ties RAM to the flavor class, not a free field: c=2GB, g=4GB, m=8GB per
+// vCPU. We offer gen5 then gen3 of the chosen class and let availability decide,
+// so effective RAM is vcpu*classRatio (e.g. 4 vCPU general = 16 GB).
+func cpuFlavorIDs(vcpu, ramGiB int) []string {
+	if vcpu <= 0 {
+		vcpu = 1
+	}
+	cls := "g"
+	switch ratio := ramGiB / vcpu; {
+	case ratio <= 2:
+		cls = "c"
+	case ratio <= 4:
+		cls = "g"
+	default:
+		cls = "m"
+	}
+	// Preferred class first, then every other flavor as a fallback. With
+	// cpuFlavorPriority=availability RunPod rents the first one actually free in
+	// the (volume-pinned) data center, so a capacity gap in one class does not
+	// block the launch. Effective RAM follows whichever class is rented.
+	out := []string{"cpu5" + cls, "cpu3" + cls}
+	for _, f := range []string{"cpu5g", "cpu3g", "cpu5c", "cpu3c", "cpu5m", "cpu3m"} {
+		if f != out[0] && f != out[1] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// registryAuthID finds the RunPod container-registry credential whose name
+// matches the image's registry host (e.g. ghcr.io), so private images pull on
+// first boot. $MEGH_REGISTRY_AUTH_ID overrides the lookup. Returns "" when there
+// is no host (Docker Hub short names) or no matching credential; the caller then
+// omits the field and relies on a public image or account-level defaults.
+func registryAuthID(ctx context.Context, apiKey, image string) string {
+	if id := os.Getenv("MEGH_REGISTRY_AUTH_ID"); id != "" {
+		return id
+	}
+	host := image
+	if i := strings.IndexByte(host, '/'); i >= 0 {
+		host = host[:i]
+	}
+	if !strings.Contains(host, ".") {
+		return ""
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://rest.runpod.io/v1/containerregistryauth", nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return ""
+	}
+	var auths []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if json.Unmarshal(body, &auths) != nil {
+		return ""
+	}
+	for _, a := range auths {
+		if a.Name == host {
+			return a.ID
+		}
+	}
+	return ""
 }
 
 func defaultName() string {

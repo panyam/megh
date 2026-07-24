@@ -33,6 +33,7 @@ RUN INSTALL_DOCKER=0 TARGET_ARCH=amd64 \
 EXPOSE 22 7681 6080
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
-RUN chmod +x /usr/local/bin/megh-entrypoint
+COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions
+RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-flush-sessions
 
 ENTRYPOINT ["/usr/local/bin/megh-entrypoint"]

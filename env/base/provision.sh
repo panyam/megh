@@ -27,7 +27,7 @@ export DEBIAN_FRONTEND=noninteractive
 # --- base OS tooling -------------------------------------------------------
 apt-get update
 apt-get install -y --no-install-recommends \
-  ca-certificates curl wget gnupg git git-lfs openssh-server \
+  ca-certificates curl wget gnupg git git-lfs openssh-server rsync \
   tmux ripgrep fd-find fzf jq unzip zip build-essential pkg-config \
   python3 python3-pip python3-venv \
   xvfb x11vnc fluxbox novnc websockify \
@@ -63,6 +63,13 @@ esac
 curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/${ttyd_asset}" \
   -o /usr/local/bin/ttyd
 chmod +x /usr/local/bin/ttyd
+
+# --- Tailscale (private access to the box) ---------------------------------
+# On container providers (RunPod) there is no TUN device, so tailscaled runs in
+# userspace-networking mode and `tailscale serve` bridges the tailnet to the
+# box's localhost web surfaces. The entrypoint brings this up when TS_AUTHKEY is
+# set. On VM providers a normal tailscaled/systemd unit is used instead.
+curl -fsSL https://tailscale.com/install.sh | sh
 
 # --- PATH for login shells (VM) and a sane default -------------------------
 cat > /etc/profile.d/megh-path.sh <<'EOF'

@@ -9,10 +9,13 @@ that are settled so they do not get relitigated. Rationale lives next to each.
 Four layers, decoupled so the box is disposable and providers are swappable.
 
 1. **Canonical state (portable, crosses everything).** Repos live in git
-   (GitHub / GitLab / self-hosted Forgejo). Session state (agent config, tokens)
-   is snapshotted with restic to S3-compatible object storage. This is the only
-   layer that follows the user across providers, dedicated boxes, and GPU
-   hardware.
+   (GitHub / GitLab / self-hosted Forgejo). Agent session *transcripts* are
+   pushed to a private git repo (`megh-sessions`) so history is durable and
+   searchable; auth tokens are re-mintable and deliberately not persisted. This
+   is the only layer that follows the user across providers, dedicated boxes,
+   and GPU hardware. (This supersedes the earlier restic-to-S3 plan:
+   transcripts-in-git is greppable where a restic backup is not, and everything
+   else is re-mintable, so restic is no longer needed.)
 2. **Config (portable).** The dev environment is declared once in
    `env/<flavor>/provision.sh` and built into two artifacts (a container image
    and a VM image) from that same script. Tooling changes are commits here,
@@ -69,6 +72,21 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 - **Registry consolidation (target state).** The always-on box runs Forgejo (git
   remote) + Headscale (mesh coordinator) + Forgejo's OCI registry (dev-env
   images). One small box, self-hosted control plane, constraint-2 clean.
+- **Agent session history is persisted to git, not restic. LOCKED.** Claude/Codex
+  store sessions as JSONL transcripts. A timer + shutdown hook (`flush-sessions.sh`)
+  pushes only transcript/memory files (never credentials) to a private
+  `megh-sessions` repo, so history is durable and `git grep`-searchable across
+  every provider and laptop. The push uses a fine-grained PAT scoped to ONLY that
+  repo (`contents:write`), passed as pod env and never written to git config. A
+  compromised box can write your session history and nothing else. This is a
+  deliberate, narrow exception to "no long-lived credentials on the box" that a
+  background timer requires; agent forwarding only works in an interactive SSH
+  session, not for a timer.
+- **megh is stateless; the provider is the source of truth.** No local state file
+  or dotdir. `megh list` / `megh storage list` query the provider live. RunPod
+  has no pod tags/labels, so megh-managed resources are identified by a `megh-`
+  **name prefix**: `megh up` enforces it; `list`/`ssh` filter to it (`--all` to
+  see everything). If a provider adds real labels, switch to those.
 
 ## Access surfaces (baked into every box)
 
@@ -104,11 +122,16 @@ Leaning mesh-hosted. Not built yet; the CLI is the first surface.
 
 ## Open, not yet committed
 
-- **Mesh control plane.** Leaning Headscale on the always-on box (self-hosted,
-  constraint-2 pure, at no extra machine cost). Tailscale hosted is the
-  low-effort fallback. Plain WireGuard is clunky for phone + service-by-name.
-  Cost is a wash across all three; the axis is ops effort vs third-party control
-  plane. Not needed for the first RunPod box (its proxy URLs suffice).
+- **Remote access. DECIDED.** Security comes from SSH (key auth) plus binding the
+  web surfaces to localhost, not from any mesh. RunPod's public proxy is open and
+  unauthenticated, so ttyd/noVNC bind to `127.0.0.1` and only `22/tcp` is public.
+  The Mac uses `megh ssh` (auto ip:port + localhost tunnels of 7681/6080),
+  nothing to install. Tailscale is an OPTIONAL convenience layer for
+  phone/tablet browser access, enabled only when `TS_AUTHKEY` is set; on RunPod
+  it runs userspace mode + `tailscale serve` because the container has no TUN
+  device. Headscale (self-hosted coordinator on the always-on box) stays the
+  constraint-2-pure upgrade if the hosted coordinator ever bothers us. Plain
+  WireGuard rejected: clunky for a phone and for disposable boxes.
 - **Default architecture** for VM providers. RunPod forces x86_64. For Hetzner,
   the tie-breaker is the user's Mac arch: match it for tightest local/remote
   parity, unless the deploy target's arch outweighs that.
@@ -117,6 +140,23 @@ Leaning mesh-hosted. Not built yet; the CLI is the first surface.
   run its own containers (`docker build`, testcontainers)? If not, RunPod is a
   taste-test box and real container-in-dev work belongs on a VM-native box (run
   directly, native Docker). This decides how far RunPod goes beyond "get a feel."
+
+## New machine / portability
+
+A fresh laptop needs almost nothing, because megh holds no local state and the
+box holds nothing precious. Beyond cloning the repo and `make install`, you carry
+(or re-mint) exactly two things:
+
+1. **Secrets** (`~/personal/envvars`): `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` (GHCR
+   pull), `TS_AUTHKEY` (only for the phone path), and once the flush hook is on,
+   `MEGH_SESSIONS_TOKEN`. All regenerate from their consoles in a minute.
+2. **An SSH keypair** for box access + git push. Can be freshly generated and its
+   pubkey re-enrolled (GitHub + `MEGH_PUBKEY`).
+
+Everything else is remote or reconstructible: volumes/boxes/image live on the
+provider (`megh list`, `megh storage list`); code is in git; agent history is in
+`megh-sessions`; there is no local config or state file. In the strongest form
+you carry nothing physical and just re-authenticate three services.
 
 ## Constraints carried from the handoff
 
