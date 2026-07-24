@@ -53,13 +53,48 @@ type Sessions struct {
 type Config struct {
 	DefaultProvider string              `yaml:"default_provider"`
 	DefaultFlavor   string              `yaml:"default_flavor"`
-	SSHPubKeyFile   string              `yaml:"ssh_pubkey_file"`
+	SSHPubKeyFile   string              `yaml:"ssh_pubkey_file"` // public key injected into boxes
+	SSHKeyFile      string              `yaml:"ssh_key_file"`    // private key; megh forwards ONLY this (scoped agent)
 	Registries      []Registry          `yaml:"registries"`
 	Flavors         []string            `yaml:"flavors"`
 	Providers       map[string]Provider `yaml:"providers"`
 	Tailscale       Tailscale           `yaml:"tailscale"`
 	Sessions        Sessions            `yaml:"sessions"`
-	Repos           []string            `yaml:"repos"` // git URLs cloned into /mnt/work/repos by `megh hydrate`
+	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
+	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
+}
+
+// Repo is a git repo to hydrate onto a box's volume, with the GitHub identity
+// (profile gh key name) it authenticates as. It accepts either a plain URL
+// string (uses DefaultGHKey) or an object {url, key} in YAML.
+type Repo struct {
+	URL string `yaml:"url"`
+	Key string `yaml:"key"` // gh identity name; empty -> DefaultGHKey
+}
+
+// UnmarshalYAML accepts a scalar URL or a {url, key} mapping.
+func (r *Repo) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		r.URL = node.Value
+		return nil
+	}
+	var m struct {
+		URL string `yaml:"url"`
+		Key string `yaml:"key"`
+	}
+	if err := node.Decode(&m); err != nil {
+		return err
+	}
+	r.URL, r.Key = m.URL, m.Key
+	return nil
+}
+
+// GHKey returns the repo's GitHub identity, falling back to the config default.
+func (c Config) GHKey(r Repo) string {
+	if r.Key != "" {
+		return r.Key
+	}
+	return c.DefaultGHKey
 }
 
 func env(key, def string) string {

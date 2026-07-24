@@ -51,8 +51,13 @@ sessions:
   repo: YOUR_GH_NAMESPACE/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN
 
-# Repos cloned into /mnt/work/repos by `megh hydrate`. Standard github.com URLs;
-# the box uses your forwarded SSH agent for auth. `megh hydrate --check` reports
-# drift (declared-but-missing, and on-volume-but-undeclared).
+# GitHub identity (profile gh key name) for repos that don't set `key`.
+default_gh_key: personal
+
+# Repos cloned into /mnt/work/repos by `megh hydrate`. Each authenticates as a
+# GitHub identity from the active profile (its `key`, else default_gh_key), via a
+# forwarded key and a per-identity Host alias; private keys never touch the box.
+# `megh hydrate --check` reports drift.
 repos:
-  - git@github.com:YOUR_GH_NAMESPACE/some-repo.git
+  - git@github.com:YOUR_GH_NAMESPACE/some-repo.git          # uses default_gh_key
+  - {url: git@github.com:OTHER_ORG/other-repo.git, key: work}
