@@ -40,6 +40,7 @@ type Options struct {
 	VolumeID   string
 	DataCenter string
 	PubKey     string
+	ExtraEnv   map[string]string // copied into the pod env (e.g. box_envs)
 }
 
 // Result is a successful launch. Name is the Tailscale hostname the box comes up
@@ -74,6 +75,20 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		o.Name = NamePrefix + o.Name
 	}
 
+	// Base megh env, then copy any extra (box_envs) over it.
+	podEnv := map[string]string{
+		"PUBLIC_KEY":          o.PubKey,
+		"WORK_MOUNT":          "/workspace",
+		"ARCH_TAG":            "x86_64",
+		"TS_AUTHKEY":          os.Getenv("TS_AUTHKEY"),
+		"TS_HOSTNAME":         o.Name,
+		"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
+		"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
+	}
+	for k, v := range o.ExtraEnv {
+		podEnv[k] = v
+	}
+
 	payload := map[string]any{
 		"name":              o.Name,
 		"imageName":         o.Image,
@@ -84,15 +99,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		"containerDiskInGb": o.DiskGiB,
 		"dataCenterIds":     []string{o.DataCenter},
 		"ports":             ports,
-		"env": map[string]string{
-			"PUBLIC_KEY":          o.PubKey,
-			"WORK_MOUNT":          "/workspace",
-			"ARCH_TAG":            "x86_64",
-			"TS_AUTHKEY":          os.Getenv("TS_AUTHKEY"),
-			"TS_HOSTNAME":         o.Name,
-			"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
-			"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
-		},
+		"env":               podEnv,
 	}
 	// Attach the network volume when provided; otherwise the box is ephemeral.
 	if o.VolumeID != "" {

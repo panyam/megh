@@ -47,3 +47,15 @@ default_gh_key: personal
 #   - {url: git@github.com:inferbook/bar.git, key: inferbook}
 repos: []
 
+# Env vars that must be present on the host. megh blocks `megh up` if any is
+# missing, so you catch gaps before launching. box_envs are ALSO copied into the
+# box (as pod env) for the repos/services running there. Note: box_envs put those
+# values on a third-party VM, list only what the box genuinely needs.
+requires:
+  envs:
+    - RUNPOD_API_KEY
+    - GH_MEGH_TOKEN
+  box_envs: []
+    # - OPENAI_API_KEY
+    # - ANTHROPIC_API_KEY
+
