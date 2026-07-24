@@ -30,6 +30,12 @@ RUN INSTALL_DOCKER=0 TARGET_ARCH=amd64 \
       bash /tmp/provision.sh \
     && rm /tmp/provision.sh
 
+# Build stamp so you can verify from the box which image version is running:
+#   cat /etc/megh/build-info   (ref = the git SHA CI built from)
+ARG MEGH_BUILD_REF=dev
+RUN mkdir -p /etc/megh && \
+    printf 'ref=%s\nbuilt=%s\n' "${MEGH_BUILD_REF}" "$(date -u +%FT%TZ)" > /etc/megh/build-info
+
 EXPOSE 22 7681 6080
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
