@@ -33,9 +33,15 @@ Every box ships a web shell (ttyd + tmux), a headed-browser view for Playwright
 
 ```
 megh/
-├── bin/megh                     # provider-agnostic CLI (the abstraction seam)
-├── env/base/                    # the dev-env image: Dockerfile + entrypoint
-├── providers/runpod/launch.sh   # RunPod backend (REST API)
+├── main.go, cmd/                # Go + Cobra CLI (the provider abstraction seam)
+│   ├── up.go                    #   megh up --provider ...
+│   ├── registry.go              #   megh registry ls | tags
+│   └── doctor.go                #   megh doctor (planned)
+├── internal/
+│   ├── config/                  # registries + provider config
+│   ├── registry/                # OCI v2 tag inspection (stdlib only)
+│   └── providers/runpod/        # RunPod backend (REST API)
+├── env/base/                    # provision.sh (source of truth) + Dockerfile + entrypoint
 ├── .github/workflows/           # build + push env images to a registry
 ├── SETUP.md
 └── DESIGN.md

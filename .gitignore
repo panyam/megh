@@ -4,3 +4,6 @@
 # OS / editor cruft.
 .DS_Store
 *.swp
+
+# Compiled megh binary (build output).
+/bin/megh

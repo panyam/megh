@@ -71,6 +71,20 @@ Deploy. Give it a minute to pull and start.
 
 ## 3b. Launch via the CLI (once box #1 confirms the flow)
 
+Build the CLI once (Go 1.22+):
+
+```
+go build -o bin/megh .
+```
+
+Check the image published (needs the PAT to have `read:packages`):
+
+```
+./bin/megh registry ls
+```
+
+Then launch:
+
 ```
 export MEGH_IMAGE=ghcr.io/<you>/megh-base:latest
 export MEGH_PUBKEY="$(cat ~/.ssh/id_ed25519.pub)"

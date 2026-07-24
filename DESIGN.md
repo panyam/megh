@@ -84,7 +84,8 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 Goal: launch and reach boxes from a local terminal now, and from a phone later
 (native app or a self-hosted web page). The provider backends are therefore kept
 as a library the CLI calls, so a thin HTTP control API can call the same code
-without duplicating logic. `bin/megh` -> `providers/<name>/*` is that seam.
+without duplicating logic. The megh CLI (`cmd/`) over `internal/providers/<name>`
+is that seam; a phone control panel is another front end over the same packages.
 
 Hosting the phone-facing control panel, two options:
 
