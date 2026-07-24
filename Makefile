@@ -96,6 +96,10 @@ list: build ## list provisioned boxes (name, status, dc, cost, ssh)
 down: build ## terminate a box (volume survives); BOX=<name-or-id> optional, YES=1 to skip confirm
 	@$(ENV) ./bin/megh down $(if $(YES),--yes,) $(BOX)
 
+.PHONY: hydrate
+hydrate: build ## clone megh.yaml repos onto a box volume; BOX=.. optional, CHECK=1 for drift
+	@$(ENV) ./bin/megh hydrate $(if $(CHECK),--check,) $(BOX)
+
 .PHONY: storage-ls
 storage-ls: build ## list scratch volumes across providers
 	@$(ENV) ./bin/megh storage list
