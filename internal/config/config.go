@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // Registry is one OCI registry megh can inspect or pull dev-env images from.
 type Registry struct {
@@ -43,6 +46,20 @@ func Default() Config {
 		},
 		Flavors: []string{"base"},
 	}
+}
+
+// DefaultImage returns the conventional dev-env image for a flavor, from the
+// first configured registry: <host>/<namespace>/megh-<flavor>:latest. This is
+// what `megh up` uses when neither --image nor $MEGH_IMAGE is set.
+func (c Config) DefaultImage(flavor string) string {
+	if flavor == "" {
+		flavor = "base"
+	}
+	if len(c.Registries) == 0 {
+		return ""
+	}
+	r := c.Registries[0]
+	return fmt.Sprintf("%s/%s/megh-%s:latest", r.Host, r.Namespace, flavor)
 }
 
 // Find returns the named registry, or the first configured one when name is

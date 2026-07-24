@@ -29,6 +29,12 @@ megh registry ls                  # dev-env image tags
 Make wrappers: `make up VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
 `make storage-ls`, `make image` (push -> CI builds image), `make registry`.
 
+`megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
+`$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default
+`base`, so `ghcr.io/panyam/megh-base:latest`); `--pubkey` = `$MEGH_PUBKEY` else
+`~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
+`$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
+
 ## Secrets (in `~/personal/envvars`)
 
 - `RUNPOD_API_KEY` — provider access
