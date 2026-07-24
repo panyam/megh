@@ -1,0 +1,34 @@
+# megh configuration (checked in).
+#
+# Holds settings and POINTERS to secrets (env-var names), never secret values.
+# Secrets live in the environment (~/personal/envvars). See secrets.env.example.
+# Precedence for `megh up`: flag > env var > this file > built-in default.
+
+default_provider: runpod
+default_flavor: base
+ssh_pubkey_file: ~/.ssh/id_ed25519.pub
+
+registries:
+  - name: ghcr
+    host: ghcr.io
+    namespace: panyam
+    username: panyam
+    token_env: GH_MEGH_TOKEN        # pointer, not the token
+
+flavors: [base]
+
+providers:
+  runpod:
+    api_key_env: RUNPOD_API_KEY     # pointer, not the key
+    default_dc: US-CA-2
+    default_volume: d7znsj0qlh
+    vcpu: 2
+    ram: 8
+    disk: 20
+
+tailscale:
+  authkey_env: TS_AUTHKEY           # optional; omit env value for SSH-only
+
+sessions:
+  repo: panyam/megh-sessions
+  token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only

@@ -1,0 +1,52 @@
+# megh configuration template.
+#
+# Copy to megh.yaml and adjust. This file holds settings and POINTERS to secrets
+# (env-var names), never secret values. Put the actual secret values in your
+# environment (see secrets.env.example); this file only names the env vars.
+#
+# Config is auto-discovered as megh.yaml walking up from the cwd, then
+# ~/.config/megh/megh.yaml. Override with --config or $MEGH_CONFIG.
+#
+# Precedence for `megh up`: flag > env var > this file > built-in default.
+
+# Which provider `megh up` targets when --provider/$MEGH_PROVIDER are unset.
+default_provider: runpod
+
+# Which dev-env flavor to launch; the image is megh-<flavor>.
+default_flavor: base
+
+# SSH public key injected into boxes (its private key auths you in).
+ssh_pubkey_file: ~/.ssh/id_ed25519.pub
+
+# OCI registries megh inspects / pulls dev-env images from. The first is the
+# default. token_env NAMES the env var holding a read:packages token.
+registries:
+  - name: ghcr
+    host: ghcr.io
+    namespace: YOUR_GH_NAMESPACE
+    username: YOUR_GH_USERNAME
+    token_env: GH_MEGH_TOKEN
+
+# Dev-env flavors that exist as images (megh-<flavor>).
+flavors: [base]
+
+# Per-provider defaults. api_key_env NAMES the env var holding the API key.
+providers:
+  runpod:
+    api_key_env: RUNPOD_API_KEY
+    default_dc: US-CA-2            # a data center that has CPU + your volume
+    default_volume: YOUR_VOLUME_ID # from `megh storage list`
+    vcpu: 2
+    ram: 8
+    disk: 20                       # ephemeral container disk (capped by size)
+
+# Optional: private mesh for phone/tablet browser access. Leave the env value
+# unset for SSH-only (Mac reaches boxes via `megh ssh`).
+tailscale:
+  authkey_env: TS_AUTHKEY
+
+# Optional: durable, searchable agent history. repo is a private git repo;
+# token_env NAMES a fine-grained PAT with contents:write on ONLY that repo.
+sessions:
+  repo: YOUR_GH_NAMESPACE/megh-sessions
+  token_env: MEGH_SESSIONS_TOKEN
