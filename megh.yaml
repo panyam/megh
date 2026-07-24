@@ -32,3 +32,11 @@ tailscale:
 sessions:
   repo: panyam/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only
+
+# Repos cloned into /mnt/work/repos by `megh hydrate` (idempotent). Use standard
+# github.com URLs (the box authenticates via your forwarded SSH agent, not the
+# Mac's ~/.ssh/config host aliases). Canonical source is git; the volume copy is
+# disposable and reproducible from this list.
+repos:
+  - git@github.com:panyam/megh.git
+

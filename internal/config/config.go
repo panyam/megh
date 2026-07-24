@@ -59,6 +59,7 @@ type Config struct {
 	Providers       map[string]Provider `yaml:"providers"`
 	Tailscale       Tailscale           `yaml:"tailscale"`
 	Sessions        Sessions            `yaml:"sessions"`
+	Repos           []string            `yaml:"repos"` // git URLs cloned into /mnt/work/repos by `megh hydrate`
 }
 
 func env(key, def string) string {

@@ -50,3 +50,9 @@ tailscale:
 sessions:
   repo: YOUR_GH_NAMESPACE/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN
+
+# Repos cloned into /mnt/work/repos by `megh hydrate`. Standard github.com URLs;
+# the box uses your forwarded SSH agent for auth. `megh hydrate --check` reports
+# drift (declared-but-missing, and on-volume-but-undeclared).
+repos:
+  - git@github.com:YOUR_GH_NAMESPACE/some-repo.git
