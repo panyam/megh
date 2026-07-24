@@ -7,3 +7,10 @@
 
 # Compiled megh binary (build output).
 /bin/megh
+
+# Local secrets — NEVER commit. Keep values in the environment (e.g.
+# ~/personal/envvars), never in the repo; git history is permanent. The
+# *.example templates are safe and stay tracked.
+secrets.env
+*.secret.env
+megh.local.yaml

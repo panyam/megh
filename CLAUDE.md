@@ -35,7 +35,18 @@ Make wrappers: `make up VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
 
-## Secrets (in `~/personal/envvars`)
+## Config (`megh.yaml`, checked in)
+
+Settings live in `megh.yaml` (auto-discovered walking up from cwd, then
+`~/.config/megh/megh.yaml`; override with `--config`/`$MEGH_CONFIG`). It holds
+non-secret settings and **pointers** to secrets (env-var names), never secret
+values, so it is safe in the repo. `megh config` shows the resolved settings and
+which secrets are set (never values). `megh.yaml.example` + `secrets.env.example`
+are the templates. Precedence for `megh up`: **flag > env var > megh.yaml >
+built-in default**. So on a new machine: clone, `make install`, fill secrets in
+the env, and `megh up` reads volume/DC/defaults from `megh.yaml`.
+
+## Secrets (env vars, NEVER in the repo — history is permanent)
 
 - `RUNPOD_API_KEY` — provider access
 - `GH_MEGH_TOKEN` — GHCR pull (classic PAT, `read:packages`); also set in RunPod
