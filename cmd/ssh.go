@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/spf13/cobra"
@@ -19,10 +19,12 @@ var (
 var sshCmd = &cobra.Command{
 	Use:   "ssh [box-name-or-id]",
 	Short: "SSH into a box, tunneling the web shell and headed-browser surfaces",
-	Long: `SSH into a provisioned box with key auth and agent forwarding.
+	Long: `SSH into a provisioned box with the profile's box key, forwarding the
+profile's GitHub identity keys (private keys never touch the box). Per-identity
+Host aliases (gh-<name>) are configured on the box so per-repo remotes use the
+right key.
 
-By default it also forwards the box's private web surfaces to your localhost, so
-you reach them in a browser with no Tailscale needed on this machine:
+By default it also forwards the box's web surfaces to your localhost:
   web shell    -> http://localhost:7681
   headed vnc   -> http://localhost:6080/vnc.html
 
@@ -49,16 +51,34 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 			return fmt.Errorf("ssh endpoint for %q not ready yet (pod initializing); try again shortly", pod.Name)
 		}
 
+		// Configure per-identity GitHub Host aliases on the box first (no key
+		// forwarding needed just to write files).
+		var fwdKeys []string
+		if activeProfile != nil {
+			fwdKeys = activeProfile.GHKeyFiles()
+			setup, serr := ghSetupScript(activeProfile)
+			if serr != nil {
+				return serr
+			}
+			if setup != "" {
+				setupArgs := []string{
+					"-p", strconv.Itoa(pod.SSHPort),
+					"-o", "StrictHostKeyChecking=accept-new",
+					"root@" + pod.PublicIP, "bash -s",
+				}
+				if err := runSSH(cfg.SSHKeyFile, nil, setupArgs, strings.NewReader(setup)); err != nil {
+					fmt.Fprintf(os.Stderr, "megh: warning: gh key setup failed: %v\n", err)
+				}
+			}
+		}
+
 		sshArgs := []string{
 			"-A",
 			"-p", strconv.Itoa(pod.SSHPort),
 			"-o", "StrictHostKeyChecking=accept-new",
 		}
 		if sshTunnel {
-			sshArgs = append(sshArgs,
-				"-L", "7681:localhost:7681",
-				"-L", "6080:localhost:6080",
-			)
+			sshArgs = append(sshArgs, "-L", "7681:localhost:7681", "-L", "6080:localhost:6080")
 		}
 		sshArgs = append(sshArgs, "root@"+pod.PublicIP)
 
@@ -67,10 +87,7 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 			tunNote = "  (+ localhost:7681 web shell, localhost:6080 vnc)"
 		}
 		fmt.Fprintf(os.Stderr, "megh: ssh root@%s -p %d%s\n", pod.PublicIP, pod.SSHPort, tunNote)
-
-		c := exec.Command("ssh", sshArgs...)
-		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
-		return c.Run()
+		return runSSH(cfg.SSHKeyFile, fwdKeys, sshArgs, nil)
 	},
 }
 

@@ -24,6 +24,8 @@ megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all =
 megh ssh [name]                   # ssh + tunnel localhost:7681 (shell) / 6080 (vnc)
 megh down [name] [-y]             # terminate a box (volume survives)
 megh storage list|create|rm       # network volumes, one global cross-provider view
+megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
+megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
 ```
@@ -48,6 +50,24 @@ which secrets are set (never values). `megh.yaml.example` + `secrets.env.example
 are the templates. Precedence for `megh up`: **flag > env var > megh.yaml >
 built-in default**. So on a new machine: clone, `make install`, fill secrets in
 the env, and `megh up` reads volume/DC/defaults from `megh.yaml`.
+
+## Profiles (`~/.megh/profiles/<name>/`)
+
+A profile is a self-contained context so megh depends on nothing system-level.
+It holds a dedicated **box key** (one; SSH into VMs), N **GitHub identity keys**
+(`gh/<name>.key`), and `secrets.env` (values applied over ambient env; blanks
+fall back to ambient). Keys are generated in-process via `oneauth/sshkeys`.
+Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
+
+- **box key**: `megh ssh` connects with it; its pubkey is injected on `megh up`.
+- **gh keys**: forwarded via a **scoped ssh-agent** (only the profile's keys, so
+  a corporate key in your normal agent never reaches a third-party VM). On the
+  box, `megh ssh`/`hydrate` write per-identity `~/.ssh/config` Host aliases
+  (`gh-<name>`, `IdentitiesOnly`, pubkey only), and `hydrate` clones each repo
+  via its alias. Private keys never touch the box.
+- Repo -> identity: `megh.yaml` repo `key:`, else `default_gh_key`.
+- Blast `~/.megh` and you lose only that profile's VM access (re-mintable). Set
+  `MEGH_HOME=./.megh` for a repo-local store (gitignored).
 
 ## Secrets (env vars, NEVER in the repo — history is permanent)
 

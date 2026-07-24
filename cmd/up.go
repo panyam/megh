@@ -81,6 +81,9 @@ var upCmd = &cobra.Command{
 		upOpts.VCPU = resolveInt(cmd, "vcpu", upOpts.VCPU, p.VCPU, 2)
 		upOpts.RAMGiB = resolveInt(cmd, "ram", upOpts.RAMGiB, p.RAM, 8)
 		upOpts.DiskGiB = resolveInt(cmd, "disk", upOpts.DiskGiB, p.Disk, 20)
+		if upOpts.Name == "" && activeProfile != nil {
+			upOpts.Name = "megh-" + activeProfile.Name + "-box"
+		}
 
 		switch upProvider {
 		case "runpod":

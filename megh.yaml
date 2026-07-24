@@ -33,14 +33,17 @@ sessions:
   repo: panyam/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only
 
+# The GitHub identity (profile gh key name) used by repos that don't set one.
+default_gh_key: personal
+
 # Your PROJECT repos, cloned into /mnt/work/repos by `megh hydrate` (idempotent).
-# Use standard github.com URLs (the box authenticates via your forwarded SSH
-# agent, not the Mac's ~/.ssh/config host aliases). Canonical source is git; the
-# volume copy is disposable and reproducible from this list.
+# A repo authenticates as a GitHub identity from the active profile: its `key`,
+# else default_gh_key. That identity's key is forwarded (never stored on the box)
+# and used via a per-identity Host alias. megh itself does NOT belong here (the
+# CLI runs on your control machine; the box never needs the megh repo).
 #
-# Note: megh itself does NOT belong here. The CLI runs on your control machine
-# and the dev-env tooling is baked into the image; a box never needs the megh
-# repo (list it only if you want to develop megh on a box).
+# Two forms:
+#   - git@github.com:panyam/foo.git              # uses default_gh_key
+#   - {url: git@github.com:inferbook/bar.git, key: inferbook}
 repos: []
-  # - git@github.com:panyam/your-project.git
 

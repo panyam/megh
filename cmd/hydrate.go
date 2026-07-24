@@ -3,11 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
+	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/spf13/cobra"
 )
@@ -17,26 +16,17 @@ var (
 	hydrateCheck    bool
 )
 
-// repoDir derives the working-copy directory name from a git URL:
-// git@github.com:panyam/megh.git -> megh
-func repoDir(url string) string {
-	u := strings.TrimSuffix(strings.TrimSpace(url), ".git")
-	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
-		u = u[i+1:]
-	}
-	return u
-}
-
 var hydrateCmd = &cobra.Command{
 	Use:   "hydrate [box-name-or-id]",
 	Short: "Clone the megh.yaml repos onto a box's shared volume (idempotent)",
 	Long: `Apply the repos: list from megh.yaml onto a running box's /mnt/work/repos,
 without recreating the volume. Idempotent: existing repos are left as-is, missing
-ones are cloned using your forwarded SSH agent (no keys land on the box).
+ones are cloned. Each repo authenticates as its GitHub identity (repo key, else
+default_gh_key) via that identity's forwarded key; private keys never touch the
+box. The box's ~/.ssh/config gets a per-identity Host alias first.
 
---check reports drift instead of applying: which declared repos are missing from
-the volume, and which repos on the volume are not declared in megh.yaml (copy
-those into megh.yaml to adopt them).`,
+--check reports drift: declared-but-missing on the volume, and on-volume-but-
+undeclared (with origin url to copy into megh.yaml).`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if hydrateProvider != "runpod" {
@@ -62,38 +52,52 @@ those into megh.yaml to adopt them).`,
 			return fmt.Errorf("no repos: declared in megh.yaml")
 		}
 
-		script := applyScript(cfg.Repos)
-		if hydrateCheck {
-			script = checkScript(cfg.Repos)
+		// Set up per-identity Host aliases first, and forward the profile's GH
+		// keys so the clones can authenticate.
+		var (
+			setup   string
+			fwdKeys []string
+		)
+		if activeProfile != nil {
+			fwdKeys = activeProfile.GHKeyFiles()
+			if setup, err = ghSetupScript(activeProfile); err != nil {
+				return err
+			}
 		}
-		ssh := exec.Command("ssh", "-A", "-p", strconv.Itoa(pod.SSHPort),
-			"-o", "StrictHostKeyChecking=accept-new", "root@"+pod.PublicIP, "bash -s")
-		ssh.Stdin = strings.NewReader(script)
-		ssh.Stdout, ssh.Stderr = os.Stdout, os.Stderr
-		return ssh.Run()
+		body := applyScript(cfg)
+		if hydrateCheck {
+			body = checkScript(cfg)
+		}
+		script := setup + body
+
+		sshArgs := []string{
+			"-A", "-p", strconv.Itoa(pod.SSHPort),
+			"-o", "StrictHostKeyChecking=accept-new",
+			"root@" + pod.PublicIP, "bash -s",
+		}
+		return runSSH(cfg.SSHKeyFile, fwdKeys, sshArgs, strings.NewReader(script))
 	},
 }
 
-func applyScript(repos []string) string {
+func applyScript(c config.Config) string {
 	var b strings.Builder
-	b.WriteString("set -e\n")
-	b.WriteString("export GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\n")
-	b.WriteString("mkdir -p /mnt/work/repos\n")
-	for _, url := range repos {
-		d := repoDir(url)
+	b.WriteString("set -e\nexport GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\nmkdir -p /mnt/work/repos\n")
+	for _, r := range c.Repos {
+		d := repoDir(r.URL)
+		u := aliasedURL(r.URL, c.GHKey(r))
 		fmt.Fprintf(&b,
 			"if [ -d /mnt/work/repos/%s/.git ]; then echo 'exists  %s'; "+
 				"else echo 'clone   %s'; git clone %q /mnt/work/repos/%s; fi\n",
-			d, d, d, url, d)
+			d, d, d, u, d)
 	}
 	return b.String()
 }
 
-func checkScript(repos []string) string {
+func checkScript(c config.Config) string {
 	var b strings.Builder
 	b.WriteString("declared=(")
-	for _, url := range repos {
-		fmt.Fprintf(&b, "%q ", repoDir(url))
+	for _, r := range c.Repos {
+		fmt.Fprintf(&b, "%q ", repoDir(r.URL))
 	}
 	b.WriteString(")\n")
 	b.WriteString(`echo "== declared in megh.yaml =="` + "\n")

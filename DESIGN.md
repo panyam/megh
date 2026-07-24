@@ -141,6 +141,41 @@ Leaning mesh-hosted. Not built yet; the CLI is the first surface.
   taste-test box and real container-in-dev work belongs on a VM-native box (run
   directly, native Docker). This decides how far RunPod goes beyond "get a feel."
 
+## Profiles (self-contained key + secrets per context)
+
+A profile (`~/.megh/profiles/<name>/`, override `MEGH_HOME`) makes megh depend on
+nothing at the system level, no reliance on `~/.ssh` or a shared agent that also
+holds a corporate key. LOCKED decisions:
+
+- **One box key, N GitHub keys.** The box key (single) SSHes into VMs; its pubkey
+  is injected. GitHub identity keys (`gh/<name>`) are separate and plural: you
+  work on repos from different accounts in the SAME box.
+- **Scoped agent forwards ONLY the profile's keys.** megh spins up a throwaway
+  ssh-agent holding exactly the profile's GitHub keys and forwards that, so a
+  corporate key sitting in your normal agent never reaches a third-party VM. The
+  box is connected to with `-i box.key -o IdentitiesOnly=yes`.
+- **Multi-identity in one box via Host aliases.** On connect, megh writes the GH
+  *public* keys plus a `~/.ssh/config` Host alias per identity (`gh-<name>`,
+  `IdentityFile <pubkey>`, `IdentitiesOnly`). Repos clone via the alias
+  (`git@gh-<name>:...`), so each repo signs with its own forwarded key. Private
+  keys never touch the box.
+- **Repo -> identity is explicit with a default.** `megh.yaml` repo `key:`, else
+  `default_gh_key`. No inference.
+- **Secrets: values in the profile, pointers in the repo.** `megh.yaml` names env
+  vars (pointers); the profile's `secrets.env` provides values, applied over the
+  ambient env (blanks fall back), so migration is gradual and nothing secret is
+  committed.
+- **Keygen reuses `oneauth/sshkeys` (in-process ed25519, container-safe).**
+  Storage is plain 0600 files now; `oneauth/keys.EncryptedKeyStorage` is the
+  intended drop-in for encryption at rest in a later secure-storage phase (kept
+  out for now to avoid its OTel/JWKS deps in a lean CLI).
+- **Blast radius is bounded.** Lose `~/.megh` and you lose only that profile's VM
+  access and secret values, both re-mintable; code is in git.
+
+Known extension (not built): a single repo needing two GitHub accounts at once is
+already covered by per-repo `key:`; a single *clone* spanning accounts is not a
+case megh handles.
+
 ## New machine / portability
 
 A fresh laptop needs almost nothing, because megh holds no local state and the
