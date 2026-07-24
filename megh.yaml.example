@@ -61,3 +61,13 @@ default_gh_key: personal
 repos:
   - git@github.com:YOUR_GH_NAMESPACE/some-repo.git          # uses default_gh_key
   - {url: git@github.com:OTHER_ORG/other-repo.git, key: work}
+
+# Env vars that must be set on the host. megh blocks `megh up` if any is missing.
+# box_envs are also copied into the box for the repos/services there (they land
+# on a third-party VM, so list only what the box needs).
+requires:
+  envs:
+    - RUNPOD_API_KEY
+    - GH_MEGH_TOKEN
+  box_envs:
+    - OPENAI_API_KEY

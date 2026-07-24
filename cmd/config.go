@@ -63,6 +63,25 @@ var configCmd = &cobra.Command{
 		}
 		show(cfg.Tailscale.AuthKeyEnv)
 		show(cfg.Sessions.TokenEnv)
+
+		if len(cfg.Requires.Envs) > 0 || len(cfg.Requires.BoxEnvs) > 0 {
+			fmt.Println("\nrequired env (megh.yaml requires; * = also copied to the box):")
+			mark := func(list []string, star bool) {
+				for _, e := range list {
+					state := "MISSING"
+					if os.Getenv(e) != "" {
+						state = "set"
+					}
+					s := " "
+					if star {
+						s = "*"
+					}
+					fmt.Printf("  %s %-22s %s\n", s, e, state)
+				}
+			}
+			mark(cfg.Requires.Envs, false)
+			mark(cfg.Requires.BoxEnvs, true)
+		}
 		return nil
 	},
 }

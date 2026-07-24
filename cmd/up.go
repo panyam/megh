@@ -84,6 +84,10 @@ var upCmd = &cobra.Command{
 		if upOpts.Name == "" && activeProfile != nil {
 			upOpts.Name = "megh-" + activeProfile.Name + "-box"
 		}
+		if miss := cfg.MissingEnvs(); len(miss) > 0 {
+			return fmt.Errorf("required env vars not set (megh.yaml requires): %s", strings.Join(miss, ", "))
+		}
+		upOpts.ExtraEnv = cfg.BoxEnv()
 
 		switch upProvider {
 		case "runpod":

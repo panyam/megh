@@ -62,6 +62,45 @@ type Config struct {
 	Sessions        Sessions            `yaml:"sessions"`
 	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
 	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
+	Requires        Requires            `yaml:"requires"`
+}
+
+// Requires declares env vars that must be present on the host. Envs are needed
+// by megh itself (a launch is blocked if any is missing). BoxEnvs are needed by
+// the repos/services that run ON the box; their host values are copied into the
+// box at launch. BoxEnvs must also be present on the host, so they are checked
+// too.
+type Requires struct {
+	Envs    []string `yaml:"envs"`
+	BoxEnvs []string `yaml:"box_envs"`
+}
+
+// MissingEnvs returns declared required env vars (host + box) that are unset,
+// so callers can flag them before launching.
+func (c Config) MissingEnvs() []string {
+	seen := map[string]bool{}
+	var missing []string
+	for _, e := range append(append([]string{}, c.Requires.Envs...), c.Requires.BoxEnvs...) {
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
+		if os.Getenv(e) == "" {
+			missing = append(missing, e)
+		}
+	}
+	return missing
+}
+
+// BoxEnv returns the host values of box_envs to copy onto a box (only those set).
+func (c Config) BoxEnv() map[string]string {
+	m := map[string]string{}
+	for _, e := range c.Requires.BoxEnvs {
+		if v := os.Getenv(e); v != "" {
+			m[e] = v
+		}
+	}
+	return m
 }
 
 // Repo is a git repo to hydrate onto a box's volume, with the GitHub identity

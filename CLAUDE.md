@@ -51,6 +51,10 @@ are the templates. Precedence for `megh up`: **flag > env var > megh.yaml >
 built-in default**. So on a new machine: clone, `make install`, fill secrets in
 the env, and `megh up` reads volume/DC/defaults from `megh.yaml`.
 
+`requires:` declares env vars that must be set on the host: `envs` (megh blocks
+`megh up` if any is missing) and `box_envs` (also copied into the box as pod env
+for the repos/services there). `megh config` shows each as `set`/`MISSING`.
+
 ## Profiles (`~/.megh/profiles/<name>/`)
 
 A profile is a self-contained context so megh depends on nothing system-level.
