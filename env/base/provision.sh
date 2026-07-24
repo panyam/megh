@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Single source of truth for the megh base dev-environment tooling.
+#
+# This script is the ONE place tools are declared. It is invoked as root at
+# BUILD time by both artifact pipelines so they can never drift:
+#   - env/base/Dockerfile          -> container image (container-native providers, e.g. RunPod)
+#   - env/base/packer/*.pkr.hcl    -> VM image        (VM-native providers, e.g. Hetzner)  [later]
+#
+# It installs tools only. It never starts services. Runtime init is the
+# artifact's job: the container uses entrypoint.sh as PID 1; the VM uses
+# systemd units + cloud-init.
+#
+# Knobs (env vars):
+#   TARGET_ARCH     amd64 | arm64          (default amd64)
+#   GO_VERSION      go toolchain version   (default 1.22.5)
+#   TTYD_VERSION    ttyd release           (default 1.7.7)
+#   INSTALL_DOCKER  1 to install the Docker engine (VM: yes; container: no)
+set -euo pipefail
+
+TARGET_ARCH="${TARGET_ARCH:-amd64}"
+GO_VERSION="${GO_VERSION:-1.22.5}"
+TTYD_VERSION="${TTYD_VERSION:-1.7.7}"
+INSTALL_DOCKER="${INSTALL_DOCKER:-0}"
+
+export DEBIAN_FRONTEND=noninteractive
+
+# --- base OS tooling -------------------------------------------------------
+apt-get update
+apt-get install -y --no-install-recommends \
+  ca-certificates curl wget gnupg git git-lfs openssh-server \
+  tmux ripgrep fd-find fzf jq unzip zip build-essential pkg-config \
+  python3 python3-pip python3-venv \
+  xvfb x11vnc fluxbox novnc websockify \
+  sudo locales tzdata less nano vim htop procps net-tools iproute2
+
+# --- Docker engine (VM artifact only) --------------------------------------
+# On a VM the dev environment runs directly on the box, so this is the real,
+# native daemon that dev workflows (docker build, testcontainers) use. The
+# container artifact skips this (INSTALL_DOCKER=0): it has no daemon and does
+# not need one.
+if [ "${INSTALL_DOCKER}" = "1" ]; then
+  apt-get install -y --no-install-recommends docker.io docker-compose-v2
+  systemctl enable docker 2>/dev/null || true
+fi
+
+# --- Node 22 LTS (Claude Code, Codex CLI, Playwright) ----------------------
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt-get install -y --no-install-recommends nodejs
+rm -rf /var/lib/apt/lists/*
+
+# --- Go --------------------------------------------------------------------
+curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGET_ARCH}.tar.gz" -o /tmp/go.tgz
+rm -rf /usr/local/go
+tar -C /usr/local -xzf /tmp/go.tgz
+rm /tmp/go.tgz
+
+# --- ttyd (arch-specific static binary) ------------------------------------
+case "${TARGET_ARCH}" in
+  amd64) ttyd_asset="ttyd.x86_64" ;;
+  arm64) ttyd_asset="ttyd.aarch64" ;;
+  *) echo "provision: unsupported TARGET_ARCH=${TARGET_ARCH}" >&2; exit 1 ;;
+esac
+curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/${ttyd_asset}" \
+  -o /usr/local/bin/ttyd
+chmod +x /usr/local/bin/ttyd
+
+# --- PATH for login shells (VM) and a sane default -------------------------
+cat > /etc/profile.d/megh-path.sh <<'EOF'
+export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
+EOF
+
+# --- coding agents + Playwright browser ------------------------------------
+npm install -g @anthropic-ai/claude-code @openai/codex playwright
+npx --yes playwright install --with-deps chromium
+
+echo "provision: base dev environment ready (arch=${TARGET_ARCH}, docker=${INSTALL_DOCKER})"

@@ -13,20 +13,21 @@ Four layers, decoupled so the box is disposable and providers are swappable.
    is snapshotted with restic to S3-compatible object storage. This is the only
    layer that follows the user across providers, dedicated boxes, and GPU
    hardware.
-2. **Config (portable).** The dev environment is a container image built from
-   this repo (`env/<flavor>/`). Tooling changes are commits here, rebuilt by CI
-   and rolled to every provider. No box is ever mutated in place and
-   snapshotted. Images are versioned artifacts.
+2. **Config (portable).** The dev environment is declared once in
+   `env/<flavor>/provision.sh` and built into two artifacts (a container image
+   and a VM image) from that same script. Tooling changes are commits here,
+   rebuilt by CI and rolled to every provider. No box is ever mutated in place
+   and snapshotted. Artifacts are versioned.
 3. **Scratch (per-provider, never crosses).** A provider-native volume (RunPod
    network volume, Hetzner block volume) mounted into the dev containers as
    working copy, arch-tagged caches, and transient blobs. Disposable. A box
    hydrates it from the canonical layer on boot and flushes back on shutdown.
    Cross-provider transfer of scratch is deliberately out of scope; regenerate
    or seed from a snapshot if ever needed.
-4. **Compute (per-provider).** A thin host runs N dev containers. A normalized
-   `(vcpu, ram)` request maps to a real supported SKU per provider, never an
-   arbitrary combination. Parallel containers on one box are the low-incremental-
-   cost capacity knob.
+4. **Compute (per-provider).** Container-native providers run the container
+   image directly; VM-native providers run the dev env directly on a VM from the
+   VM image. A normalized `(vcpu, ram)` request maps to a real supported SKU per
+   provider, never an arbitrary combination.
 
 ## Decisions
 
@@ -34,25 +35,31 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   Each backend uses whatever is most reliable for that provider. RunPod: REST
   API (its Terraform provider is too flaky). Hetzner: OpenTofu. Provider
   switching is an early, first-class capability, additive per backend.
-- **The dev environment is ALWAYS a container. LOCKED.** This is settled, not an
-  either/or with VMs. The container is the single build artifact that runs
-  everywhere. What differs per provider is only what *hosts* the container:
-  - Container-native provider (RunPod): the platform runs the container
-    directly. There is no VM you manage.
-  - VM-native provider (Hetzner): you provision a thin, disposable VM (OpenTofu)
-    whose only job is to be a Docker host, and the same container runs on it.
-  "Parallel containers for capacity" maps to multiple pods on RunPod (billed per
-  pod) and multiple containers on one VM on Hetzner (near-zero incremental cost
-  on a box you already pay for). The VM-host model is therefore the better fit
-  for the parallel-capacity story; RunPod is better for a quick single box.
-- **The one thing NOT locked by the above: whether a given box needs a real VM
-  host.** A dev workflow that itself runs containers (testcontainers, `docker
-  build`, nested devcontainers) needs a real Docker daemon. That is native on a
-  VM host (Hetzner) and constrained-to-unavailable inside a container-native
-  pod (RunPod, where Docker-in-container needs privileged/DinD that shared hosts
-  often deny). So the substrate is locked (container), but provider choice for a
-  *given* box depends on whether that box must run containers itself. See the
-  RunPod DinD verify item below.
+- **Two build artifacts from one source of truth. LOCKED.** The dev environment
+  is declared once, in `env/<flavor>/provision.sh`, and emitted as two artifacts
+  that both call that script at build time so they cannot drift:
+  - **Container image** (`Dockerfile`) for container-native providers (RunPod).
+    The platform runs it directly; there is no VM you manage. `INSTALL_DOCKER=0`
+    (a container needs no daemon inside it).
+  - **VM image** (`packer/`, later) for VM-native providers (Hetzner, and the
+    AWS-AMI shape). The dev environment runs DIRECTLY on the VM, not in a
+    container inside it, so the box has a real native Docker daemon for dev
+    workflows (`docker build`, testcontainers). `INSTALL_DOCKER=1`. This is the
+    user's stated preference and it dissolves the Docker-in-container (DinD)
+    problem rather than working around it.
+  Provider type picks the artifact.
+- **On VM-native providers, run the VM directly; skip managed orchestration.**
+  For a personal dev box a VM image (AMI / snapshot) is cheaper and more
+  constraint-2-consistent than a managed container service (EKS / ECS / AKS):
+  no control-plane fee (EKS alone is ~$73/mo before any nodes), no orchestrator
+  in the path, nothing to bin-pack. Managed orchestration earns its keep at
+  fleet scale, which does not apply to one dev box. (AWS is a good illustration
+  of the principle but fights the predictable-cost constraint via egress /
+  on-demand pricing, so it is unlikely to be a chosen provider.)
+- **Capacity knob differs by artifact.** Container-native: multiple pods (billed
+  per pod). VM-native: multiple worktrees / agent tasks on one VM at near-zero
+  incremental cost, with native Docker available if a task wants container
+  isolation.
 - **Scratch volumes are per-provider and do not migrate.** Accepted explicitly.
   If work concentrates on a provider, create a volume there that all that
   provider's boxes mount.
@@ -107,8 +114,8 @@ Leaning mesh-hosted. Not built yet; the CLI is the first surface.
 - **GPU.** Deferred. A separate explicitly-invoked flow, not this box.
 - **RunPod DinD (verify on box #1).** Does a RunPod CPU pod let the dev workflow
   run its own containers (`docker build`, testcontainers)? If not, RunPod is a
-  taste-test box and real container-in-dev work belongs on a VM host. This
-  decides how far RunPod goes beyond "get a feel."
+  taste-test box and real container-in-dev work belongs on a VM-native box (run
+  directly, native Docker). This decides how far RunPod goes beyond "get a feel."
 
 ## Constraints carried from the handoff
 

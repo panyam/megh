@@ -11,10 +11,11 @@ box costs minutes, not work.
 
 ## Shape
 
-- **Dev environment** is a container image (`env/base/`), rebuilt from source by
-  CI, never a hand-mutated snapshot.
-- **Compute** is a thin host running that image, one backend per provider behind
-  the `megh` CLI. RunPod first (US, container-native); Hetzner next.
+- **Dev environment** is declared once (`env/base/provision.sh`) and built into
+  two artifacts, a container image and a VM image, never a hand-mutated snapshot.
+- **Compute** is one backend per provider behind the `megh` CLI. Container-native
+  providers run the image directly; VM-native providers run the dev env directly
+  on the VM (native Docker, no nested containers). RunPod first (US); Hetzner next.
 - **Scratch** is a per-provider volume mounted at `/mnt/work`. Per-provider by
   design; it does not migrate.
 - **Canonical state** is git plus restic to object storage. The only layer that
