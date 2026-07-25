@@ -73,7 +73,11 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 
 		extra := []string{"-A"}
 		if sshTunnel {
-			extra = append(extra, "-L", "7681:localhost:7681", "-L", "6080:localhost:6080")
+			extra = append(extra,
+				"-L", "7681:localhost:7681", // ttyd
+				"-L", "6080:localhost:6080", // noVNC
+				"-L", "8080:localhost:8080", // code-server
+			)
 		}
 		sshArgs := append(d.opts(extra...), d.userHost())
 
@@ -83,7 +87,7 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 		}
 		tunNote := ""
 		if sshTunnel {
-			tunNote = "  (+ localhost:7681 shell, localhost:6080 vnc)"
+			tunNote = "  (+ localhost 7681 shell / 6080 vnc / 8080 code)"
 		}
 		fmt.Fprintf(os.Stderr, "megh: ssh %s via %s%s\n", d.userHost(), via, tunNote)
 		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
