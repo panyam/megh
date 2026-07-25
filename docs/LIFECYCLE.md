@@ -45,7 +45,7 @@ sequenceDiagram
   Note over Mac: megh up
   Mac->>RunPod: create pod (image, pod env: box_envs + TS_AUTHKEY + sessions token,<br/>inject box.key.pub)
   RunPod->>Box: pull image, boot
-  Box->>Box: entrypoint: mount volume at /mnt/work, tailscale (if key),<br/>start ttyd/noVNC on localhost, arm flush timer
+  Box->>Box: entrypoint: mount volume at /mnt/work, tailscale (if key),<br/>start ttyd/noVNC/code-server on localhost, arm flush timer
 
   Note over Mac: megh hydrate
   Mac->>Box: scoped agent (gh private keys) + write ~/.ssh/config gh-* aliases
@@ -53,7 +53,7 @@ sequenceDiagram
   GitHub-->>Box: repo contents
 
   Note over Mac: megh ssh (work)
-  Mac->>Box: connect with box.key, forward gh keys, tunnel 7681/6080
+  Mac->>Box: connect with box.key, forward gh keys, tunnel 7681/6080/8080
   Box->>GitHub: git push/pull (forwarded key)
 
   Note over Box: timer + shutdown
@@ -65,6 +65,24 @@ sequenceDiagram
 
 Repos are **not** cloned automatically by `megh up`; `megh hydrate` does it (it
 needs your forwarded keys, which only exist during a client-driven SSH).
+
+## Access surfaces (all private)
+
+Every surface is bound to localhost (reached via an SSH tunnel or Tailscale) or
+is key-auth only. Nothing but SSH is ever on the public proxy, and only when
+`expose_ssh: true`.
+
+| Surface | Port | Reach it via |
+|---|---|---|
+| SSH (shell, git, tunnels) | 22/tcp | `megh ssh`: public ip:port (key auth), or the tailnet (Tailscale SSH) |
+| ttyd web shell (tmux) | 7681 | tunnel → `localhost:7681`, or `http://<box>:7681` on the tailnet |
+| noVNC headed browser | 6080 | tunnel → `localhost:6080/vnc.html`, or `http://<box>:6080/vnc.html` |
+| code-server (VS Code) | 8080 | tunnel → `localhost:8080`, or `http://<box>:8080` on the tailnet; Remote-SSH also works |
+
+`megh ssh` forwards 7681/6080/8080 to your localhost automatically. With
+Tailscale up, the same surfaces are served by name over the tailnet (phone /
+tablet friendly). `expose_ssh: false` drops even public 22/tcp; the RunPod
+console Web Terminal stays the break-glass.
 
 ## 4. Where keys and secrets live
 
