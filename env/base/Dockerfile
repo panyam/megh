@@ -49,6 +49,7 @@ RUN chmod +x /usr/local/bin/megh
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
 COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions
-RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-flush-sessions
+COPY enable-vnc.sh /usr/local/bin/megh-enable-vnc
+RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-flush-sessions /usr/local/bin/megh-enable-vnc
 
 ENTRYPOINT ["/usr/local/bin/megh-entrypoint"]

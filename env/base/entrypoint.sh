@@ -75,7 +75,7 @@ if command -v Xvfb >/dev/null 2>&1; then
   websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
   log "noVNC up on 127.0.0.1:6080 (headed display :99)"
 else
-  log "no headed-browser display (slim flavor); use the base flavor for Playwright"
+  log "no headed-browser display (slim); run 'megh enable-vnc' on the box to add it on demand"
 fi
 
 # ---------------------------------------------------------------------------
