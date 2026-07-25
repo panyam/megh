@@ -11,10 +11,10 @@ by hand on a box and snapshotted.
 
 ```mermaid
 flowchart LR
-  edit["edit env/base/provision.sh<br/>(or entrypoint / Dockerfile)"] --> push["git push main"]
-  push -->|"only if env/** changed"| ci["GitHub Action: build-env<br/>build-arg MEGH_BUILD_REF = git sha"]
-  ci --> ghcr["ghcr.io/panyam/megh-base:latest<br/>+ :&lt;sha&gt; (private, amd64)"]
-  ghcr -.->|"RunPod pulls via<br/>Container Registry Auth"| pod["RunPod pod"]
+  edit["edit env/base/provision.sh<br>(or entrypoint / Dockerfile)"] --> push["git push main"]
+  push -->|"only if env/** changed"| ci["GitHub Action: build-env<br>build-arg MEGH_BUILD_REF = git sha"]
+  ci --> ghcr["ghcr.io/panyam/megh-base latest<br>plus a per-sha tag, private, amd64"]
+  ghcr -.->|"RunPod pulls via<br>Container Registry Auth"| pod["RunPod pod"]
 ```
 
 CLI-only changes (`cmd/`, `internal/`) do **not** trigger a build; they run on
@@ -24,11 +24,11 @@ your Mac, not in the image.
 
 ```mermaid
 flowchart TD
-  create["megh profile create personal"] --> boxkey["box.key generated<br/>(SSH into VMs)"]
+  create["megh profile create personal"] --> boxkey["box.key generated<br>(SSH into VMs)"]
   create --> secrets["secrets.env template"]
-  ghadd["megh profile gh add personal<br/>megh profile gh add work"] --> ghkeys["gh/&lt;name&gt;.key generated"]
+  ghadd["megh profile gh add personal<br>megh profile gh add work"] --> ghkeys["gh identity keys generated"]
   ghkeys --> pub["pubkeys printed"]
-  pub --> github["add each pubkey to its<br/>GitHub account (once)"]
+  pub --> github["add each pubkey to its<br>GitHub account (once)"]
   create --> use["megh profile use personal"]
 ```
 
@@ -43,13 +43,13 @@ sequenceDiagram
   participant Sessions as megh-sessions repo
 
   Note over Mac: megh up
-  Mac->>RunPod: create pod (image, pod env: box_envs + TS_AUTHKEY + sessions token,<br/>inject box.key.pub)
+  Mac->>RunPod: create pod (image, pod env: box_envs + TS_AUTHKEY + sessions token,<br>inject box.key.pub)
   RunPod->>Box: pull image, boot
-  Box->>Box: entrypoint: mount volume at /mnt/work, tailscale (if key),<br/>start ttyd/noVNC/code-server on localhost, arm flush timer
+  Box->>Box: entrypoint: mount volume at /mnt/work, tailscale (if key),<br>start ttyd/noVNC/code-server on localhost, arm flush timer
 
   Note over Mac: megh hydrate
   Mac->>Box: scoped agent (gh private keys) + write ~/.ssh/config gh-* aliases
-  Box->>GitHub: clone repos into /workspace/repos via gh-&lt;key&gt; alias
+  Box->>GitHub: clone repos into /workspace/repos via gh-KEY alias
   GitHub-->>Box: repo contents
 
   Note over Mac: megh ssh (work)
@@ -92,18 +92,18 @@ box if you explicitly declare them as `box_envs`.
 ```mermaid
 flowchart TB
   subgraph Mac["Your Mac (control plane)"]
-    prof["~/.megh/profile:<br/>box.key + gh private keys"]
-    env["environment:<br/>RUNPOD_API_KEY, GH_MEGH_TOKEN,<br/>box_envs (OPENAI_API_KEY, ...)"]
+    prof["~/.megh/profile:<br>box.key + gh private keys"]
+    env["environment:<br>RUNPOD_API_KEY, GH_MEGH_TOKEN,<br>box_envs (OPENAI_API_KEY, ...)"]
   end
   subgraph Box["RunPod VM (data plane)"]
     pub["~/.ssh/gh-*.pub + config aliases"]
-    penv["pod env: box_envs,<br/>TS_AUTHKEY, MEGH_SESSIONS_TOKEN"]
+    penv["pod env: box_envs,<br>TS_AUTHKEY, MEGH_SESSIONS_TOKEN"]
     repos["/workspace/repos"]
   end
   GitHub["GitHub"]
 
   prof -->|"box.key: connect (-i)"| Box
-  prof -->|"gh PRIVATE keys: forwarded via scoped agent,<br/>NEVER written to disk on the box"| Box
+  prof -->|"gh PRIVATE keys: forwarded via scoped agent,<br>NEVER written to disk on the box"| Box
   prof -->|"gh PUBLIC keys: written"| pub
   env -->|"box_envs copied as pod env at up"| penv
   Box -->|"git via forwarded key + alias"| GitHub
@@ -122,13 +122,12 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  repos["/workspace/repos<br/>(working copies)"] -->|"git push"| gh["git remotes"]
-  state["/workspace/state/{claude,codex}<br/>(transcripts)"] -->|"flush-sessions.sh<br/>(timer + shutdown)"| sess["megh-sessions repo"]
+  repos["/workspace/repos<br>(working copies)"] -->|"git push"| gh["git remotes"]
+  state["/workspace/state claude+codex<br>(transcripts)"] -->|"flush-sessions.sh<br>(timer + shutdown)"| sess["megh-sessions repo"]
   gh -.->|"megh hydrate"| repos
   sess -.->|"git clone"| state
-  vol[("network volume<br/>/mnt/work")]:::vol
+  vol[("network volume<br>/mnt/work")]
   vol -.->|"survives"| destroy["box destroyed"]
-  classDef vol fill:#e0e7ff,stroke:#6366f1;
 ```
 
 The volume is fast scratch, not the source of truth: code lives in git, agent
