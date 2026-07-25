@@ -156,7 +156,7 @@ func env(key, def string) string {
 func Default() Config {
 	return Config{
 		DefaultProvider: "runpod",
-		DefaultFlavor:   "base",
+		DefaultFlavor:   "slim",
 		SSHPubKeyFile:   "~/.ssh/id_ed25519.pub",
 		Registries: []Registry{{
 			Name:      "ghcr",
@@ -236,7 +236,7 @@ func (c Config) DefaultImage(flavor string) string {
 		flavor = c.DefaultFlavor
 	}
 	if flavor == "" {
-		flavor = "base"
+		flavor = "slim"
 	}
 	if len(c.Registries) == 0 {
 		return ""
