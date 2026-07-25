@@ -36,7 +36,8 @@ image), `make registry`.
 
 `megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
 `$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default
-`base`, so `ghcr.io/panyam/megh-base:latest`); `--pubkey` = `$MEGH_PUBKEY` else
+`slim`, so `ghcr.io/panyam/megh-slim:latest`; use `--flavor base` for frontend);
+`--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
 

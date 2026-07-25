@@ -72,7 +72,7 @@ var upCmd = &cobra.Command{
 	Short: "Launch a dev box on a provider",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
-		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "base")
+		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "slim")
 
 		p := cfg.Provider(upProvider)
 		upOpts.DataCenter = resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", p.DefaultDC, "")
@@ -113,7 +113,7 @@ func init() {
 	// Defaults are empty/zero so `Changed` distinguishes an explicit flag from a
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: base)")
+	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use base for frontend)")
 	f.StringVar(&upOpts.Name, "name", "", "box name (default megh-<user>-box)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
 	f.IntVar(&upOpts.RAMGiB, "ram", 0, "RAM in GiB (default: config, else 8)")
