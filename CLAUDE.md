@@ -21,7 +21,9 @@ Run `megh` directly only after `source ~/personal/envvars`.
 ```
 megh up [--volume <id> --dc <dc>] # launch; all flags default from megh.yaml
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
-megh ssh [name]                   # ssh + tunnel localhost:7681 (shell) / 6080 (vnc)
+megh ssh [name]                   # plain interactive shell (git-ready)
+megh browse [port]                # tunnel box web surfaces to localhost, print URLs
+megh enable [feature]             # add vnc/playwright/code to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
