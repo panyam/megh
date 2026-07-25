@@ -1,15 +1,16 @@
 name: build-env
 
 # Builds the megh dev-env images and pushes them to GHCR. This is the
-# "regenerate and roll" path: change env/base/Dockerfile, push, and the new
-# image tag is available for every provider to pull. No box is ever mutated in
-# place and snapshotted.
+# "regenerate and roll" path: change env/base/*, push, and the new image tags are
+# available for every provider to pull. No box is ever mutated in place and
+# snapshotted.
 #
-# GHCR is a stand-in registry for the "get a feel" phase. The end state moves
-# this to the self-hosted Forgejo OCI registry on the always-on box so no third
-# party sees the tooling images either. The image contains tools only, never
-# source or keys, so GHCR in the interim is a mild constraint-2 compromise, not
-# a leak of anything sensitive.
+# Two flavors from ONE source (provision.sh, gated by MEGH_SLIM):
+#   base  - full: everything incl. Playwright + headed display + code-server
+#   slim  - lean: no frontend stack; code-server is background-installed on boot
+#
+# GHCR is a stand-in registry for now; the image holds tools only, never source
+# or keys. The end state serves images from a self-hosted Forgejo registry.
 
 on:
   push:
@@ -30,24 +31,23 @@ jobs:
       packages: write
     strategy:
       matrix:
-        flavor: [base]
-        # RunPod CPU pods are x86_64. Add arm64 here when a provider needs it;
-        # the platform below expands accordingly.
-        platform: [linux/amd64]
+        include:
+          - flavor: base
+            slim: "0"
+          - flavor: slim
+            slim: "1"
     steps:
       - uses: actions/checkout@v4
 
       # Stage the megh binary + config into the image build context so a box can
-      # manage/hydrate itself locally. The binary is a bootstrap snapshot (built
-      # from source at image-build time); a box can rebuild the latest from the
-      # cloned megh repo. Static build so it runs on any base.
+      # manage/hydrate itself locally. Static build so it runs on any base.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: Stage megh binary + config into the build context
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o env/${{ matrix.flavor }}/megh .
-          cp megh.yaml env/${{ matrix.flavor }}/megh.yaml
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o env/base/megh .
+          cp megh.yaml env/base/megh.yaml
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -59,16 +59,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push (${{ matrix.flavor }})
         uses: docker/build-push-action@v6
         with:
-          context: env/${{ matrix.flavor }}
-          platforms: ${{ matrix.platform }}
+          context: env/base
+          platforms: linux/amd64
           push: true
           build-args: |
             MEGH_BUILD_REF=${{ github.sha }}
+            MEGH_SLIM=${{ matrix.slim }}
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-${{ matrix.flavor }}:latest
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-${{ matrix.flavor }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.flavor }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.flavor }}

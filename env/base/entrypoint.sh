@@ -64,14 +64,19 @@ log "sshd up on :22"
 #    Playwright launches headed against DISPLAY=:99 and you watch it in a
 #    browser tab (laptop or phone).
 # ---------------------------------------------------------------------------
-Xvfb :99 -screen 0 1920x1080x24 >/tmp/xvfb.log 2>&1 &
-sleep 1
-fluxbox >/tmp/fluxbox.log 2>&1 &
-# -localhost + a localhost websockify bind: these listen only on 127.0.0.1 and
-# are reached via Tailscale (or an SSH tunnel), never the public proxy.
-x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -bg -o /tmp/x11vnc.log
-websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
-log "noVNC up on 127.0.0.1:6080 (headed display :99)"
+# Present only on the full flavor; slim skips the whole frontend display stack.
+if command -v Xvfb >/dev/null 2>&1; then
+  Xvfb :99 -screen 0 1920x1080x24 >/tmp/xvfb.log 2>&1 &
+  sleep 1
+  fluxbox >/tmp/fluxbox.log 2>&1 &
+  # -localhost + a localhost websockify bind: these listen only on 127.0.0.1 and
+  # are reached via Tailscale (or an SSH tunnel), never the public proxy.
+  x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -bg -o /tmp/x11vnc.log
+  websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+  log "noVNC up on 127.0.0.1:6080 (headed display :99)"
+else
+  log "no headed-browser display (slim flavor); use the base flavor for Playwright"
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Optional hydrate: clone repos listed in REPOS (comma-separated git URLs)
@@ -99,9 +104,16 @@ ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh tmux new -A -s main >/tmp/ttyd.l
 log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
 
 # code-server (VS Code in browser) on localhost, reached over tailscale/tunnel.
+# Baked on the full flavor. On slim it is background-installed to the box's local
+# disk on first boot, so you can shell in immediately and it comes online shortly.
 if command -v code-server >/dev/null 2>&1; then
   code-server --bind-addr 127.0.0.1:8080 --auth none /mnt/work >/tmp/code-server.log 2>&1 &
   log "code-server up on 127.0.0.1:8080"
+else
+  log "code-server not baked (slim); background-installing to local disk"
+  ( curl -fsSL https://code-server.dev/install.sh | sh >/tmp/code-server-install.log 2>&1 \
+      && code-server --bind-addr 127.0.0.1:8080 --auth none /mnt/work >/tmp/code-server.log 2>&1 \
+      || log "code-server background install failed (see /tmp/code-server-install.log)" ) &
 fi
 
 # ---------------------------------------------------------------------------
@@ -121,8 +133,10 @@ if [ -n "${TS_AUTHKEY:-}" ]; then
        >/tmp/tailscale-up.log 2>&1; then
     tailscale serve --bg --http=7681 http://127.0.0.1:7681 >/tmp/ts-serve-ttyd.log 2>&1 \
       || log "tailscale serve 7681 failed (see /tmp/ts-serve-ttyd.log)"
-    tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1 \
-      || log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
+    if command -v Xvfb >/dev/null 2>&1; then
+      tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1 \
+        || log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
+    fi
     tailscale serve --bg --http=8080 http://127.0.0.1:8080 >/tmp/ts-serve-code.log 2>&1 \
       || log "tailscale serve 8080 failed (see /tmp/ts-serve-code.log)"
     log "tailscale up as '${TS_HOSTNAME:-megh-box}'; surfaces served on the tailnet"

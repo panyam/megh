@@ -23,10 +23,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 ARG GO_VERSION=1.26.4
 ARG TTYD_VERSION=1.7.7
+ARG MEGH_SLIM=0
 
 COPY provision.sh /tmp/provision.sh
 RUN INSTALL_DOCKER=0 TARGET_ARCH=amd64 \
-      GO_VERSION="${GO_VERSION}" TTYD_VERSION="${TTYD_VERSION}" \
+      GO_VERSION="${GO_VERSION}" TTYD_VERSION="${TTYD_VERSION}" MEGH_SLIM="${MEGH_SLIM}" \
       bash /tmp/provision.sh \
     && rm /tmp/provision.sh
 
