@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"os"
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
@@ -45,8 +45,9 @@ undeclared (with origin url to copy into megh.yaml).`,
 		if err != nil {
 			return err
 		}
-		if !pod.SSHReady() {
-			return fmt.Errorf("ssh endpoint for %q not ready yet", pod.Name)
+		d := dialFor(pod)
+		if d.tailnet() {
+			fmt.Fprintf(os.Stderr, "megh: connecting to %q over the tailnet\n", pod.Name)
 		}
 		if len(cfg.Repos) == 0 && !hydrateCheck {
 			return fmt.Errorf("no repos: declared in megh.yaml")
@@ -70,12 +71,8 @@ undeclared (with origin url to copy into megh.yaml).`,
 		}
 		script := setup + body
 
-		sshArgs := []string{
-			"-A", "-p", strconv.Itoa(pod.SSHPort),
-			"-o", "StrictHostKeyChecking=accept-new",
-			"root@" + pod.PublicIP, "bash -s",
-		}
-		return runSSH(cfg.SSHKeyFile, fwdKeys, sshArgs, strings.NewReader(script))
+		sshArgs := append(d.opts("-A"), d.userHost(), "bash -s")
+		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, strings.NewReader(script))
 	},
 }
 

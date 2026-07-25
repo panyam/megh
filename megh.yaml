@@ -25,6 +25,10 @@ providers:
     vcpu: 2
     ram: 8
     disk: 20
+    # Public break-glass SSH (22/tcp). true today; flip to false once Tailscale
+    # SSH is verified to run with ZERO public ports (megh ssh then goes over the
+    # tailnet). RunPod console Web Terminal stays the break-glass either way.
+    expose_ssh: true
 
 tailscale:
   authkey_env: TS_AUTHKEY           # optional; omit env value for SSH-only

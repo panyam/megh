@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/panyam/megh/internal/providers/runpod"
@@ -23,6 +22,9 @@ var sshCmd = &cobra.Command{
 profile's GitHub identity keys (private keys never touch the box). Per-identity
 Host aliases (gh-<name>) are configured on the box so per-repo remotes use the
 right key.
+
+If the box exposes public SSH it connects over its IP; otherwise it connects to
+the box's Tailscale MagicDNS name (requires this machine on the tailnet).
 
 By default it also forwards the box's web surfaces to your localhost:
   web shell    -> http://localhost:7681
@@ -47,12 +49,13 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 		if err != nil {
 			return err
 		}
-		if !pod.SSHReady() {
-			return fmt.Errorf("ssh endpoint for %q not ready yet (pod initializing); try again shortly", pod.Name)
+
+		d := dialFor(pod)
+		if d.tailnet() {
+			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet (needs this machine on the tailnet)\n", pod.Name)
 		}
 
-		// Configure per-identity GitHub Host aliases on the box first (no key
-		// forwarding needed just to write files).
+		// Configure per-identity GitHub Host aliases on the box first.
 		var fwdKeys []string
 		if activeProfile != nil {
 			fwdKeys = activeProfile.GHKeyFiles()
@@ -61,33 +64,29 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 				return serr
 			}
 			if setup != "" {
-				setupArgs := []string{
-					"-p", strconv.Itoa(pod.SSHPort),
-					"-o", "StrictHostKeyChecking=accept-new",
-					"root@" + pod.PublicIP, "bash -s",
-				}
-				if err := runSSH(cfg.SSHKeyFile, nil, setupArgs, strings.NewReader(setup)); err != nil {
+				setupArgs := append(d.opts(), d.userHost(), "bash -s")
+				if err := runSSH(d.keyFor(cfg.SSHKeyFile), nil, setupArgs, strings.NewReader(setup)); err != nil {
 					fmt.Fprintf(os.Stderr, "megh: warning: gh key setup failed: %v\n", err)
 				}
 			}
 		}
 
-		sshArgs := []string{
-			"-A",
-			"-p", strconv.Itoa(pod.SSHPort),
-			"-o", "StrictHostKeyChecking=accept-new",
-		}
+		extra := []string{"-A"}
 		if sshTunnel {
-			sshArgs = append(sshArgs, "-L", "7681:localhost:7681", "-L", "6080:localhost:6080")
+			extra = append(extra, "-L", "7681:localhost:7681", "-L", "6080:localhost:6080")
 		}
-		sshArgs = append(sshArgs, "root@"+pod.PublicIP)
+		sshArgs := append(d.opts(extra...), d.userHost())
 
+		via := "public"
+		if d.tailnet() {
+			via = "tailnet"
+		}
 		tunNote := ""
 		if sshTunnel {
-			tunNote = "  (+ localhost:7681 web shell, localhost:6080 vnc)"
+			tunNote = "  (+ localhost:7681 shell, localhost:6080 vnc)"
 		}
-		fmt.Fprintf(os.Stderr, "megh: ssh root@%s -p %d%s\n", pod.PublicIP, pod.SSHPort, tunNote)
-		return runSSH(cfg.SSHKeyFile, fwdKeys, sshArgs, nil)
+		fmt.Fprintf(os.Stderr, "megh: ssh %s via %s%s\n", d.userHost(), via, tunNote)
+		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
 	},
 }
 

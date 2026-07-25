@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	upProvider string
-	upFlavor   string
-	upOpts     runpod.Options
+	upProvider  string
+	upFlavor    string
+	upExposeSSH bool
+	upOpts      runpod.Options
 )
 
 // resolve applies precedence flag > env > config > builtin for a string value.
@@ -81,6 +82,10 @@ var upCmd = &cobra.Command{
 		upOpts.VCPU = resolveInt(cmd, "vcpu", upOpts.VCPU, p.VCPU, 2)
 		upOpts.RAMGiB = resolveInt(cmd, "ram", upOpts.RAMGiB, p.RAM, 8)
 		upOpts.DiskGiB = resolveInt(cmd, "disk", upOpts.DiskGiB, p.Disk, 20)
+		upOpts.ExposeSSH = p.PublicSSH()
+		if cmd.Flags().Changed("expose-ssh") {
+			upOpts.ExposeSSH = upExposeSSH
+		}
 		if upOpts.Name == "" && activeProfile != nil {
 			upOpts.Name = "megh-" + activeProfile.Name + "-box"
 		}
@@ -117,5 +122,6 @@ func init() {
 	f.StringVar(&upOpts.VolumeID, "volume", "", "network volume id (default $MEGH_VOLUME_ID, else config default_volume)")
 	f.StringVar(&upOpts.DataCenter, "dc", "", "data center id (default $MEGH_DC, else config default_dc)")
 	f.StringVar(&upOpts.PubKey, "pubkey", "", "SSH public key (default $MEGH_PUBKEY, else config ssh_pubkey_file)")
+	f.BoolVar(&upExposeSSH, "expose-ssh", true, "expose public break-glass SSH 22/tcp (default: config; false = tailnet-only)")
 	rootCmd.AddCommand(upCmd)
 }
