@@ -38,29 +38,29 @@ flowchart TD
 sequenceDiagram
   participant Mac
   participant RunPod
-  participant Box
+  participant VM as Box
   participant GitHub
   participant Sessions as megh-sessions repo
 
   Note over Mac: megh up
-  Mac->>RunPod: create pod (image, pod env: box_envs + TS_AUTHKEY + sessions token,<br>inject box.key.pub)
-  RunPod->>Box: pull image, boot
-  Box->>Box: entrypoint: mount volume at /mnt/work, tailscale (if key),<br>start ttyd/noVNC/code-server on localhost, arm flush timer
+  Mac->>RunPod: create pod with image, pod env, and box pubkey
+  RunPod->>VM: pull image and boot
+  VM->>VM: entrypoint mounts volume, starts tailscale and web surfaces, arms flush timer
 
   Note over Mac: megh hydrate
-  Mac->>Box: scoped agent (gh private keys) + write ~/.ssh/config gh-* aliases
-  Box->>GitHub: clone repos into /workspace/repos via gh-KEY alias
-  GitHub-->>Box: repo contents
+  Mac->>VM: forward gh keys and write ssh config aliases
+  VM->>GitHub: clone repos into workspace repos via gh alias
+  GitHub-->>VM: repo contents
 
-  Note over Mac: megh ssh (work)
-  Mac->>Box: connect with box.key, forward gh keys, tunnel 7681/6080/8080
-  Box->>GitHub: git push/pull (forwarded key)
+  Note over Mac: megh ssh
+  Mac->>VM: connect with box key, forward gh keys, tunnel surfaces
+  VM->>GitHub: git push and pull with forwarded key
 
-  Note over Box: timer + shutdown
-  Box->>Sessions: flush transcripts (state/claude, state/codex)
+  Note over VM: timer and shutdown
+  VM->>Sessions: flush transcripts
 
   Note over Mac: megh down
-  Mac->>RunPod: delete pod (volume + /mnt/work survive)
+  Mac->>RunPod: delete pod, volume survives
 ```
 
 Repos are **not** cloned automatically by `megh up`; `megh hydrate` does it (it
