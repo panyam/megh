@@ -10,27 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	sshProvider string
-	sshTunnel   bool
-)
+var sshProvider string
 
 var sshCmd = &cobra.Command{
 	Use:   "ssh [box-name-or-id]",
-	Short: "SSH into a box, tunneling the web shell and headed-browser surfaces",
-	Long: `SSH into a provisioned box with the profile's box key, forwarding the
-profile's GitHub identity keys (private keys never touch the box). Per-identity
-Host aliases (gh-<name>) are configured on the box so per-repo remotes use the
-right key.
+	Short: "Open an interactive shell on a box (git-ready via forwarded keys)",
+	Long: `SSH into a box with the profile's box key, forwarding the profile's GitHub
+identity keys (private keys never touch the box) and configuring per-identity
+Host aliases so git works. This is a plain shell.
+
+For browser access to the box's web surfaces, use 'megh browse' (localhost
+tunnels) or Tailscale.
 
 If the box exposes public SSH it connects over its IP; otherwise it connects to
-the box's Tailscale MagicDNS name (requires this machine on the tailnet).
-
-By default it also forwards the box's web surfaces to your localhost:
-  web shell    -> http://localhost:7681
-  headed vnc   -> http://localhost:6080/vnc.html
-
-With no argument it connects to the only box; otherwise pass a name or id.`,
+the box's Tailscale MagicDNS name (requires this machine on the tailnet). With no
+argument it connects to the only box.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if sshProvider != "runpod" {
@@ -52,10 +46,11 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 
 		d := dialFor(pod)
 		if d.tailnet() {
-			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet (needs this machine on the tailnet)\n", pod.Name)
+			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet\n", pod.Name)
 		}
 
-		// Configure per-identity GitHub Host aliases on the box first.
+		// Set up per-identity GitHub Host aliases on the box, and forward the
+		// profile's GH keys so git works in the shell.
 		var fwdKeys []string
 		if activeProfile != nil {
 			fwdKeys = activeProfile.GHKeyFiles()
@@ -71,31 +66,13 @@ With no argument it connects to the only box; otherwise pass a name or id.`,
 			}
 		}
 
-		extra := []string{"-A"}
-		if sshTunnel {
-			extra = append(extra,
-				"-L", "7681:localhost:7681", // ttyd
-				"-L", "6080:localhost:6080", // noVNC
-				"-L", "8080:localhost:8080", // code-server
-			)
-		}
-		sshArgs := append(d.opts(extra...), d.userHost())
-
-		via := "public"
-		if d.tailnet() {
-			via = "tailnet"
-		}
-		tunNote := ""
-		if sshTunnel {
-			tunNote = "  (+ localhost 7681 shell / 6080 vnc / 8080 code)"
-		}
-		fmt.Fprintf(os.Stderr, "megh: ssh %s via %s%s\n", d.userHost(), via, tunNote)
+		sshArgs := append(d.opts("-A"), d.userHost())
+		fmt.Fprintf(os.Stderr, "megh: ssh %s (browser access: megh browse)\n", d.userHost())
 		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
 	},
 }
 
 func init() {
 	sshCmd.Flags().StringVar(&sshProvider, "provider", "runpod", "provider (runpod)")
-	sshCmd.Flags().BoolVar(&sshTunnel, "tunnel", true, "forward web shell (7681) and noVNC (6080) to localhost")
 	rootCmd.AddCommand(sshCmd)
 }

@@ -79,10 +79,10 @@ is key-auth only. Nothing but SSH is ever on the public proxy, and only when
 | noVNC headed browser | 6080 | tunnel → `localhost:6080/vnc.html`, or `http://<box>:6080/vnc.html` |
 | code-server (VS Code) | 8080 | tunnel → `localhost:8080`, or `http://<box>:8080` on the tailnet; Remote-SSH also works |
 
-`megh ssh` forwards 7681/6080/8080 to your localhost automatically. With
-Tailscale up, the same surfaces are served by name over the tailnet (phone /
-tablet friendly). `expose_ssh: false` drops even public 22/tcp; the RunPod
-console Web Terminal stays the break-glass.
+`megh browse` forwards the box's live surfaces to your localhost and prints the
+URLs (`megh ssh` is a plain shell). With Tailscale up, the same surfaces are
+served by name over the tailnet (phone / tablet friendly). `expose_ssh: false`
+drops even public 22/tcp; the RunPod console Web Terminal stays the break-glass.
 
 ## 4. Where keys and secrets live
 
