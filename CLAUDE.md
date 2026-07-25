@@ -85,6 +85,9 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 
 - Dev env is a container image built from `env/base/provision.sh` (single source
   of truth); two artifacts, container (RunPod) + VM (Hetzner, later).
+- Two flavors from that one script via `MEGH_SLIM`: `base` (full, Playwright +
+  code-server baked) and `slim` (lean, fast pull; no frontend stack; code-server
+  background-installs to the box's local disk on boot). `megh up --flavor slim`.
 - Provider abstraction is the CLI, not any provider's tooling. RunPod = REST API
   (`internal/providers/runpod`); its Terraform provider is too flaky.
 - megh is **stateless**: the provider is the source of truth. No local state file.

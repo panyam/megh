@@ -5,7 +5,9 @@
 # Precedence for `megh up`: flag > env var > this file > built-in default.
 
 default_provider: runpod
-default_flavor: base
+default_flavor: base          # base = full (Playwright + code-server baked);
+                              # slim = lean, fast pull, code-server installs at boot
+
 ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 
 registries:

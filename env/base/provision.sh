@@ -15,12 +15,19 @@
 #   GO_VERSION      go toolchain version   (default 1.22.5)
 #   TTYD_VERSION    ttyd release           (default 1.7.7)
 #   INSTALL_DOCKER  1 to install the Docker engine (VM: yes; container: no)
+#   MEGH_SLIM       1 for the slim flavor: skip the frontend stack (Playwright +
+#                   headed-browser display + code-server). The entrypoint
+#                   background-installs code-server to the box's local disk;
+#                   Playwright/headed browser is on-demand (use the base flavor
+#                   for frontend work). Most work is not frontend, so slim is the
+#                   fast-booting default for backend/CLI dev.
 set -euo pipefail
 
 TARGET_ARCH="${TARGET_ARCH:-amd64}"
 GO_VERSION="${GO_VERSION:-1.26.4}"
 TTYD_VERSION="${TTYD_VERSION:-1.7.7}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-0}"
+MEGH_SLIM="${MEGH_SLIM:-0}"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -30,8 +37,13 @@ apt-get install -y --no-install-recommends \
   ca-certificates curl wget gnupg git git-lfs openssh-server rsync \
   tmux ripgrep fd-find fzf jq unzip zip build-essential pkg-config \
   python3 python3-pip python3-venv \
-  xvfb x11vnc fluxbox novnc websockify \
   sudo locales tzdata less nano vim htop procps net-tools iproute2
+
+# --- headed-browser display stack (full flavor only) -----------------------
+# Only useful with Playwright's headed browser; slim skips it.
+if [ "${MEGH_SLIM}" != "1" ]; then
+  apt-get install -y --no-install-recommends xvfb x11vnc fluxbox novnc websockify
+fi
 
 # --- Docker engine (VM artifact only) --------------------------------------
 # On a VM the dev environment runs directly on the box, so this is the real,
@@ -71,18 +83,27 @@ chmod +x /usr/local/bin/ttyd
 # set. On VM providers a normal tailscaled/systemd unit is used instead.
 curl -fsSL https://tailscale.com/install.sh | sh
 
-# --- code-server (VS Code in the browser, for IDE-based dev) ----------------
+# --- code-server (full flavor only; slim background-installs it at boot) -----
 # Bound to localhost by the entrypoint and reached over Tailscale (or a tunnel),
 # same as ttyd/noVNC. VS Code Remote-SSH also works over the box's SSH for free.
-curl -fsSL https://code-server.dev/install.sh | sh
+if [ "${MEGH_SLIM}" != "1" ]; then
+  curl -fsSL https://code-server.dev/install.sh | sh
+fi
 
 # --- PATH for login shells (VM) and a sane default -------------------------
 cat > /etc/profile.d/megh-path.sh <<'EOF'
 export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 EOF
 
-# --- coding agents + Playwright browser ------------------------------------
-npm install -g @anthropic-ai/claude-code @openai/codex playwright
-npx --yes playwright install --with-deps chromium
+# --- coding agents (both flavors) ------------------------------------------
+npm install -g @anthropic-ai/claude-code @openai/codex
 
-echo "provision: base dev environment ready (arch=${TARGET_ARCH}, docker=${INSTALL_DOCKER})"
+# --- Playwright + headed browser (full flavor only) ------------------------
+# Deferred on slim: most work is not frontend. Install on demand with
+#   npm i -g playwright && npx playwright install --with-deps chromium
+if [ "${MEGH_SLIM}" != "1" ]; then
+  npm install -g playwright
+  npx --yes playwright install --with-deps chromium
+fi
+
+echo "provision: dev environment ready (arch=${TARGET_ARCH}, docker=${INSTALL_DOCKER}, slim=${MEGH_SLIM})"
