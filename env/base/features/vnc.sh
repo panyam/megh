@@ -38,7 +38,7 @@ log "noVNC up on 127.0.0.1:6080 (DISPLAY=:99)"
 # 3. Serve on the tailnet if Tailscale is up; otherwise reach via an SSH tunnel.
 if tailscale ip -4 >/dev/null 2>&1; then
   if tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1; then
-    log "served: http://$(hostname):6080/vnc.html (tailnet)"
+    log "served on the tailnet at :6080 (open http://<box-name>:6080/vnc.html)"
   else
     log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
   fi
