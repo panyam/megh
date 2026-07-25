@@ -24,11 +24,11 @@ const endpoint = "https://rest.runpod.io/v1/pods"
 // local state file. `megh up` enforces it; list/ssh filter to it by default.
 const NamePrefix = "megh-"
 
-// ports exposes ONLY SSH over raw TCP as a key-auth break-glass path. The web
-// surfaces (ttyd, noVNC) are not exposed on RunPod's public proxy; they bind to
-// localhost and are reached over Tailscale (or an SSH tunnel). The RunPod REST
-// API wants an array of "<port>/<proto>" strings.
-var ports = []string{"22/tcp"}
+// sshPort is the only thing ever exposed on RunPod's public proxy: SSH over raw
+// TCP as a key-auth break-glass path. The web surfaces (ttyd, noVNC) are never
+// public; they bind to localhost and are reached over Tailscale or an SSH
+// tunnel. When ExposeSSH is false, nothing is exposed (tailnet-only).
+const sshPort = "22/tcp"
 
 // Options configures a RunPod CPU pod launch.
 type Options struct {
@@ -40,6 +40,7 @@ type Options struct {
 	VolumeID   string
 	DataCenter string
 	PubKey     string
+	ExposeSSH  bool              // expose public 22/tcp break-glass SSH
 	ExtraEnv   map[string]string // copied into the pod env (e.g. box_envs)
 }
 
@@ -89,6 +90,11 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		podEnv[k] = v
 	}
 
+	podPorts := []string{}
+	if o.ExposeSSH {
+		podPorts = append(podPorts, sshPort)
+	}
+
 	payload := map[string]any{
 		"name":              o.Name,
 		"imageName":         o.Image,
@@ -98,7 +104,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		"cpuFlavorPriority": "availability",
 		"containerDiskInGb": o.DiskGiB,
 		"dataCenterIds":     []string{o.DataCenter},
-		"ports":             ports,
+		"ports":             podPorts,
 		"env":               podEnv,
 	}
 	// Attach the network volume when provided; otherwise the box is ephemeral.

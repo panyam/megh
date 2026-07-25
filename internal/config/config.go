@@ -34,7 +34,12 @@ type Provider struct {
 	VCPU          int    `yaml:"vcpu"`
 	RAM           int    `yaml:"ram"`
 	Disk          int    `yaml:"disk"`
+	ExposeSSH     *bool  `yaml:"expose_ssh"` // expose public break-glass SSH; nil -> true
 }
+
+// PublicSSH reports whether public break-glass SSH (22/tcp) is exposed. Default
+// true; set expose_ssh: false to run tailnet-only (zero public ports).
+func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }
 
 // Tailscale points at the env var holding the (optional) Tailscale auth key.
 type Tailscale struct {

@@ -39,6 +39,7 @@ providers:
     vcpu: 2
     ram: 8
     disk: 20                       # ephemeral container disk (capped by size)
+    expose_ssh: true               # false = zero public ports, reach the box over the tailnet
 
 # Optional: private mesh for phone/tablet browser access. Leave the env value
 # unset for SSH-only (Mac reaches boxes via `megh ssh`).
