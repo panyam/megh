@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
@@ -14,6 +15,7 @@ import (
 var (
 	hydrateProvider string
 	hydrateCheck    bool
+	hydrateLocal    bool
 )
 
 var hydrateCmd = &cobra.Command{
@@ -29,6 +31,23 @@ box. The box's ~/.ssh/config gets a per-identity Host alias first.
 undeclared (with origin url to copy into megh.yaml).`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// --local: run ON a box (no jump box). Clone the repos: list straight into
+		// /mnt/work/repos using the box's own git (the SSH agent forwarded by
+		// `megh ssh` and the gh-* aliases it set up handle auth). No SSH-to-self,
+		// no RunPod API key needed.
+		if hydrateLocal {
+			if len(cfg.Repos) == 0 && !hydrateCheck {
+				return fmt.Errorf("no repos: declared in megh.yaml")
+			}
+			script := applyScript(cfg)
+			if hydrateCheck {
+				script = checkScript(cfg)
+			}
+			c := exec.Command("bash", "-c", script)
+			c.Stdout, c.Stderr = os.Stdout, os.Stderr
+			return c.Run()
+		}
+
 		if hydrateProvider != "runpod" {
 			return fmt.Errorf("provider %q not implemented yet", hydrateProvider)
 		}
@@ -122,5 +141,6 @@ func checkScript(c config.Config) string {
 func init() {
 	hydrateCmd.Flags().StringVar(&hydrateProvider, "provider", "runpod", "provider (runpod)")
 	hydrateCmd.Flags().BoolVar(&hydrateCheck, "check", false, "report drift instead of applying")
+	hydrateCmd.Flags().BoolVar(&hydrateLocal, "local", false, "run on the box itself (clone repos locally, no jump box)")
 	rootCmd.AddCommand(hydrateCmd)
 }

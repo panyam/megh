@@ -18,7 +18,7 @@
 set -euo pipefail
 
 TARGET_ARCH="${TARGET_ARCH:-amd64}"
-GO_VERSION="${GO_VERSION:-1.22.5}"
+GO_VERSION="${GO_VERSION:-1.26.4}"
 TTYD_VERSION="${TTYD_VERSION:-1.7.7}"
 INSTALL_DOCKER="${INSTALL_DOCKER:-0}"
 
@@ -70,6 +70,11 @@ chmod +x /usr/local/bin/ttyd
 # box's localhost web surfaces. The entrypoint brings this up when TS_AUTHKEY is
 # set. On VM providers a normal tailscaled/systemd unit is used instead.
 curl -fsSL https://tailscale.com/install.sh | sh
+
+# --- code-server (VS Code in the browser, for IDE-based dev) ----------------
+# Bound to localhost by the entrypoint and reached over Tailscale (or a tunnel),
+# same as ttyd/noVNC. VS Code Remote-SSH also works over the box's SSH for free.
+curl -fsSL https://code-server.dev/install.sh | sh
 
 # --- PATH for login shells (VM) and a sane default -------------------------
 cat > /etc/profile.d/megh-path.sh <<'EOF'

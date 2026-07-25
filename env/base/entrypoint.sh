@@ -98,6 +98,12 @@ cd /mnt/work
 ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh tmux new -A -s main >/tmp/ttyd.log 2>&1 &
 log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
 
+# code-server (VS Code in browser) on localhost, reached over tailscale/tunnel.
+if command -v code-server >/dev/null 2>&1; then
+  code-server --bind-addr 127.0.0.1:8080 --auth none /mnt/work >/tmp/code-server.log 2>&1 &
+  log "code-server up on 127.0.0.1:8080"
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Tailscale (private mesh access). Container providers (RunPod) have no TUN
 #    device, so tailscaled runs in userspace mode and `tailscale serve` bridges
@@ -117,6 +123,8 @@ if [ -n "${TS_AUTHKEY:-}" ]; then
       || log "tailscale serve 7681 failed (see /tmp/ts-serve-ttyd.log)"
     tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1 \
       || log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
+    tailscale serve --bg --http=8080 http://127.0.0.1:8080 >/tmp/ts-serve-code.log 2>&1 \
+      || log "tailscale serve 8080 failed (see /tmp/ts-serve-code.log)"
     log "tailscale up as '${TS_HOSTNAME:-megh-box}'; surfaces served on the tailnet"
   else
     log "tailscale up failed (see /tmp/tailscale-up.log); SSH by ip:port still works"

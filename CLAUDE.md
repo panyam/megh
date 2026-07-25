@@ -114,6 +114,8 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 
 ## Live-validation debt
 
-The Tailscale bring-up (`tailscale serve --http`) and the exact Codex session
-transcript path in `flush-sessions.sh` were written from docs, not a live box.
-Validate + iterate on the next launch, same as the RunPod API was shaken out.
+Validated on a live RunPod box: Tailscale userspace `up --ssh` + `serve --http`
+(box joins the tailnet as `megh-<...>-box`, both web surfaces served). Not yet
+run live: code-server, the baked `megh` binary + `megh hydrate --local`, and the
+Codex session transcript path in `flush-sessions.sh`. Validate on the next launch
+after the image rebuilds.
