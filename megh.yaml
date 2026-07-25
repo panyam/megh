@@ -50,6 +50,10 @@ default_gh_key: personal
 #   - git@github.com:panyam/foo.git              # uses default_gh_key
 #   - {url: git@github.com:inferbook/bar.git, key: inferbook}
 repos:
+  # megh itself, so a box can self-manage / self-hydrate and you can hack on megh
+  # from the box (it also carries the live megh.yaml).
+  - git@github.com:panyam/megh.git
+
   # ~/newstack (panyam) -> repos/<name>
   - git@github.com:panyam/oneauth.git
   - git@github.com:panyam/mcpkit.git

@@ -37,6 +37,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Stage the megh binary + config into the image build context so a box can
+      # manage/hydrate itself locally. The binary is a bootstrap snapshot (built
+      # from source at image-build time); a box can rebuild the latest from the
+      # cloned megh repo. Static build so it runs on any base.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stage megh binary + config into the build context
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o env/${{ matrix.flavor }}/megh .
+          cp megh.yaml env/${{ matrix.flavor }}/megh.yaml
+
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 

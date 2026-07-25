@@ -21,7 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99 \
     PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 
-ARG GO_VERSION=1.22.5
+ARG GO_VERSION=1.26.4
 ARG TTYD_VERSION=1.7.7
 
 COPY provision.sh /tmp/provision.sh
@@ -37,6 +37,14 @@ RUN mkdir -p /etc/megh && \
     printf 'ref=%s\nbuilt=%s\n' "${MEGH_BUILD_REF}" "$(date -u +%FT%TZ)" > /etc/megh/build-info
 
 EXPOSE 22 7681 6080
+
+# megh itself, so a box can manage/hydrate itself locally (no jump box). The
+# binary + config are staged into the build context by CI (see build-env.yml).
+# The megh REPO lands via the repos: list on hydrate. No RUNPOD_API_KEY is baked;
+# add it on the box only to elevate megh to manage OTHER boxes.
+COPY megh /usr/local/bin/megh
+COPY megh.yaml /etc/megh/megh.yaml
+RUN chmod +x /usr/local/bin/megh
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
 COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions

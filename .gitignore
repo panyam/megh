@@ -8,6 +8,10 @@
 # Compiled megh binary (build output).
 /bin/megh
 
+# CI-staged artifacts baked into the dev-env image (see build-env.yml).
+env/base/megh
+env/base/megh.yaml
+
 # Local secrets — NEVER commit. Keep values in the environment (e.g.
 # ~/personal/envvars), never in the repo; git history is permanent. The
 # *.example templates are safe and stay tracked.

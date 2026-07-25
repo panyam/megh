@@ -219,6 +219,10 @@ func findConfig(explicit string) string {
 			return p
 		}
 	}
+	// Baked into the dev-env image, so megh works on a box out of the box.
+	if _, err := os.Stat("/etc/megh/megh.yaml"); err == nil {
+		return "/etc/megh/megh.yaml"
+	}
 	return ""
 }
 
