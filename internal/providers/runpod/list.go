@@ -18,7 +18,8 @@ type Pod struct {
 	DataCenter string
 	CostPerHr  float64
 	PublicIP   string
-	SSHPort    int // public port mapped to container port 22 (0 until initialized)
+	SSHPort    int    // public port mapped to container port 22 (0 until initialized)
+	Image      string // imageName the pod was created from
 }
 
 // SSHReady reports whether the pod has a resolvable public SSH endpoint yet.
@@ -50,6 +51,7 @@ func List(ctx context.Context) ([]Pod, error) {
 		DesiredStatus string         `json:"desiredStatus"`
 		CostPerHr     float64        `json:"costPerHr"`
 		PublicIP      string         `json:"publicIp"`
+		ImageName     string         `json:"imageName"`
 		PortMappings  map[string]int `json:"portMappings"`
 		Machine       struct {
 			DataCenterID string `json:"dataCenterId"`
@@ -68,6 +70,7 @@ func List(ctx context.Context) ([]Pod, error) {
 			CostPerHr:  p.CostPerHr,
 			PublicIP:   p.PublicIP,
 			SSHPort:    p.PortMappings["22"],
+			Image:      p.ImageName,
 		})
 	}
 	return pods, nil

@@ -4,11 +4,24 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/spf13/cobra"
 )
+
+// shortImage trims the registry/namespace prefix for display:
+// ghcr.io/panyam/megh-slim:latest -> megh-slim:latest
+func shortImage(image string) string {
+	if image == "" {
+		return "-"
+	}
+	if i := strings.LastIndex(image, "/"); i >= 0 {
+		return image[i+1:]
+	}
+	return image
+}
 
 var (
 	listProvider string
@@ -34,14 +47,14 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tID\tSTATUS\tDC\t$/HR\tSSH")
+		fmt.Fprintln(w, "NAME\tID\tSTATUS\tIMAGE\tDC\t$/HR\tSSH")
 		for _, p := range pods {
 			ssh := "initializing"
 			if p.SSHReady() {
 				ssh = fmt.Sprintf("%s:%d", p.PublicIP, p.SSHPort)
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%.3f\t%s\n",
-				p.Name, p.ID, p.Status, p.DataCenter, p.CostPerHr, ssh)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
+				p.Name, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
 		}
 		return w.Flush()
 	},
