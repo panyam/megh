@@ -27,7 +27,7 @@ Run `megh` directly only after `source ~/personal/envvars`.
 ## Commands
 
 ```
-megh up [--volume <id> --dc <dc>] # launch; all flags default from megh.yaml
+megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # plain interactive shell (git-ready)
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
@@ -40,7 +40,7 @@ megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
 ```
 
-Make wrappers: `make up VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
+Make wrappers: `make up NAME=.. VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
 `make down [BOX=.. YES=1]`, `make storage-ls`, `make image` (push -> CI builds
 image), `make registry`.
 
