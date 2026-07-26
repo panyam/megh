@@ -37,7 +37,7 @@ ARG MEGH_BUILD_REF=dev
 RUN mkdir -p /etc/megh && \
     printf 'ref=%s\nbuilt=%s\n' "${MEGH_BUILD_REF}" "$(date -u +%FT%TZ)" > /etc/megh/build-info
 
-EXPOSE 22 7681 6080
+EXPOSE 22 7681 7682 6080
 
 # megh itself, so a box can manage/hydrate itself locally (no jump box). The
 # binary + config are staged into the build context by CI (see build-env.yml).
@@ -46,6 +46,14 @@ EXPOSE 22 7681 6080
 COPY megh /usr/local/bin/megh
 COPY megh.yaml /etc/megh/megh.yaml
 RUN chmod +x /usr/local/bin/megh
+
+# Bake the mobile web-terminal page (:7682) into the image so it is a first-class
+# surface, not an on-demand add-on. The page (with xterm.js inlined) is emitted
+# from the baked megh binary — internal/features/webterm.sh is the single source
+# of truth — so this also fails the build early if that path is broken. The
+# entrypoint serves it directly; `megh enable webterm` stays as the retrofit path
+# for boxes launched from older images.
+RUN MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
 COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions

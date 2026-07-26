@@ -10,8 +10,16 @@ first (US), Hetzner next. Read `DESIGN.md` for the settled architecture and
 make build          # -> bin/megh
 make install        # go install to GOBIN
 make vars           # show which secrets are set (no values)
+make test           # go vet + go test (incl. vendored-asset integrity check)
 go build ./... && go vet ./...
 ```
+
+The webterm page inlines vendored xterm.js/css (`internal/features/vendor/`),
+pinned in `versions.env` and integrity-checked by `vendor_test.go` (+ CI). To
+update them: `make vendor-check` (integrity + pinned->latest + a bump-readiness
+verdict; a new xterm major is only READY once a stable `@xterm/addon-fit` peers
+with it), bump `versions.env`, `make vendor` (re-fetch + rewrite `SHA256SUMS`),
+verify, commit.
 
 The Makefile sources `~/personal/envvars` for every recipe that needs a secret.
 Run `megh` directly only after `source ~/personal/envvars`.
@@ -23,7 +31,7 @@ megh up [--volume <id> --dc <dc>] # launch; all flags default from megh.yaml
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # plain interactive shell (git-ready)
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
-megh enable [feature]             # add vnc/playwright/code to a box on demand
+megh enable [feature]             # add webterm/vnc/playwright/code to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
@@ -125,3 +133,11 @@ Validated on a live RunPod box: Tailscale userspace `up --ssh` + `serve --http`
 run live: code-server, the baked `megh` binary + `megh hydrate --local`, and the
 Codex session transcript path in `flush-sessions.sh`. Validate on the next launch
 after the image rebuilds.
+
+Also not yet run live: **webterm** (`:7682`, `internal/features/webterm.sh`). To
+check on a box: `megh enable webterm` then `megh browse 7682` (or open it on the
+tailnet from a phone). Verify the second ttyd attaches the same tmux session as
+`:7681`, the key bar sends the right escape sequences (Ctrl-C, arrows, tmux
+prefix), autocorrect is actually off, and the inlined xterm.js renders offline
+(no CDN; assets are vendored in `internal/features/vendor/` and inlined by
+`features.Script`). This also exercises the baked-`megh`-in-entrypoint path.
