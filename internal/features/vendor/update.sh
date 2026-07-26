@@ -21,13 +21,46 @@ GLOB=("*/package/lib/xterm.js" "*/package/css/xterm.css" "*/package/lib/addon-fi
 if [ "${1:-}" = "--check" ]; then
   echo "verifying vendored assets against SHA256SUMS..."
   sha256sum -c SHA256SUMS
-  if command -v npm >/dev/null 2>&1; then
-    echo "upstream versions (pinned -> latest):"
-    printf "  @xterm/xterm      %-8s -> %s\n" "${XTERM_VERSION}" "$(npm view @xterm/xterm version 2>/dev/null || echo '?')"
-    printf "  @xterm/addon-fit  %-8s -> %s\n" "${XTERM_ADDON_FIT_VERSION}" "$(npm view @xterm/addon-fit version 2>/dev/null || echo '?')"
-    echo "(to update: bump versions.env, read the changelog, run ./update.sh)"
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm not found; skipped the upstream-version + readiness check"
+    exit 0
+  fi
+
+  xt_latest="$(npm view @xterm/xterm version 2>/dev/null || echo '?')"
+  fit_latest="$(npm view @xterm/addon-fit version 2>/dev/null || echo '?')"
+  echo "upstream versions (pinned -> latest stable):"
+  printf "  @xterm/xterm      %-8s -> %s\n" "${XTERM_VERSION}" "${xt_latest}"
+  printf "  @xterm/addon-fit  %-8s -> %s\n" "${XTERM_ADDON_FIT_VERSION}" "${fit_latest}"
+
+  # Readiness. The real gate for taking a new xterm MAJOR is a STABLE
+  # @xterm/addon-fit whose peer @xterm/xterm includes that major (today only a
+  # prerelease fit pairs with xterm 6). The published tarball omits
+  # peerDependencies and `npm view` returns it inconsistently, so read it
+  # defensively and fall back to "verify manually" rather than guessing.
+  pin_major="${XTERM_VERSION%%.*}"
+  lat_major="${xt_latest%%.*}"
+  echo "bump readiness:"
+  if [ "${xt_latest}" = "?" ]; then
+    echo "  could not reach npm; re-run when online."
+  elif [ "${xt_latest}" = "${XTERM_VERSION}" ]; then
+    echo "  on the latest xterm (${XTERM_VERSION}); nothing to do."
+  elif [ "${lat_major}" = "${pin_major}" ]; then
+    echo "  minor/patch available (${XTERM_VERSION} -> ${xt_latest}); low-risk — bump versions.env + ./update.sh."
   else
-    echo "npm not found; skipped the upstream-version check"
+    peer="$(npm view "@xterm/addon-fit@${fit_latest}" peerDependencies.@xterm/xterm 2>/dev/null || true)"
+    [ -n "${peer}" ] || peer="$(npm view "@xterm/addon-fit@${fit_latest}" peerDependencies --json 2>/dev/null \
+        | grep -oE '"@xterm/xterm"[[:space:]]*:[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"' || true)"
+    case " ${peer} " in
+      *"^${lat_major}."*|*">=${lat_major}"*|*"${lat_major}.x"*)
+        echo "  READY: stable @xterm/addon-fit ${fit_latest} supports xterm ${lat_major}.x (peer ${peer})."
+        echo "         next: bump versions.env, ./update.sh, then verify the page in a mobile browser (fit + /ws)." ;;
+      "  ")
+        echo "  xterm ${lat_major}.x is out, but the fit addon's peer range could not be read from npm here."
+        echo "         confirm @xterm/addon-fit's stable peer includes ^${lat_major} (npmjs.com) before bumping." ;;
+      *)
+        echo "  NOT READY: stable @xterm/addon-fit ${fit_latest} still targets xterm ${peer}, not ${lat_major}.x —"
+        echo "         only a prerelease fit addon pairs with xterm ${lat_major}. Hold until a stable one ships." ;;
+    esac
   fi
   exit 0
 fi
