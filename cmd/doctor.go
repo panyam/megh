@@ -95,7 +95,7 @@ docker-build viability is still planned.)`,
 		}
 		d := dialFor(pod)
 		sshArgs := append(d.opts(), d.userHost(), "bash -s")
-		fmt.Fprintf(os.Stderr, "megh: probing %s\n", pod.Name)
+		fmt.Fprintf(os.Stderr, "megh: probing %s\n", pod.DisplayName())
 		return runSSH(d.keyFor(cfg.SSHKeyFile), nil, sshArgs, bytes.NewReader([]byte(doctorScript)))
 	},
 }

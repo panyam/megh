@@ -44,8 +44,9 @@ type Options struct {
 	ExtraEnv   map[string]string // copied into the pod env (e.g. box_envs)
 }
 
-// Result is a successful launch. Name is the Tailscale hostname the box comes up
-// as (set from the requested pod name), used for the tailnet URLs.
+// Result is a successful launch. Name is the box's bare name — the Tailscale
+// hostname it comes up as (the megh- pod prefix is not part of the tailnet
+// name), used for the tailnet URLs.
 type Result struct {
 	ID   string `json:"id"`
 	Name string `json:"-"`
@@ -82,7 +83,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		"WORK_MOUNT":          "/workspace",
 		"ARCH_TAG":            "x86_64",
 		"TS_AUTHKEY":          os.Getenv("TS_AUTHKEY"),
-		"TS_HOSTNAME":         o.Name,
+		"TS_HOSTNAME":         ShortName(o.Name),
 		"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
 		"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
 	}
@@ -151,7 +152,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 	if res.ID == "" {
 		return nil, fmt.Errorf("runpod: could not parse pod id from response: %s", string(body))
 	}
-	res.Name = o.Name
+	res.Name = ShortName(o.Name)
 	return &res, nil
 }
 

@@ -45,7 +45,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		}
 		if !downYes {
 			fmt.Printf("terminate %s (%s, %s)? the volume survives. [y/N]: ",
-				pod.Name, pod.ID, pod.DataCenter)
+				pod.DisplayName(), pod.ID, pod.DataCenter)
 			var resp string
 			fmt.Scanln(&resp)
 			if !strings.EqualFold(strings.TrimSpace(resp), "y") {
@@ -62,15 +62,15 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		d := dialFor(pod)
 		logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
 		if _, err := sshCapture(d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
-			fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.Name)
+			fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.DisplayName())
 		} else {
-			fmt.Printf("asked %s to leave the tailnet\n", pod.Name)
+			fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())
 		}
 
 		if err := runpod.Terminate(ctx, pod.ID); err != nil {
 			return err
 		}
-		fmt.Printf("terminated %s (%s)\n", pod.Name, pod.ID)
+		fmt.Printf("terminated %s (%s)\n", pod.DisplayName(), pod.ID)
 		return nil
 	},
 }

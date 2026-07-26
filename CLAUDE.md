@@ -126,14 +126,28 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   `tailscale serve` (not normal tun mode).
 - **Session flush needs a credential on the box** (background timer can't use SSH
   agent forwarding). Use a fine-grained PAT scoped to only `megh-sessions`.
+- **"Box not on the tailnet" is usually not a code bug.** Tailscale comes up
+  ~1-2 min after the pod is RUNNING (image pull, then `tailscale up`), so a check
+  in the first minute sees nothing. `megh down` deregisters the ephemeral node
+  immediately, so a `down`+re-`up` of the same name can briefly race GC and land
+  as `<name>-1`. Diagnose on the live box with `megh doctor <name>`; if it says
+  NOT connected, read `/tmp/tailscale-up.log` (names the real failure). The
+  `TS_AUTHKEY` must be reusable + ephemeral; a single-use key works once then
+  every later box fails silently.
+- **The `megh-` prefix is internal only.** It marks RunPod pods (no tags there)
+  but is never the tailnet hostname or a name the user types/sees. Route box
+  names through `runpod.ShortName`/`Pod.DisplayName`, not raw `Pod.Name`. See
+  `CONSTRAINTS.md` C1.
 
 ## Live-validation debt
 
-Validated on a live RunPod box: Tailscale userspace `up --ssh` + `serve --http`
-(box joins the tailnet as `megh-<...>-box`, both web surfaces served). Not yet
-run live: code-server, the baked `megh` binary + `megh hydrate --local`, and the
-Codex session transcript path in `flush-sessions.sh`. Validate on the next launch
-after the image rebuilds.
+Validated on a live RunPod box (2026-07-26): Tailscale userspace `up --ssh` +
+`serve --http`, the box joining the tailnet as its bare `<name>` (the `megh-`
+prefix is the RunPod pod marker only, not the tailnet hostname), `megh doctor`
+probing tailscale + surfaces over SSH, and the bare-name `up`/`list`/`doctor`/`down`
+lifecycle. Not yet run live: code-server, the baked `megh` binary +
+`megh hydrate --local`, and the Codex session transcript path in
+`flush-sessions.sh`. Validate on the next launch after the image rebuilds.
 
 Also not yet run live: **webterm** (`:7682`, `internal/features/webterm.sh`). To
 check on a box: `megh enable webterm` then `megh browse 7682` (or open it on the
