@@ -51,47 +51,52 @@ default_gh_key: personal
 # Two forms:
 #   - git@github.com:panyam/foo.git              # uses default_gh_key
 #   - {url: git@github.com:inferbook/bar.git, key: inferbook}
+#
+# Layout: repos land under repos/<group>/<name>/<default-branch>, mirroring the
+# local ~/<group>/<name>/<branch> worktree convention. The branch leaf is the
+# repo's real default branch (main, or master for older repos), hardcoded here.
 repos:
   # megh itself, so a box can self-manage / self-hydrate and you can hack on megh
-  # from the box (it also carries the live megh.yaml).
+  # from the box (it also carries the live megh.yaml). Kept flat at repos/megh.
   - git@github.com:panyam/megh.git
 
-  # ~/newstack (panyam) -> repos/<name>
-  - git@github.com:panyam/oneauth.git
-  - git@github.com:panyam/mcpkit.git
-  - git@github.com:panyam/s3gen.git
-  - git@github.com:panyam/templar.git
-  - git@github.com:panyam/goutils.git
-  - git@github.com:panyam/gocurrent.git
-  - git@github.com:panyam/goapplib.git
-  - git@github.com:panyam/servicekit.git
-  - git@github.com:panyam/tlex.git
-  - git@github.com:panyam/toolcop.git
-  - git@github.com:panyam/tsutils.git
-  - git@github.com:panyam/devloop.git
-  - git@github.com:panyam/demokit.git
-  - git@github.com:panyam/galore.git
-  - git@github.com:panyam/gap-tracker.git
-  - git@github.com:panyam/massrelay.git
-  - git@github.com:panyam/protoc-gen-dal.git
-  - git@github.com:panyam/protoc-gen-go-mcp.git
-  - git@github.com:panyam/protoc-gen-go-wasmjs.git
+  # ~/newstack (panyam) -> repos/newstack/<name>/<default-branch>
+  - {url: git@github.com:panyam/oneauth.git,              dir: newstack/oneauth/main}
+  - {url: git@github.com:panyam/mcpkit.git,               dir: newstack/mcpkit/main}
+  - {url: git@github.com:panyam/s3gen.git,                dir: newstack/s3gen/main}
+  - {url: git@github.com:panyam/templar.git,              dir: newstack/templar/main}
+  - {url: git@github.com:panyam/goutils.git,              dir: newstack/goutils/master}
+  - {url: git@github.com:panyam/gocurrent.git,            dir: newstack/gocurrent/main}
+  - {url: git@github.com:panyam/goapplib.git,             dir: newstack/goapplib/main}
+  - {url: git@github.com:panyam/servicekit.git,           dir: newstack/servicekit/master}
+  - {url: git@github.com:panyam/tlex.git,                 dir: newstack/tlex/master}
+  - {url: git@github.com:panyam/toolcop.git,              dir: newstack/toolcop/main}
+  - {url: git@github.com:panyam/tsutils.git,              dir: newstack/tsutils/master}
+  - {url: git@github.com:panyam/devloop.git,              dir: newstack/devloop/main}
+  - {url: git@github.com:panyam/demokit.git,              dir: newstack/demokit/main}
+  - {url: git@github.com:panyam/galore.git,               dir: newstack/galore/master}
+  - {url: git@github.com:panyam/gap-tracker.git,          dir: newstack/gap-tracker/main}
+  - {url: git@github.com:panyam/massrelay.git,            dir: newstack/massrelay/main}
+  - {url: git@github.com:panyam/protoc-gen-dal.git,       dir: newstack/protoc-gen-dal/main}
+  - {url: git@github.com:panyam/protoc-gen-go-mcp.git,    dir: newstack/protoc-gen-go-mcp/main}
+  - {url: git@github.com:panyam/protoc-gen-go-wasmjs.git, dir: newstack/protoc-gen-go-wasmjs/main}
 
-  # ~/projects
-  - git@github.com:turnforge/lilbattle.git
-  - git@github.com:panyam/notation.git
+  # ~/projects -> repos/projects/<name>/<default-branch>
+  - {url: git@github.com:turnforge/lilbattle.git, dir: projects/lilbattle/main}
+  - {url: git@github.com:panyam/notation.git,     dir: projects/notation/master}
 
-  # ~/work/hw -> repos/hw/... (mirrors the local nested layout)
+  # ~/work/hw -> repos/hw/... (mirrors the local nested layout; unchanged)
   - {url: git@github.com:hwtools/workspace.git, dir: hw}
   - {url: git@github.com:hwtools/research.git,  dir: hw/learnings}
   - {url: git@github.com:hwtools/PranaAI.git,   dir: hw/PranaAI/main}
 
-  # ~/books -> repos/books/<org>/<repo> (org-nested so the two 'book' repos don't collide)
-  - {url: git@github.com:mcp-at-scale/mcp-server.git,           dir: books/mcp-at-scale/mcp-server}
-  - {url: git@github.com:mcp-at-scale/book.git,                 dir: books/mcp-at-scale/book}
-  - {url: git@github.com:mcp-at-scale/flight-booking-agent.git, dir: books/mcp-at-scale/flight-booking-agent}
-  - {url: git@github.com:inference-book/inference-plane.git,    dir: books/inference-book/inference-plane}
-  - {url: git@github.com:inference-book/book.git,               dir: books/inference-book/book}
+  # ~/books -> repos/books/<org>/<name>/<default-branch> (org-nested so the two
+  # 'book' repos don't collide)
+  - {url: git@github.com:mcp-at-scale/mcp-server.git,           dir: books/mcp-at-scale/mcp-server/main}
+  - {url: git@github.com:mcp-at-scale/book.git,                 dir: books/mcp-at-scale/book/main}
+  - {url: git@github.com:mcp-at-scale/flight-booking-agent.git, dir: books/mcp-at-scale/flight-booking-agent/main}
+  - {url: git@github.com:inference-book/inference-plane.git,    dir: books/inference-book/inference-plane/main}
+  - {url: git@github.com:inference-book/book.git,               dir: books/inference-book/book/main}
 
 # Env vars that must be present on the host. megh blocks `megh up` if any is
 # missing, so you catch gaps before launching. box_envs are ALSO copied into the
