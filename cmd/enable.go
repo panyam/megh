@@ -29,6 +29,7 @@ slim flavor and add only what you need. Scripts are embedded in megh, so this
 works against any box (piped over SSH) and needs no image rebuild.
 
   megh enable             list available features
+  megh enable webterm     mobile/tablet web terminal + on-screen key bar (:7682)
   megh enable vnc         headed-browser display (noVNC on :6080)
   megh enable playwright  Playwright + Chromium (headed needs 'enable vnc')
   megh enable code        code-server (VS Code on :8080)

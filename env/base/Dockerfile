@@ -37,7 +37,7 @@ ARG MEGH_BUILD_REF=dev
 RUN mkdir -p /etc/megh && \
     printf 'ref=%s\nbuilt=%s\n' "${MEGH_BUILD_REF}" "$(date -u +%FT%TZ)" > /etc/megh/build-info
 
-EXPOSE 22 7681 6080
+EXPOSE 22 7681 7682 6080
 
 # megh itself, so a box can manage/hydrate itself locally (no jump box). The
 # binary + config are staged into the build context by CI (see build-env.yml).

@@ -93,6 +93,17 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 - **ttyd + tmux** on `:7681` — web shell, the "dev on the box" surface. No
   code-server; the user does not use VS Code (an off-by-default install is the
   only concession, not present in the base image yet).
+- **webterm** on `:7682` — a second ttyd whose page is a custom xterm.js client
+  built for phones/tablets: an on-screen key bar (Esc/Ctrl/Alt/Tab, arrows, the
+  symbols buried in soft keyboards, one-tap Ctrl-combos, a tmux row, paste, and a
+  Web-Speech voice mic) plus autocorrect/autocapitalize disabled on the input.
+  It attaches the SAME tmux session as `:7681`, so the two ports are two views of
+  one shell; the page and its WebSocket are same-origin (one port, no reverse
+  proxy) which is what keeps it robust over `tailscale serve` and SSH tunnels.
+  The page (`internal/features/webterm.sh`) is the single source of truth: the
+  entrypoint brings it up via the baked `megh` binary, and existing/slim boxes add
+  it on demand with `megh enable webterm`. xterm.js loads from a CDN (the client
+  device has internet; the box need not).
 - **noVNC + Xvfb + x11vnc** on `:6080` — headed browser (Playwright) viewable on
   laptop or phone. Chosen over X11 forwarding because a phone has no X server.
 - **SSH** with agent forwarding — no long-lived git credentials on the box.
