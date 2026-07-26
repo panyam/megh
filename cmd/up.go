@@ -72,10 +72,12 @@ var upCmd = &cobra.Command{
 	Short: "Launch a dev box on a provider",
 	Long: `Launch a dev box. <name> is required and must be unique among your live boxes.
 
-The name is both the box name and its Tailscale hostname, so a duplicate would
-collide on the tailnet (and make 'megh list'/'ssh'/'down' ambiguous); megh errors
-before launching if the name is already in use. The 'megh-' prefix is added
-automatically when you omit it, so 'megh up work' launches 'megh-work'.`,
+The name you give is the box's Tailscale hostname and how megh refers to it, so a
+duplicate would collide on the tailnet (and make 'megh list'/'ssh'/'down'
+ambiguous); megh errors before launching if the name is already in use. RunPod
+has no tags, so the pod itself is stored with a 'megh-' prefix as the marker megh
+filters on, but you never type it or see it: 'megh up work' joins the tailnet as
+'work' and 'megh ssh work' / 'megh down work' resolve it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")

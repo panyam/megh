@@ -66,7 +66,7 @@ undeclared (with origin url to copy into megh.yaml).`,
 		}
 		d := dialFor(pod)
 		if d.tailnet() {
-			fmt.Fprintf(os.Stderr, "megh: connecting to %q over the tailnet\n", pod.Name)
+			fmt.Fprintf(os.Stderr, "megh: connecting to %q over the tailnet\n", pod.DisplayName())
 		}
 		if len(cfg.Repos) == 0 && !hydrateCheck {
 			return fmt.Errorf("no repos: declared in megh.yaml")

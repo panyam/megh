@@ -95,7 +95,7 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 		}
 
 		fwd := []string{"-N"}
-		fmt.Fprintf(os.Stderr, "tunneling %s -> localhost (Ctrl-C to close):\n", pod.Name)
+		fmt.Fprintf(os.Stderr, "tunneling %s -> localhost (Ctrl-C to close):\n", pod.DisplayName())
 		for _, p := range ports {
 			s := surfaceFor(p)
 			fwd = append(fwd, "-L", fmt.Sprintf("%d:localhost:%d", p, p))
