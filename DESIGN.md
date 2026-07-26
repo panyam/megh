@@ -102,8 +102,11 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   proxy) which is what keeps it robust over `tailscale serve` and SSH tunnels.
   The page (`internal/features/webterm.sh`) is the single source of truth: the
   entrypoint brings it up via the baked `megh` binary, and existing/slim boxes add
-  it on demand with `megh enable webterm`. xterm.js loads from a CDN (the client
-  device has internet; the box need not).
+  it on demand with `megh enable webterm`. xterm.js/css + the fit addon are
+  vendored (`internal/features/vendor/`) and inlined into the page at assembly time
+  (`@@...@@` markers, replaced by `features.Script`), so it has zero CDN/network
+  dependency — neither the box nor the client needs internet. Bumping xterm is a
+  refresh of the vendored files (via `npm pack`), not a URL edit.
 - **noVNC + Xvfb + x11vnc** on `:6080` — headed browser (Playwright) viewable on
   laptop or phone. Chosen over X11 forwarding because a phone has no X server.
 - **SSH** with agent forwarding — no long-lived git credentials on the box.
