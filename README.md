@@ -34,7 +34,7 @@ Every box ships a web shell (ttyd + tmux), a headed-browser view for Playwright
 ```
 megh/
 ├── main.go, cmd/                # Go + Cobra CLI (the provider abstraction seam)
-│   ├── up.go                    #   megh up --provider ...
+│   ├── up.go                    #   megh up <name> --provider ...
 │   ├── registry.go              #   megh registry ls | tags
 │   └── doctor.go                #   megh doctor (planned)
 ├── internal/

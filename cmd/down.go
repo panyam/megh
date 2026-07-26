@@ -53,6 +53,20 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 				return nil
 			}
 		}
+		// Best-effort: have the box deregister itself from the tailnet before we
+		// terminate it — the node-side opposite of the entrypoint's `tailscale up`,
+		// so an ephemeral node is removed immediately instead of lingering until GC
+		// (and a persistent one is deauthenticated). Runs over the SSH access megh
+		// already has, so no Tailscale API credential is needed. Never blocks
+		// termination: an unreachable or tailnet-only box just skips it.
+		d := dialFor(pod)
+		logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
+		if _, err := sshCapture(d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
+			fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.Name)
+		} else {
+			fmt.Printf("asked %s to leave the tailnet\n", pod.Name)
+		}
+
 		if err := runpod.Terminate(ctx, pod.ID); err != nil {
 			return err
 		}
