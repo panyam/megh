@@ -32,7 +32,8 @@ megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all =
 megh ssh [name]                   # plain interactive shell (git-ready)
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
 megh enable [feature]             # add webterm/vnc/playwright/code to a box on demand
-megh down [name] [-y]             # terminate a box (volume survives)
+megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
+megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
