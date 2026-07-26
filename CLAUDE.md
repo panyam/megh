@@ -16,8 +16,10 @@ go build ./... && go vet ./...
 
 The webterm page inlines vendored xterm.js/css (`internal/features/vendor/`),
 pinned in `versions.env` and integrity-checked by `vendor_test.go` (+ CI). To
-update them: `make vendor-check` (see what npm has newer), bump `versions.env`,
-`make vendor` (re-fetch + rewrite `SHA256SUMS`), verify, commit.
+update them: `make vendor-check` (integrity + pinned->latest + a bump-readiness
+verdict; a new xterm major is only READY once a stable `@xterm/addon-fit` peers
+with it), bump `versions.env`, `make vendor` (re-fetch + rewrite `SHA256SUMS`),
+verify, commit.
 
 The Makefile sources `~/personal/envvars` for every recipe that needs a secret.
 Run `megh` directly only after `source ~/personal/envvars`.

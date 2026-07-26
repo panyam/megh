@@ -112,7 +112,10 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   dependency — neither the box nor the client needs internet. Versions are pinned
   in `vendor/versions.env`; `vendor/update.sh` (`make vendor`) re-fetches those
   versions and rewrites `vendor/SHA256SUMS`, and `update.sh --check` (`make
-  vendor-check`) verifies integrity + reports what npm has newer. A Go test
+  vendor-check`) verifies integrity, reports pinned->latest, and prints a
+  bump-readiness verdict — for a new xterm MAJOR the gate is a stable
+  `@xterm/addon-fit` whose peer includes that major (READY / NOT READY /
+  verify-manually if npm metadata is unavailable). A Go test
   (`vendor_test.go`, run in CI) fails if the embedded bytes ever drift from
   `SHA256SUMS`, so a stale or hand-edited bundle cannot slip through. Bumping xterm
   is: edit `versions.env`, `make vendor`, verify, commit — not a URL edit.
