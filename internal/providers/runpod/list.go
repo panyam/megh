@@ -25,6 +25,17 @@ type Pod struct {
 // SSHReady reports whether the pod has a resolvable public SSH endpoint yet.
 func (p Pod) SSHReady() bool { return p.PublicIP != "" && p.SSHPort != 0 }
 
+// ShortName is a pod's display and tailnet name: the RunPod pod name minus the
+// megh- discovery prefix. The prefix stays on the RunPod pod (the only durable
+// marker megh has to filter its own boxes), but the user never types it or sees
+// it, and it is not the Tailscale hostname. Foreign pods (shown under
+// `list --all`) have no prefix, so this passes them through unchanged.
+func ShortName(name string) string { return strings.TrimPrefix(name, NamePrefix) }
+
+// DisplayName is ShortName of this pod: what the user typed at `up`, its
+// Tailscale MagicDNS hostname, and how megh prints it.
+func (p Pod) DisplayName() string { return ShortName(p.Name) }
+
 // List returns all provisioned pods on the account.
 func List(ctx context.Context) ([]Pod, error) {
 	apiKey := os.Getenv("RUNPOD_API_KEY")
@@ -89,8 +100,10 @@ func ManagedPods(pods []Pod) []Pod {
 	return out
 }
 
-// Find resolves a megh-managed pod by exact id or name. Errors on no match or
-// ambiguity.
+// Find resolves a megh-managed pod by exact id or name. The name may be given
+// with or without the megh- prefix (the bare name is what the user typed), so
+// `megh down tsdiag` and `megh down megh-tsdiag` both resolve. Errors on no
+// match or ambiguity.
 func Find(ctx context.Context, idOrName string) (*Pod, error) {
 	all, err := List(ctx)
 	if err != nil {
@@ -99,7 +112,7 @@ func Find(ctx context.Context, idOrName string) (*Pod, error) {
 	pods := ManagedPods(all)
 	var matches []Pod
 	for _, p := range pods {
-		if p.ID == idOrName || p.Name == idOrName {
+		if p.ID == idOrName || p.Name == idOrName || p.DisplayName() == idOrName {
 			matches = append(matches, p)
 		}
 	}

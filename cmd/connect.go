@@ -23,7 +23,9 @@ func dialFor(pod *runpod.Pod) dial {
 	if pod.SSHReady() {
 		return dial{host: pod.PublicIP, port: pod.SSHPort, boxKey: true}
 	}
-	return dial{host: pod.Name, port: 0, boxKey: false}
+	// Tailnet path: the box's MagicDNS name is its bare (unprefixed) name, which
+	// is what the entrypoint sets as TS_HOSTNAME.
+	return dial{host: pod.DisplayName(), port: 0, boxKey: false}
 }
 
 func (d dial) tailnet() bool { return d.port == 0 }

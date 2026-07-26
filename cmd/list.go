@@ -53,8 +53,14 @@ var listCmd = &cobra.Command{
 			if p.SSHReady() {
 				ssh = fmt.Sprintf("%s:%d", p.PublicIP, p.SSHPort)
 			}
+			// Managed view shows the bare name the user typed; --all keeps the raw
+			// pod name so megh boxes stay visibly distinct from foreign pods.
+			name := p.DisplayName()
+			if listAll {
+				name = p.Name
+			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
-				p.Name, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
+				name, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
 		}
 		return w.Flush()
 	},

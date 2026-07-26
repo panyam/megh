@@ -86,7 +86,10 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   or dotdir. `megh list` / `megh storage list` query the provider live. RunPod
   has no pod tags/labels, so megh-managed resources are identified by a `megh-`
   **name prefix**: `megh up` enforces it; `list`/`ssh` filter to it (`--all` to
-  see everything). If a provider adds real labels, switch to those.
+  see everything). If a provider adds real labels, switch to those. The prefix is
+  internal only (a marker megh filters on), never a name the user types or sees:
+  lookups accept the bare name, `list`/messages print it, and the box's Tailscale
+  hostname is the bare name. See `CONSTRAINTS.md` C1.
 
 ## Access surfaces (baked into every box)
 
