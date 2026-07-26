@@ -46,7 +46,7 @@ argument it connects to the only box.`,
 
 		d := dialFor(pod)
 		if d.tailnet() {
-			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet\n", pod.Name)
+			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet\n", pod.DisplayName())
 		}
 
 		// Set up per-identity GitHub Host aliases on the box, and forward the
