@@ -142,26 +142,13 @@ fi
 #    Skipped when TS_AUTHKEY is unset; then use SSH by ip:port + tunnels.
 # ---------------------------------------------------------------------------
 if [ -n "${TS_AUTHKEY:-}" ]; then
-  mkdir -p /var/lib/tailscale /var/run/tailscale
-  tailscaled --tun=userspace-networking \
-    --state=/var/lib/tailscale/tailscaled.state \
-    --socket=/var/run/tailscale/tailscaled.sock >/tmp/tailscaled.log 2>&1 &
-  for _ in $(seq 1 20); do [ -S /var/run/tailscale/tailscaled.sock ] && break; sleep 0.5; done
-  if tailscale up --authkey="${TS_AUTHKEY}" --hostname="${TS_HOSTNAME:-megh-box}" --ssh \
-       >/tmp/tailscale-up.log 2>&1; then
-    tailscale serve --bg --http=7681 http://127.0.0.1:7681 >/tmp/ts-serve-ttyd.log 2>&1 \
-      || log "tailscale serve 7681 failed (see /tmp/ts-serve-ttyd.log)"
-    tailscale serve --bg --http=7682 http://127.0.0.1:7682 >/tmp/ts-serve-webterm.log 2>&1 \
-      || log "tailscale serve 7682 failed (see /tmp/ts-serve-webterm.log)"
-    if command -v Xvfb >/dev/null 2>&1; then
-      tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1 \
-        || log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
-    fi
-    tailscale serve --bg --http=8080 http://127.0.0.1:8080 >/tmp/ts-serve-code.log 2>&1 \
-      || log "tailscale serve 8080 failed (see /tmp/ts-serve-code.log)"
+  # Bring Tailscale up via the shared helper baked into the megh binary
+  # (internal/tsops/ts-up.sh), so boot and `megh doctor ts` run identical logic
+  # and can never drift. TS_HOSTNAME/TS_AUTHKEY are read from this env.
+  if megh doctor ts start --local; then
     log "tailscale up as '${TS_HOSTNAME:-megh-box}'; surfaces served on the tailnet"
   else
-    log "tailscale up failed (see /tmp/tailscale-up.log); SSH by ip:port still works"
+    log "tailscale up failed (see /tmp/tailscale-up.log); 'megh doctor ts logs' shows why, 'megh doctor ts setkey' re-keys; SSH by ip:port still works"
   fi
 else
   log "TS_AUTHKEY unset; skipping tailscale (use SSH by ip:port + tunnels)"
