@@ -124,8 +124,8 @@ ssh: build ## ssh into a box with web-surface tunnels; BOX=<name-or-id> optional
 	@$(ENV) ./bin/megh ssh $(BOX)
 
 .PHONY: doctor
-doctor: build ## probe a box's capabilities (planned)
-	@$(ENV) ./bin/megh doctor
+doctor: build ## probe a box's health (tailscale/surfaces/scratch); BOX=<name-or-id> optional
+	@$(ENV) ./bin/megh doctor $(BOX)
 
 .PHONY: clean
 clean: ## remove build artifacts
