@@ -1,0 +1,24 @@
+name: ci
+
+# Fast Go checks on every push/PR: build, vet, and test. The test suite includes
+# the vendored-asset integrity check (internal/features/vendor_test.go), so a
+# drifted/corrupted/hand-edited xterm.js (or a stale SHA256SUMS) fails CI here.
+# Image builds live in build-env.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...

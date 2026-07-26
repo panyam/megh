@@ -23,6 +23,7 @@ type surface struct {
 
 var surfaces = []surface{
 	{7681, "shell", "/"},
+	{7682, "webterm", "/"},
 	{6080, "vnc", "/vnc.html"},
 	{8080, "code", "/"},
 }
@@ -108,7 +109,7 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 
 // liveSurfaces returns the catalog ports actually listening on the box.
 func liveSurfaces(boxKey string, d dial) ([]int, error) {
-	check := "for p in 7681 6080 8080; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done"
+	check := "for p in 7681 7682 6080 8080; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done"
 	out, err := sshCapture(boxKey, d, check)
 	if err != nil {
 		return nil, err

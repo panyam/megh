@@ -103,6 +103,24 @@ cd /mnt/work
 ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh tmux new -A -s main >/tmp/ttyd.log 2>&1 &
 log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
 
+# Second page: a mobile/tablet-optimized web terminal on :7682 (on-screen key
+# bar for Esc/Ctrl/arrows/symbols/tmux + voice). Same tmux session as :7681, so
+# it is another view of the same shell. The page is baked into the image at build
+# time (see Dockerfile) and served here directly — a first-class peer of :7681,
+# no `enable` needed. Older images may lack the baked page; regenerate it once
+# from the baked megh binary as a fallback.
+webterm_html=/opt/megh/webterm/term.html
+if [ ! -f "${webterm_html}" ] && command -v megh >/dev/null 2>&1; then
+  MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local >/tmp/webterm-emit.log 2>&1 || true
+fi
+if [ -f "${webterm_html}" ]; then
+  ttyd -i 127.0.0.1 -p 7682 -W -t titleFixed=megh-webterm \
+    --index "${webterm_html}" tmux new -A -s main >/tmp/ttyd-webterm.log 2>&1 &
+  log "webterm up on 127.0.0.1:7682 (mobile key bar; same tmux session 'main')"
+else
+  log "webterm page unavailable; run 'megh enable webterm' to add the mobile web terminal"
+fi
+
 # code-server (VS Code in browser) on localhost, reached over tailscale/tunnel.
 # Baked on the full flavor. On slim it is background-installed to the box's local
 # disk on first boot, so you can shell in immediately and it comes online shortly.
@@ -133,6 +151,8 @@ if [ -n "${TS_AUTHKEY:-}" ]; then
        >/tmp/tailscale-up.log 2>&1; then
     tailscale serve --bg --http=7681 http://127.0.0.1:7681 >/tmp/ts-serve-ttyd.log 2>&1 \
       || log "tailscale serve 7681 failed (see /tmp/ts-serve-ttyd.log)"
+    tailscale serve --bg --http=7682 http://127.0.0.1:7682 >/tmp/ts-serve-webterm.log 2>&1 \
+      || log "tailscale serve 7682 failed (see /tmp/ts-serve-webterm.log)"
     if command -v Xvfb >/dev/null 2>&1; then
       tailscale serve --bg --http=6080 http://127.0.0.1:6080 >/tmp/ts-serve-vnc.log 2>&1 \
         || log "tailscale serve 6080 failed (see /tmp/ts-serve-vnc.log)"
@@ -167,6 +187,7 @@ fi
 cat <<EOF
 [megh] box is up.
        tailnet   : http://${TS_HOSTNAME:-<box>}:7681            (web shell)
+                   http://${TS_HOSTNAME:-<box>}:7682            (mobile web shell + key bar)
                    http://${TS_HOSTNAME:-<box>}:6080/vnc.html   (headed browser)
        ssh       : ssh -A root@<ip> -p <port>  (key auth; ip:port from launch output)
        tunnel    : ssh -A -L 7681:localhost:7681 -L 6080:localhost:6080 root@<ip> -p <port>
