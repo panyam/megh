@@ -34,6 +34,7 @@ megh browse [port]                # tunnel box web surfaces to localhost, print 
 megh enable [feature]             # add webterm/vnc/playwright/code to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
+megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
@@ -130,10 +131,17 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   ~1-2 min after the pod is RUNNING (image pull, then `tailscale up`), so a check
   in the first minute sees nothing. `megh down` deregisters the ephemeral node
   immediately, so a `down`+re-`up` of the same name can briefly race GC and land
-  as `<name>-1`. Diagnose on the live box with `megh doctor <name>`; if it says
-  NOT connected, read `/tmp/tailscale-up.log` (names the real failure). The
-  `TS_AUTHKEY` must be reusable + ephemeral; a single-use key works once then
-  every later box fails silently.
+  as `<name>-1` (a stale offline node still holding the name). Diagnose with
+  `megh doctor <name>` (or `megh doctor ts logs <name>` for the raw tailscale
+  logs). The `TS_AUTHKEY` must be reusable + ephemeral; a single-use/expired key
+  fails silently. Most common real cause: the box was launched with a **stale
+  key** (the launching shell's `TS_AUTHKEY` was older than the box's). Fix in
+  place without a rebuild: `megh doctor ts setkey <name>` re-authenticates with
+  the control machine's current `TS_AUTHKEY` (or `--authkey`) and re-serves.
+- **Tailscale bring-up is one script** (`internal/tsops/ts-up.sh`), embedded in
+  the megh binary. The entrypoint runs it at boot (`megh doctor ts start
+  --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
+  repair never drift and `doctor ts` works on any box regardless of image age.
 - **The `megh-` prefix is internal only.** It marks RunPod pods (no tags there)
   but is never the tailnet hostname or a name the user types/sees. Route box
   names through `runpod.ShortName`/`Pod.DisplayName`, not raw `Pod.Name`. See
