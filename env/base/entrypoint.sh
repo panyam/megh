@@ -105,15 +105,20 @@ log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
 
 # Second page: a mobile/tablet-optimized web terminal on :7682 (on-screen key
 # bar for Esc/Ctrl/arrows/symbols/tmux + voice). Same tmux session as :7681, so
-# it is another view of the same shell. Reuses the baked megh binary so the page
-# stays a single source of truth (internal/features/webterm.sh). Tailscale is not
-# up yet here, so defer its serve to step 6 (MEGH_WEBTERM_NO_SERVE=1). Best-effort.
-if command -v megh >/dev/null 2>&1; then
-  MEGH_WEBTERM_NO_SERVE=1 megh enable webterm --local >/tmp/webterm.log 2>&1 \
-    && log "webterm up on 127.0.0.1:7682 (mobile key bar)" \
-    || log "webterm start failed (see /tmp/webterm.log)"
+# it is another view of the same shell. The page is baked into the image at build
+# time (see Dockerfile) and served here directly — a first-class peer of :7681,
+# no `enable` needed. Older images may lack the baked page; regenerate it once
+# from the baked megh binary as a fallback.
+webterm_html=/opt/megh/webterm/term.html
+if [ ! -f "${webterm_html}" ] && command -v megh >/dev/null 2>&1; then
+  MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local >/tmp/webterm-emit.log 2>&1 || true
+fi
+if [ -f "${webterm_html}" ]; then
+  ttyd -i 127.0.0.1 -p 7682 -W -t titleFixed=megh-webterm \
+    --index "${webterm_html}" tmux new -A -s main >/tmp/ttyd-webterm.log 2>&1 &
+  log "webterm up on 127.0.0.1:7682 (mobile key bar; same tmux session 'main')"
 else
-  log "megh binary not baked; run 'megh enable webterm' to add the mobile web terminal"
+  log "webterm page unavailable; run 'megh enable webterm' to add the mobile web terminal"
 fi
 
 # code-server (VS Code in browser) on localhost, reached over tailscale/tunnel.
