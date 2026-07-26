@@ -35,3 +35,24 @@ must match (Find is bare-name aware). Then audit new `pod.Name`/`p.Name` uses in
 `cmd/` (`grep -rn 'pod\.Name\|p\.Name' cmd/*.go`): each should be a raw-name
 context (RunPod API call, `--all` listing, uniqueness check) rather than a
 user-facing display or tailnet address, which use `DisplayName()`.
+
+## C2: Tailscale bring-up has one source of truth
+
+The logic to bring a box onto the tailnet (start `tailscaled` in userspace, run
+`tailscale up`, and `tailscale serve` the surfaces) lives ONLY in
+`internal/tsops/ts-up.sh`, embedded in the megh binary. The entrypoint must not
+re-implement it inline; it runs the helper via `megh doctor ts start --local`.
+`megh doctor ts` pipes the same embedded bytes over SSH. This keeps boot and
+repair identical and lets `doctor ts` work on boxes built from older images
+(the script rides in the CLI, not the box).
+
+New tailscale bring-up or serve logic goes in `ts-up.sh`, not in `entrypoint.sh`
+or a Go string literal.
+
+**Verify:** `grep -q 'megh doctor ts start --local' env/base/entrypoint.sh` (the
+entrypoint delegates) and `grep -qE 'tailscale.*\bup\b' internal/tsops/ts-up.sh &&
+grep -q 'tailscale.*serve' internal/tsops/ts-up.sh` (the helper is where bring-up
+lives). The only bare `tailscale` call left in `entrypoint.sh` should be the
+shutdown `logout` in the SIGTERM trap; there must be no `tailscaled --tun` or
+`tailscale up/serve` invocation there (matches in comments or `log "…"` strings
+don't count).
