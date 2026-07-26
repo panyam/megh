@@ -11,8 +11,10 @@
 # Both ttyd instances attach the SAME tmux session ('main'), so :7681 and :7682
 # are two views of one shell. The page + its WebSocket are same-origin (one port,
 # no reverse proxy), which is what keeps it robust over `tailscale serve` and SSH
-# tunnels. xterm.js loads from a CDN (the client device has internet; the box
-# need not). Idempotent — re-running refreshes the page and restarts cleanly.
+# tunnels. xterm.js/css + the fit addon are INLINED into the page (the @@...@@
+# markers below are replaced with the vendored bytes by features.Script before
+# this script runs), so the page has zero CDN/network dependency — neither the box
+# nor the client needs internet. Idempotent — re-running refreshes and restarts.
 set -uo pipefail
 log() { echo "[megh-webterm] $*"; }
 
@@ -36,7 +38,7 @@ cat > "$DIR/term.html" <<'HTML'
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>megh · terminal</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<style>@@XTERM_CSS@@</style>
 <style>
   :root { --bar-bg:#11151c; --key-bg:#1c232e; --key-fg:#c8d0da; --key-active:#3b82f6; --edge:#2a3340; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -75,8 +77,8 @@ cat > "$DIR/term.html" <<'HTML'
 </div>
 <div id="overlay" onclick="location.reload()">disconnected — tap to reconnect</div>
 <div id="toast"></div>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<script>@@XTERM_JS@@</script>
+<script>@@FIT_JS@@</script>
 <script>
 (function () {
   var enc = new TextEncoder(), dec = new TextDecoder();

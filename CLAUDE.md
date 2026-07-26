@@ -130,5 +130,6 @@ Also not yet run live: **webterm** (`:7682`, `internal/features/webterm.sh`). To
 check on a box: `megh enable webterm` then `megh browse 7682` (or open it on the
 tailnet from a phone). Verify the second ttyd attaches the same tmux session as
 `:7681`, the key bar sends the right escape sequences (Ctrl-C, arrows, tmux
-prefix), autocorrect is actually off, and the CDN xterm.js loads over the tailnet.
-This also exercises the baked-`megh`-in-entrypoint path.
+prefix), autocorrect is actually off, and the inlined xterm.js renders offline
+(no CDN; assets are vendored in `internal/features/vendor/` and inlined by
+`features.Script`). This also exercises the baked-`megh`-in-entrypoint path.
