@@ -17,9 +17,12 @@ var scripts embed.FS
 
 // Vendored web assets inlined into feature scripts at assembly time (see
 // assetMarkers). Kept in the binary so a script piped over SSH is fully
-// self-contained — no CDN or network dependency on the box or the client.
+// self-contained — no CDN or network dependency on the box or the client. Only
+// the assets are embedded; the version manifest, checksums, and update.sh next
+// to them stay out of the binary. Versions are pinned in vendor/versions.env and
+// their integrity is enforced by vendor_test.go (refresh with vendor/update.sh).
 //
-//go:embed vendor
+//go:embed vendor/xterm.js vendor/xterm.css vendor/addon-fit.js
 var vendorFS embed.FS
 
 // assetMarkers maps a placeholder token in a feature script to the vendored

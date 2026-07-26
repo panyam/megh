@@ -109,8 +109,13 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   baked-`megh` path is broken. xterm.js/css + the fit addon are vendored
   (`internal/features/vendor/`) and inlined into the page at assembly time
   (`@@...@@` markers, replaced by `features.Script`), so it has zero CDN/network
-  dependency — neither the box nor the client needs internet. Bumping xterm is a
-  refresh of the vendored files (via `npm pack`), not a URL edit.
+  dependency — neither the box nor the client needs internet. Versions are pinned
+  in `vendor/versions.env`; `vendor/update.sh` (`make vendor`) re-fetches those
+  versions and rewrites `vendor/SHA256SUMS`, and `update.sh --check` (`make
+  vendor-check`) verifies integrity + reports what npm has newer. A Go test
+  (`vendor_test.go`, run in CI) fails if the embedded bytes ever drift from
+  `SHA256SUMS`, so a stale or hand-edited bundle cannot slip through. Bumping xterm
+  is: edit `versions.env`, `make vendor`, verify, commit — not a URL edit.
 - **noVNC + Xvfb + x11vnc** on `:6080` — headed browser (Playwright) viewable on
   laptop or phone. Chosen over X11 forwarding because a phone has no X server.
 - **SSH** with agent forwarding — no long-lived git credentials on the box.

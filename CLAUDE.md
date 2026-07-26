@@ -10,8 +10,14 @@ first (US), Hetzner next. Read `DESIGN.md` for the settled architecture and
 make build          # -> bin/megh
 make install        # go install to GOBIN
 make vars           # show which secrets are set (no values)
+make test           # go vet + go test (incl. vendored-asset integrity check)
 go build ./... && go vet ./...
 ```
+
+The webterm page inlines vendored xterm.js/css (`internal/features/vendor/`),
+pinned in `versions.env` and integrity-checked by `vendor_test.go` (+ CI). To
+update them: `make vendor-check` (see what npm has newer), bump `versions.env`,
+`make vendor` (re-fetch + rewrite `SHA256SUMS`), verify, commit.
 
 The Makefile sources `~/personal/envvars` for every recipe that needs a secret.
 Run `megh` directly only after `source ~/personal/envvars`.

@@ -47,6 +47,20 @@ install: ## install the megh CLI to GOBIN (go env GOBIN, else GOPATH/bin)
 vet: ## go vet
 	go vet ./...
 
+.PHONY: test
+test: ## go vet + go test (includes vendored-asset integrity check)
+	go vet ./...
+	go test ./...
+
+# --- vendored web assets (webterm page: xterm.js/css) -------------------------
+.PHONY: vendor
+vendor: ## refresh vendored webterm assets from pinned internal/features/vendor/versions.env
+	./internal/features/vendor/update.sh
+
+.PHONY: vendor-check
+vendor-check: ## verify vendored assets match SHA256SUMS + report upstream versions
+	./internal/features/vendor/update.sh --check
+
 # --- environment --------------------------------------------------------------
 .PHONY: vars
 vars: ## show which required secrets/vars are set (no secret values printed)
