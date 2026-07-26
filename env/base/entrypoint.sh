@@ -173,7 +173,12 @@ fi
 #    Off unless MEGH_SESSIONS_REPO is set. See flush-sessions.sh.
 # ---------------------------------------------------------------------------
 flush() { /usr/local/bin/megh-flush-sessions || true; }
-on_term() { log "shutdown signal: flushing sessions"; flush; exit 0; }
+# Leave the tailnet on shutdown so an ephemeral node is removed immediately (the
+# node-side opposite of `tailscale up`). Best-effort; complements `megh down` and
+# covers terminations megh can't SSH for (tailnet-only boxes, console kills). Only
+# fires if RunPod delivers SIGTERM with grace; a hard SIGKILL relies on ephemeral GC.
+ts_logout() { tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true; }
+on_term() { log "shutdown signal: flushing sessions + leaving tailnet"; flush; ts_logout; exit 0; }
 trap on_term TERM INT
 
 if [ -n "${MEGH_SESSIONS_REPO:-}" ]; then

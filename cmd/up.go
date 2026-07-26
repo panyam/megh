@@ -68,8 +68,15 @@ func resolvePubKey(cmd *cobra.Command, flagVal, cfgFile string) string {
 }
 
 var upCmd = &cobra.Command{
-	Use:   "up",
+	Use:   "up <name>",
 	Short: "Launch a dev box on a provider",
+	Long: `Launch a dev box. <name> is required and must be unique among your live boxes.
+
+The name is both the box name and its Tailscale hostname, so a duplicate would
+collide on the tailnet (and make 'megh list'/'ssh'/'down' ambiguous); megh errors
+before launching if the name is already in use. The 'megh-' prefix is added
+automatically when you omit it, so 'megh up work' launches 'megh-work'.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
 		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "slim")
@@ -86,9 +93,15 @@ var upCmd = &cobra.Command{
 		if cmd.Flags().Changed("expose-ssh") {
 			upOpts.ExposeSSH = upExposeSSH
 		}
-		if upOpts.Name == "" && activeProfile != nil {
-			upOpts.Name = "megh-" + activeProfile.Name + "-box"
+		// Name is a required positional arg. Enforce the megh- marker up front so
+		// the uniqueness check below and the Tailscale hostname both use the final
+		// name (runpod.Up applies the same prefix idempotently).
+		name := args[0]
+		if !strings.HasPrefix(name, runpod.NamePrefix) {
+			name = runpod.NamePrefix + name
 		}
+		upOpts.Name = name
+
 		if miss := cfg.MissingEnvs(); len(miss) > 0 {
 			return fmt.Errorf("required env vars not set (megh.yaml requires): %s", strings.Join(miss, ", "))
 		}
@@ -96,7 +109,20 @@ var upCmd = &cobra.Command{
 
 		switch upProvider {
 		case "runpod":
-			res, err := runpod.Up(context.Background(), upOpts)
+			ctx := context.Background()
+			// Names double as the Tailscale hostname, so refuse a duplicate before
+			// launching rather than let two boxes fight over one tailnet name.
+			pods, err := runpod.List(ctx)
+			if err != nil {
+				return err
+			}
+			for _, p := range runpod.ManagedPods(pods) {
+				if p.Name == upOpts.Name {
+					return fmt.Errorf("a box named %q already exists (id %s); pick another name or `megh down %s` first",
+						upOpts.Name, p.ID, strings.TrimPrefix(upOpts.Name, runpod.NamePrefix))
+				}
+			}
+			res, err := runpod.Up(ctx, upOpts)
 			if err != nil {
 				return err
 			}
@@ -114,7 +140,6 @@ func init() {
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use base for frontend)")
-	f.StringVar(&upOpts.Name, "name", "", "box name (default megh-<user>-box)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
 	f.IntVar(&upOpts.RAMGiB, "ram", 0, "RAM in GiB (default: config, else 8)")
 	f.IntVar(&upOpts.DiskGiB, "disk", 0, "ephemeral container disk in GiB (default: config, else 20)")

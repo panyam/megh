@@ -23,6 +23,7 @@ PUBKEY_FILE    ?= $(HOME)/.ssh/id_ed25519.pub
 VCPU           ?= 4
 RAM            ?= 16
 DISK           ?= 20    # ephemeral container disk (capped by instance size); persistent scratch is the network volume
+NAME           ?=       # box name (required by `make up`); becomes the box + Tailscale hostname
 VOLUME         ?=
 DC             ?=
 
@@ -92,13 +93,13 @@ registry: build ## list dev-env image tags in the registry (needs GH_MEGH_TOKEN 
 
 # --- launch / inspect a box ---------------------------------------------------
 .PHONY: up
-up: build ## launch a RunPod box (requires VOLUME and DC)
-	@if [ -z "$(VOLUME)" ] || [ -z "$(DC)" ]; then \
-	  echo "error: set VOLUME and DC, e.g. make up VOLUME=<vol-id> DC=<dc-id>"; exit 2; fi
+up: build ## launch a RunPod box (requires NAME, VOLUME, DC)
+	@if [ -z "$(NAME)" ] || [ -z "$(VOLUME)" ] || [ -z "$(DC)" ]; then \
+	  echo "error: set NAME, VOLUME and DC, e.g. make up NAME=work VOLUME=<vol-id> DC=<dc-id>"; exit 2; fi
 	@$(ENV) \
 	MEGH_IMAGE="$${MEGH_IMAGE:-$(IMAGE)}" \
 	MEGH_PUBKEY="$${MEGH_PUBKEY:-$$(cat $(PUBKEY_FILE))}" \
-	./bin/megh up --provider runpod \
+	./bin/megh up "$(NAME)" --provider runpod \
 	  --volume "$(VOLUME)" --dc "$(DC)" \
 	  --vcpu $(VCPU) --ram $(RAM) --disk $(DISK)
 
@@ -123,8 +124,8 @@ ssh: build ## ssh into a box with web-surface tunnels; BOX=<name-or-id> optional
 	@$(ENV) ./bin/megh ssh $(BOX)
 
 .PHONY: doctor
-doctor: build ## probe a box's capabilities (planned)
-	@$(ENV) ./bin/megh doctor
+doctor: build ## probe a box's health (tailscale/surfaces/scratch); BOX=<name-or-id> optional
+	@$(ENV) ./bin/megh doctor $(BOX)
 
 .PHONY: clean
 clean: ## remove build artifacts
