@@ -47,6 +47,14 @@ COPY megh /usr/local/bin/megh
 COPY megh.yaml /etc/megh/megh.yaml
 RUN chmod +x /usr/local/bin/megh
 
+# Bake the mobile web-terminal page (:7682) into the image so it is a first-class
+# surface, not an on-demand add-on. The page (with xterm.js inlined) is emitted
+# from the baked megh binary — internal/features/webterm.sh is the single source
+# of truth — so this also fails the build early if that path is broken. The
+# entrypoint serves it directly; `megh enable webterm` stays as the retrofit path
+# for boxes launched from older images.
+RUN MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local
+
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
 COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions
 RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-flush-sessions

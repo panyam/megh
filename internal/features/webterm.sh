@@ -20,13 +20,8 @@ log() { echo "[megh-webterm] $*"; }
 
 PORT="${MEGH_WEBTERM_PORT:-7682}"
 SESSION="${MEGH_TMUX_SESSION:-main}"
-DIR=/opt/megh/webterm
+DIR="${MEGH_WEBTERM_DIR:-/opt/megh/webterm}"
 mkdir -p "$DIR"
-
-if ! command -v ttyd >/dev/null 2>&1; then
-  log "ttyd not found (it is baked into every megh image); cannot start webterm"
-  exit 1
-fi
 
 # --- the page (self-contained; ttyd --index serves ONLY this file at /) --------
 cat > "$DIR/term.html" <<'HTML'
@@ -250,6 +245,21 @@ cat > "$DIR/term.html" <<'HTML'
 </body>
 </html>
 HTML
+
+log "wrote ${DIR}/term.html (self-contained; xterm.js inlined)"
+
+# Emit-only: used at IMAGE BUILD time to bake the page into the image. Writes the
+# page and stops here — no ttyd, no tailscale. The entrypoint then serves it
+# directly, so the page is a first-class surface, not a boot-time generation.
+if [ "${MEGH_WEBTERM_EMIT_ONLY:-0}" = "1" ]; then
+  log "emit-only; not starting ttyd"
+  exit 0
+fi
+
+if ! command -v ttyd >/dev/null 2>&1; then
+  log "ttyd not found (it is baked into every megh image); cannot start webterm"
+  exit 1
+fi
 
 # --- (re)start the second ttyd on its own port, same tmux session --------------
 # Kill any prior webterm ttyd so an updated page is always picked up.

@@ -100,10 +100,14 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   It attaches the SAME tmux session as `:7681`, so the two ports are two views of
   one shell; the page and its WebSocket are same-origin (one port, no reverse
   proxy) which is what keeps it robust over `tailscale serve` and SSH tunnels.
-  The page (`internal/features/webterm.sh`) is the single source of truth: the
-  entrypoint brings it up via the baked `megh` binary, and existing/slim boxes add
-  it on demand with `megh enable webterm`. xterm.js/css + the fit addon are
-  vendored (`internal/features/vendor/`) and inlined into the page at assembly time
+  The page (`internal/features/webterm.sh`) is the single source of truth. It is
+  baked into the image at build time (`MEGH_WEBTERM_EMIT_ONLY=1 megh enable
+  webterm --local` in the Dockerfile) and the entrypoint serves it directly, so
+  it is a first-class surface, not an on-demand add-on — no `enable` step on a
+  fresh box. `megh enable webterm` remains the retrofit path for boxes launched
+  from older images. Baking at build time also fails the build early if the
+  baked-`megh` path is broken. xterm.js/css + the fit addon are vendored
+  (`internal/features/vendor/`) and inlined into the page at assembly time
   (`@@...@@` markers, replaced by `features.Script`), so it has zero CDN/network
   dependency — neither the box nor the client needs internet. Bumping xterm is a
   refresh of the vendored files (via `npm pack`), not a URL edit.
