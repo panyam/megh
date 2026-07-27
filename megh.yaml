@@ -57,7 +57,8 @@ sessions:
 # the volume, so the next box on that volume is already signed in. Add a tool by
 # adding its config/auth dir here (and relaunch, or symlink it on the box).
 persist:
-  - ~/.claude          # Claude Code login + settings
+  - ~/.claude          # Claude Code credentials, projects, sessions
+  - ~/.claude.json     # Claude Code login/onboarding state (a FILE beside ~/.claude)
   - ~/.codex           # Codex login + settings
   # - ~/.config/gh     # GitHub CLI auth
   # - ~/.aws           # AWS credentials/config
