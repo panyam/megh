@@ -69,6 +69,21 @@ the env, and `megh up` reads volume/DC/defaults from `megh.yaml`.
 `megh up` if any is missing) and `box_envs` (also copied into the box as pod env
 for the repos/services there). `megh config` shows each as `set`/`MISSING`.
 
+`persist:` lists home dirs the entrypoint symlinks onto the scratch volume
+(`state/<name>`), so a one-time `claude login`/`codex login`/etc. survives box
+rebuilds on the same volume. Passed to the box as `MEGH_PERSIST`; defaults to
+`~/.claude,~/.codex` when unset (old binaries too). Add a tool = add its
+config/auth dir. This is per-volume; megh never handles the tokens (they live on
+the volume). Cross-volume "baked" seeding was considered and deferred (approach B).
+
+`symlinks:` maps home paths onto volume locations (`~/newstack -> repos/newstack`,
+target relative to `/mnt/work` or absolute), so paths your local scripts expect
+resolve on the box. Passed as `MEGH_SYMLINKS`. Same symlink primitive as `persist`
+but orthogonal intent: `persist` keeps mutable tool STATE alive (auto slot,
+migrates image defaults); `symlinks` MAPS paths to authoritative hydrated repo
+trees (explicit target, no migration). It skips a link that already exists as real
+content.
+
 ## Profiles (`~/.megh/profiles/<name>/`)
 
 A profile is a self-contained context so megh depends on nothing system-level.

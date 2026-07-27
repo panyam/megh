@@ -108,6 +108,26 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 			return fmt.Errorf("required env vars not set (megh.yaml requires): %s", strings.Join(miss, ", "))
 		}
 		upOpts.ExtraEnv = cfg.BoxEnv()
+		// Tool state (logins/config) to persist on the volume across rebuilds; the
+		// entrypoint symlinks each onto the volume. Empty -> entrypoint default.
+		if len(cfg.Persist) > 0 {
+			if upOpts.ExtraEnv == nil {
+				upOpts.ExtraEnv = map[string]string{}
+			}
+			upOpts.ExtraEnv["MEGH_PERSIST"] = strings.Join(cfg.Persist, ",")
+		}
+		// Home->volume path maps (e.g. ~/newstack -> repos/newstack) so local paths
+		// work on the box. Passed as MEGH_SYMLINKS ("link:target,..."); order-free.
+		if len(cfg.Symlinks) > 0 {
+			if upOpts.ExtraEnv == nil {
+				upOpts.ExtraEnv = map[string]string{}
+			}
+			var pairs []string
+			for link, target := range cfg.Symlinks {
+				pairs = append(pairs, link+":"+target)
+			}
+			upOpts.ExtraEnv["MEGH_SYMLINKS"] = strings.Join(pairs, ",")
+		}
 
 		switch upProvider {
 		case "runpod":
