@@ -32,30 +32,48 @@ ln -sfn "${WORK_MOUNT}" /mnt/work
 # Persist tool state on the volume by pointing home dirs at it. Only link if the
 # real dir is empty, so we never clobber existing config.
 link_state() {
-  local home_dir="$1" vol_dir="$2"
-  mkdir -p "${vol_dir}"
-  if [ -e "${home_dir}" ] && [ ! -L "${home_dir}" ]; then
-    # A real dir already exists (image default). Move its contents once.
-    cp -a "${home_dir}/." "${vol_dir}/" 2>/dev/null || true
-    rm -rf "${home_dir}"
-  fi
+  local home_dir="$1" vol="$2" kind="$3"
+  [ -L "${home_dir}" ] && return 0                 # already linked
   mkdir -p "$(dirname "${home_dir}")"
-  ln -sfn "${vol_dir}" "${home_dir}"
+  if [ "${kind}" = file ]; then
+    # A FILE (e.g. ~/.claude.json — claude's login/onboarding state, which lives
+    # next to ~/.claude, so the dir symlink alone misses it).
+    mkdir -p "$(dirname "${vol}")"
+    if [ -f "${home_dir}" ]; then
+      [ -e "${vol}" ] || cp -a "${home_dir}" "${vol}" 2>/dev/null || true
+      rm -f "${home_dir}"
+    fi
+    ln -sfn "${vol}" "${home_dir}"
+  else
+    mkdir -p "${vol}"
+    if [ -e "${home_dir}" ]; then                  # real dir (image default): move once
+      cp -a "${home_dir}/." "${vol}/" 2>/dev/null || true
+      rm -rf "${home_dir}"
+    fi
+    ln -sfn "${vol}" "${home_dir}"
+  fi
 }
 
-# Which home dirs to persist. Configurable via megh.yaml `persist:` (passed as
+# Which home paths to persist. Configurable via megh.yaml `persist:` (passed as
 # MEGH_PERSIST, comma-separated), so a one-time `claude login` / `codex login` /
 # etc. survives box rebuilds on the same volume. Add tools by editing that list.
-# Default keeps the agent auth/config dirs even on older megh binaries.
-PERSIST_DIRS="${MEGH_PERSIST:-~/.claude,~/.codex}"
+# Default keeps the agent auth/config state even on older megh binaries.
+PERSIST_DIRS="${MEGH_PERSIST:-~/.claude,~/.claude.json,~/.codex}"
 IFS=',' read -ra _persist <<< "${PERSIST_DIRS}"
 for _p in "${_persist[@]}"; do
   _p="${_p//[[:space:]]/}"          # trim whitespace
   [ -z "${_p}" ] && continue
   _p="${_p#\~/}"; _p="${_p#/}"      # home-relative: strip a leading ~/ or /
+  _home="${HOME}/${_p}"
   # Volume slot name: path with / -> - and the leading dot dropped (.claude -> claude).
   _name="$(printf '%s' "${_p}" | sed 's#/#-#g; s#^\.##')"
-  link_state "${HOME}/${_p}" "${WORK_MOUNT}/state/${_name}"
+  # File or dir? Use what's on disk; if absent, a dot in the basename (after the
+  # leading one) means a file (.claude.json), else a dir (.claude, .config/gh).
+  if [ -f "${_home}" ] && [ ! -d "${_home}" ]; then _kind=file
+  elif [ -d "${_home}" ]; then _kind=dir
+  else _b="$(basename "${_p}")"; _b="${_b#.}"; case "${_b}" in *.*) _kind=file ;; *) _kind=dir ;; esac
+  fi
+  link_state "${_home}" "${WORK_MOUNT}/state/${_name}" "${_kind}"
 done
 
 # Map home paths onto volume locations (e.g. ~/newstack -> repos/newstack) so the
