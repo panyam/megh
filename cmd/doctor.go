@@ -93,6 +93,7 @@ docker-build viability is still planned.)`,
 		if err != nil {
 			return err
 		}
+		pod = awaitSSHReady(ctx, pod)
 		d := dialFor(pod)
 		sshArgs := append(d.opts(), d.userHost(), "bash -s")
 		fmt.Fprintf(os.Stderr, "megh: probing %s\n", pod.DisplayName())
