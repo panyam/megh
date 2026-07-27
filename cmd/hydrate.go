@@ -91,7 +91,16 @@ undeclared (with origin url to copy into megh.yaml).`,
 		script := setup + body
 
 		sshArgs := append(d.opts("-A"), d.userHost(), "bash -s")
-		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, strings.NewReader(script))
+		if err := runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, strings.NewReader(script)); err != nil {
+			return err
+		}
+		// Copy megh.yaml `files:` (secrets/rc files not in a repo) onto the box.
+		if !hydrateCheck {
+			if err := pushFiles(d, d.keyFor(cfg.SSHKeyFile), cfg.Files); err != nil {
+				fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
+			}
+		}
+		return nil
 	},
 }
 

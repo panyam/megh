@@ -74,6 +74,18 @@ symlinks:
   ~/hw:       repos/hw
   ~/books:    repos/books
 
+# Copy local files onto a box over SSH (on `megh ssh`/`hydrate`), mode 0600. For
+# things that must NOT live in a repo or the image — machine rc files, and secret
+# files. Format: local_path: box_path. A ~/ box path is /root; a /mnt/work/ box
+# path persists on the volume, anything else is ephemeral (re-copied each connect).
+# Versioned dotfiles belong in a repo (repos: + symlinks:), not here.
+#
+# SECURITY: never copy a file containing RUNPOD_API_KEY (or other provider creds) —
+# a box with it can terminate/launch your OTHER boxes. Scope it to what the box needs.
+# files:
+#   ~/personal/box-envvars: ~/personal/envvars   # a box-scoped envvars, NOT the full one
+#   ~/.netrc:               ~/.netrc
+
 # The GitHub identity (profile gh key name) used by repos that don't set one.
 default_gh_key: personal
 

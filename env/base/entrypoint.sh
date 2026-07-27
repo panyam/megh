@@ -75,7 +75,10 @@ if [ -n "${MEGH_SYMLINKS:-}" ]; then
       log "symlink: ${link} exists as real content; leaving it"
       continue
     fi
-    mkdir -p "${target}" "$(dirname "${link}")"
+    # Make the parents, not the target itself: the target may be a FILE (a dotfile
+    # like repos/dotfiles/.vimrc) or a dir (repos/newstack), and it may not exist
+    # until `megh hydrate` runs. mkdir-ing the target would wrongly create a dir.
+    mkdir -p "$(dirname "${target}")" "$(dirname "${link}")"
     ln -sfn "${target}" "${link}"
     log "symlink: ${link} -> ${target}"
   done
