@@ -35,13 +35,20 @@ start_daemon() {
   return 1
 }
 
+# Prefer HTTPS: browsers only expose the clipboard API (copy/paste) in a secure
+# context, i.e. HTTPS or localhost. A phone reaching the box by tailnet name over
+# plain HTTP has no clipboard. Fall back to HTTP when the tailnet has no HTTPS
+# certs enabled (admin console -> DNS -> HTTPS Certificates), so the box is still
+# reachable either way. HTTPS also requires the full MagicDNS name in the URL.
+SERVE_SCHEME=http
+serve_port() { ts serve --bg --"$SERVE_SCHEME"="$1" "http://127.0.0.1:$1" >/dev/null 2>&1; }
 do_serve() {
-  ts serve --bg --http=7681 http://127.0.0.1:7681 >/dev/null 2>&1 || echo "[ts] serve 7681 failed"
-  ts serve --bg --http=7682 http://127.0.0.1:7682 >/dev/null 2>&1 || echo "[ts] serve 7682 failed"
-  if command -v Xvfb >/dev/null 2>&1; then
-    ts serve --bg --http=6080 http://127.0.0.1:6080 >/dev/null 2>&1 || echo "[ts] serve 6080 failed"
-  fi
-  ts serve --bg --http=8080 http://127.0.0.1:8080 >/dev/null 2>&1 || echo "[ts] serve 8080 failed"
+  # Probe once with :7681; if HTTPS certs exist the serve succeeds.
+  if ts serve --bg --https=7681 http://127.0.0.1:7681 >/dev/null 2>&1; then SERVE_SCHEME=https; else SERVE_SCHEME=http; fi
+  serve_port 7681 || echo "[ts] serve 7681 failed"
+  serve_port 7682 || echo "[ts] serve 7682 failed"
+  command -v Xvfb >/dev/null 2>&1 && { serve_port 6080 || echo "[ts] serve 6080 failed"; }
+  serve_port 8080 || echo "[ts] serve 8080 failed"
 }
 
 do_up() {
@@ -52,7 +59,13 @@ do_up() {
   # login prompt over a non-interactive SSH session.
   if timeout 45 tailscale --socket="$SOCK" up "${up_args[@]}" >"$UPLOG" 2>&1; then
     do_serve
-    echo "[ts] up as $HOST; surfaces served on the tailnet"
+    local fqdn; fqdn=$(ts status --json 2>/dev/null | jq -r '.Self.DNSName // ""' | sed 's/\.$//')
+    if [ "$SERVE_SCHEME" = https ]; then
+      echo "[ts] up as $HOST; surfaces served over HTTPS — e.g. https://${fqdn:-$HOST}:7682 (webterm)"
+    else
+      echo "[ts] up as $HOST; surfaces served over HTTP at http://$HOST:7682 (webterm)."
+      echo "[ts] For mobile copy/paste, enable HTTPS certs on your tailnet (admin > DNS), then: megh doctor ts restart $HOST"
+    fi
     ts status 2>/dev/null | head -1
   else
     echo "[ts] 'tailscale up' failed (expired/invalid key? try: megh doctor ts setkey):"
