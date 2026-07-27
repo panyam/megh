@@ -9,10 +9,16 @@
 # autocapitalize on the input so the keyboard stops fighting you.
 #
 # Copy/paste: a drag-select (or Ctrl/Cmd+C with a selection) copies to the host
-# clipboard. Because stock xterm.js can't select across lines on touch, the
-# 'Copy' key opens a plain-text overlay of the buffer with native selection
-# handles, so you can select across lines and use the device's own Copy (handy
-# for grabbing a printed login URL). Paste pulls from the host clipboard.
+# clipboard. Because stock xterm.js can't select across lines on touch, the 'Copy'
+# key AND a long-press on the terminal open a plain-text overlay of the buffer with
+# native selection handles, so you can select across lines and use the device's own
+# Copy (handy for grabbing a printed login URL). Paste pulls from the host clipboard
+# in a secure context, else opens a textarea you paste into.
+#
+# Note: the clipboard API (copy/paste keys) only works in a secure context —
+# HTTPS or localhost. Reaching the box by tailnet name over plain HTTP has no
+# clipboard, so `tailscale serve` should serve HTTPS (see internal/tsops/ts-up.sh);
+# the native-selection overlay and the paste textarea work over HTTP regardless.
 #
 # Both ttyd instances attach the SAME tmux session ('main'), so :7681 and :7682
 # are two views of one shell. The page + its WebSocket are same-origin (one port,
@@ -82,6 +88,18 @@ cat > "$DIR/term.html" <<'HTML'
     color:#c5c8c6; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;
     font-size:13px; line-height:1.35; -webkit-overflow-scrolling:touch;
     padding:10px calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
+  /* Paste overlay: a textarea you paste into, then Send. Works without the clipboard
+     API, so it also covers HTTP / browsers that block programmatic clipboard reads. */
+  #pasteview { position:fixed; inset:0; display:none; flex-direction:column; z-index:12; background:#0b0e14; }
+  #pasteview.show { display:flex; }
+  #pasteview .selbar { flex:0 0 auto; display:flex; align-items:center; gap:8px; color:#9aa4b2; font-size:13px;
+    padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:var(--bar-bg); border-bottom:1px solid var(--edge); }
+  #pasteview .selbar span { flex:1 1 auto; }
+  #pasteview .selbar button { flex:0 0 auto; height:32px; padding:0 12px; border-radius:8px;
+    border:1px solid var(--edge); background:var(--key-bg); color:var(--key-fg); font-size:14px; }
+  #pastebox { flex:1 1 auto; margin:0; border:0; outline:none; resize:none; background:#0b0e14; color:#c5c8c6;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace; font-size:14px; line-height:1.4;
+    padding:10px calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
 </style>
 </head>
 <body>
@@ -94,6 +112,11 @@ cat > "$DIR/term.html" <<'HTML'
   <div class="selbar"><span>Select text, then use your device's Copy.</span>
     <button id="selall">Copy all</button><button id="selclose">Done</button></div>
   <pre id="seltext"></pre>
+</div>
+<div id="pasteview">
+  <div class="selbar"><span>Paste here, then Send.</span>
+    <button id="pastesend">Send</button><button id="pastecancel">Cancel</button></div>
+  <textarea id="pastebox" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></textarea>
 </div>
 <div id="toast"></div>
 <script>@@XTERM_JS@@</script>
@@ -130,6 +153,22 @@ cat > "$DIR/term.html" <<'HTML'
     }
     return true;
   });
+  // Touch: a long-press on the terminal opens the selectable overlay — the phone
+  // gesture for "select text", which stock xterm.js can't do on the canvas itself.
+  (function () {
+    var el = document.getElementById('term'), t = null, sx = 0, sy = 0;
+    el.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      t = setTimeout(function () { t = null; openSelect(); }, 500);
+    }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      if (!t || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+      if (dx * dx + dy * dy > 100) { clearTimeout(t); t = null; }   // moved => it's a scroll
+    }, { passive: true });
+    el.addEventListener('touchend', function () { if (t) { clearTimeout(t); t = null; } });
+  })();
 
   // ---- viewport: keep the terminal sized above the soft keyboard --------------
   function layout() {
@@ -295,11 +334,19 @@ cat > "$DIR/term.html" <<'HTML'
     if (term.modes && term.modes.bracketedPasteMode) text = '\x1b[200~' + text + '\x1b[201~';
     rawSend(text);
   }
+  var pasteView = document.getElementById('pasteview'), pasteBox = document.getElementById('pastebox');
+  function openPaste() { pasteBox.value = ''; pasteView.classList.add('show'); pasteBox.focus(); }
+  function closePaste() { pasteView.classList.remove('show'); term.focus(); }
+  document.getElementById('pastecancel').addEventListener('click', closePaste);
+  document.getElementById('pastesend').addEventListener('click', function () {
+    var v = pasteBox.value; closePaste(); if (v) sendPaste(v);
+  });
   function doPaste() {
-    var fallback = function () { var t = prompt('Paste text:'); if (t) sendPaste(t); };
+    // Secure context (HTTPS/localhost): one-tap read. Otherwise open a textarea to
+    // paste into — the reliable path over plain HTTP or where reads are blocked.
     if (navigator.clipboard && navigator.clipboard.readText) {
-      navigator.clipboard.readText().then(function (t) { if (t) sendPaste(t); else fallback(); }).catch(fallback);
-    } else fallback();
+      navigator.clipboard.readText().then(function (t) { if (t) sendPaste(t); else openPaste(); }).catch(openPaste);
+    } else openPaste();
   }
 
   // ---- voice ------------------------------------------------------------------

@@ -51,8 +51,8 @@ or a Go string literal.
 
 **Verify:** `grep -q 'megh doctor ts start --local' env/base/entrypoint.sh` (the
 entrypoint delegates) and `grep -qE 'tailscale.*\bup\b' internal/tsops/ts-up.sh &&
-grep -q 'tailscale.*serve' internal/tsops/ts-up.sh` (the helper is where bring-up
-lives). The only bare `tailscale` call left in `entrypoint.sh` should be the
-shutdown `logout` in the SIGTERM trap; there must be no `tailscaled --tun` or
-`tailscale up/serve` invocation there (matches in comments or `log "…"` strings
-don't count).
+grep -q 'serve --bg' internal/tsops/ts-up.sh` (the helper is where bring-up +
+serve live; serve goes through the `ts` wrapper). The only bare `tailscale` call
+left in `entrypoint.sh` should be the shutdown `logout` in the SIGTERM trap; there
+must be no `tailscaled --tun` or `tailscale up`/`serve --bg` invocation there
+(matches in comments or `log "…"` strings don't count).
