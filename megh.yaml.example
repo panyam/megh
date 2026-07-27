@@ -66,6 +66,21 @@ sessions:
   repo: YOUR_GH_NAMESPACE/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN
 
+# Home dirs symlinked onto the scratch volume so their state survives box rebuilds
+# (log in once, stay logged in on the next box that mounts the same volume). Add a
+# tool's config/auth dir to bake its sign-in in. Defaults to ~/.claude, ~/.codex.
+persist:
+  - ~/.claude
+  - ~/.codex
+  # - ~/.config/gh
+  # - ~/.aws
+
+# Map home paths onto volume locations so local paths/scripts work on the box.
+# Targets are relative to /mnt/work (or absolute); filled by `megh hydrate`.
+# symlinks:
+#   ~/newstack: repos/newstack
+#   ~/projects: repos/projects
+
 # GitHub identity (profile gh key name) for repos that don't set `key`.
 default_gh_key: personal
 
