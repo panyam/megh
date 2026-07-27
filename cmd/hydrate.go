@@ -64,6 +64,7 @@ undeclared (with origin url to copy into megh.yaml).`,
 		if err != nil {
 			return err
 		}
+		pod = awaitSSHReady(ctx, pod)
 		d := dialFor(pod)
 		if d.tailnet() {
 			fmt.Fprintf(os.Stderr, "megh: connecting to %q over the tailnet\n", pod.DisplayName())
