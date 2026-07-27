@@ -40,6 +40,7 @@ megh hydrate [--check]            # clone repos onto a box's volume (or report d
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
+megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 ```
 
 Make wrappers: `make up NAME=.. VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,
