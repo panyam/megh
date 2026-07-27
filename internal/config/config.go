@@ -68,6 +68,17 @@ type Config struct {
 	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
 	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
 	Requires        Requires            `yaml:"requires"`
+	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. taild311d3.ts.net); for portal surface URLs
+	Portal          Portal              `yaml:"portal"`
+}
+
+// Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)
+// force-pushed to a branch of a private repo you bookmark on your phone. Empty
+// Repo disables it (and the up/down auto-refresh).
+type Portal struct {
+	Repo   string `yaml:"repo"`   // git URL to push the index to (e.g. git@host:you/megh.git)
+	Branch string `yaml:"branch"` // branch to force-push (default "portal")
+	Scheme string `yaml:"scheme"` // http or https for the surface links (default http)
 }
 
 // Requires declares env vars that must be present on the host. Envs are needed

@@ -129,6 +129,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 				return err
 			}
 			fmt.Print(res.Summary())
+			publishPortalBestEffort()
 			return nil
 		default:
 			return fmt.Errorf("provider %q not implemented yet", upProvider)

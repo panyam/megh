@@ -46,6 +46,20 @@ providers:
 tailscale:
   authkey_env: TS_AUTHKEY
 
+# Optional: your tailnet's MagicDNS suffix (see `megh doctor ts status` Self DNSName),
+# used to build box surface URLs in the portal.
+# tailnet: tailXXXXXX.ts.net
+
+# Optional: `megh portal` publishes a bookmarkable box+URL index (PORTAL.md) to a
+# branch of a private repo, so on mobile you tap a link instead of typing host:port.
+# GitHub renders Markdown in a private repo for you; bookmark PORTAL.md on that
+# branch. megh up/down refresh it. scheme: http (or https once your tailnet has
+# HTTPS certs). Omit this block to disable.
+# portal:
+#   repo: git@github.com:YOUR_GH_NAMESPACE/megh.git
+#   branch: portal
+#   scheme: http
+
 # Optional: durable, searchable agent history. repo is a private git repo;
 # token_env NAMES a fine-grained PAT with contents:write on ONLY that repo.
 sessions:

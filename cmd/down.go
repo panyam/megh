@@ -71,6 +71,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 			return err
 		}
 		fmt.Printf("terminated %s (%s)\n", pod.DisplayName(), pod.ID)
+		publishPortalBestEffort()
 		return nil
 	},
 }

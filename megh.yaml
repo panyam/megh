@@ -35,6 +35,19 @@ providers:
 tailscale:
   authkey_env: TS_AUTHKEY           # optional; omit env value for SSH-only
 
+# MagicDNS suffix of your tailnet — used to build box surface URLs in the portal
+# (https://<box>.<tailnet>:<port>). Find it in `megh doctor ts status` (Self DNSName).
+tailnet: taild311d3.ts.net
+
+# `megh portal`: a bookmarkable box+URL index (PORTAL.md) force-pushed to a branch
+# of a private repo, so on mobile you tap a link instead of typing host:port. megh
+# up/down refresh it. scheme is http today; switch to https after enabling HTTPS
+# certs on the tailnet. Bookmark the rendered PORTAL.md on that branch.
+portal:
+  repo: git@panyam-github:panyam/megh.git
+  branch: portal
+  scheme: http
+
 sessions:
   repo: panyam/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only
