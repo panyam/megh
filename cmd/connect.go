@@ -1,10 +1,34 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/panyam/megh/internal/providers/runpod"
 )
+
+// awaitSSHReady polls for a box's public SSH endpoint when it isn't mapped yet
+// (RunPod maps 22/tcp a little after the pod goes RUNNING). Without this, a box
+// caught mid-init has no public SSH, so dialFor falls back to the tailnet name —
+// useless from a control machine that isn't on the tailnet. Returns the refreshed
+// pod; gives up after ~30s (a genuinely tailnet-only box never gets a port), and
+// the caller then falls back to the tailnet with a clear message.
+func awaitSSHReady(ctx context.Context, pod *runpod.Pod) *runpod.Pod {
+	if pod.SSHReady() {
+		return pod
+	}
+	fmt.Fprintf(os.Stderr, "megh: %s has no public SSH endpoint yet; waiting…\n", pod.DisplayName())
+	for i := 0; i < 10; i++ {
+		time.Sleep(3 * time.Second)
+		if p, err := runpod.Find(ctx, pod.ID); err == nil && p.SSHReady() {
+			return p
+		}
+	}
+	return pod
+}
 
 // dial describes how to reach a box over SSH.
 //

@@ -44,9 +44,12 @@ argument it connects to the only box.`,
 			return err
 		}
 
+		pod = awaitSSHReady(ctx, pod)
 		d := dialFor(pod)
 		if d.tailnet() {
-			fmt.Fprintf(os.Stderr, "megh: no public SSH; connecting to %q over the tailnet\n", pod.DisplayName())
+			fmt.Fprintf(os.Stderr, "megh: %q has no public SSH endpoint (still initializing, or tailnet-only). "+
+				"Trying its tailnet name — this needs THIS machine on the tailnet; otherwise wait and retry `megh ssh`.\n",
+				pod.DisplayName())
 		}
 
 		// Set up per-identity GitHub Host aliases on the box, and forward the
