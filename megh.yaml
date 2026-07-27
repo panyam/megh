@@ -63,6 +63,17 @@ persist:
   # - ~/.aws           # AWS credentials/config
   # - ~/.config/gcloud # gcloud auth
 
+# Map home paths onto locations on the volume so the paths your local scripts and
+# tools expect resolve on the box (mirrors your ~ layout). Targets are relative to
+# /mnt/work unless absolute. The target is authoritative (filled by `megh hydrate`);
+# unlike `persist`, nothing is migrated. `~/newstack -> repos/newstack` yields
+# ~/newstack/<name>/<branch>, matching the local worktree layout.
+symlinks:
+  ~/newstack: repos/newstack
+  ~/projects: repos/projects
+  ~/hw:       repos/hw
+  ~/books:    repos/books
+
 # The GitHub identity (profile gh key name) used by repos that don't set one.
 default_gh_key: personal
 
