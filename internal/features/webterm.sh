@@ -5,8 +5,14 @@
 # page: a second ttyd instance whose --index is a custom xterm.js client with an
 # on-screen key bar built for phones/tablets — Esc/Ctrl/Alt/Tab, arrows, the
 # symbols buried three taps deep on soft keyboards, one-tap Ctrl-combos, a tmux
-# row, paste, and a voice-dictation mic. It disables autocorrect/autocapitalize
-# on the input so the keyboard stops fighting you.
+# row, copy/select, paste, and a voice-dictation mic. It disables autocorrect/
+# autocapitalize on the input so the keyboard stops fighting you.
+#
+# Copy/paste: a drag-select (or Ctrl/Cmd+C with a selection) copies to the host
+# clipboard. Because stock xterm.js can't select across lines on touch, the
+# 'Copy' key opens a plain-text overlay of the buffer with native selection
+# handles, so you can select across lines and use the device's own Copy (handy
+# for grabbing a printed login URL). Paste pulls from the host clipboard.
 #
 # Both ttyd instances attach the SAME tmux session ('main'), so :7681 and :7682
 # are two views of one shell. The page + its WebSocket are same-origin (one port,
@@ -63,6 +69,19 @@ cat > "$DIR/term.html" <<'HTML'
     color:#e5e9f0; padding:8px 14px; border-radius:10px; border:1px solid var(--edge);
     font-size:14px; opacity:0; transition:opacity .2s; z-index:11; pointer-events:none; }
   #toast.show { opacity:1; }
+  /* Select overlay: native-selectable plain text of the buffer, so you can select
+     across lines (impossible in stock xterm.js on touch) and use the device Copy. */
+  #selview { position:fixed; inset:0; display:none; flex-direction:column; z-index:12; background:#0b0e14; }
+  #selview.show { display:flex; }
+  #selview .selbar { flex:0 0 auto; display:flex; align-items:center; gap:8px; color:#9aa4b2; font-size:13px;
+    padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:var(--bar-bg); border-bottom:1px solid var(--edge); }
+  #selview .selbar span { flex:1 1 auto; }
+  #selview .selbar button { flex:0 0 auto; height:32px; padding:0 12px; border-radius:8px;
+    border:1px solid var(--edge); background:var(--key-bg); color:var(--key-fg); font-size:14px; }
+  #seltext { flex:1 1 auto; margin:0; overflow:auto; white-space:pre; -webkit-user-select:text; user-select:text;
+    color:#c5c8c6; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    font-size:13px; line-height:1.35; -webkit-overflow-scrolling:touch;
+    padding:10px calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
 </style>
 </head>
 <body>
@@ -71,6 +90,11 @@ cat > "$DIR/term.html" <<'HTML'
   <div id="keybar"></div>
 </div>
 <div id="overlay" onclick="location.reload()">disconnected — tap to reconnect</div>
+<div id="selview">
+  <div class="selbar"><span>Select text, then use your device's Copy.</span>
+    <button id="selall">Copy all</button><button id="selclose">Done</button></div>
+  <pre id="seltext"></pre>
+</div>
 <div id="toast"></div>
 <script>@@XTERM_JS@@</script>
 <script>@@FIT_JS@@</script>
@@ -94,7 +118,18 @@ cat > "$DIR/term.html" <<'HTML'
     ta.setAttribute('autocomplete', 'off');
     ta.setAttribute('spellcheck', 'false');
   }
-  document.getElementById('term').addEventListener('mouseup', function () { term.focus(); });
+  // Desktop: releasing a drag-selection copies it to the host clipboard; a plain
+  // click (no selection) just refocuses so the keyboard input keeps working.
+  document.getElementById('term').addEventListener('mouseup', function () {
+    if (term.hasSelection()) copySel(false); else term.focus();
+  });
+  // Ctrl/Cmd+C copies when there is a selection; with none, Ctrl+C still sends SIGINT.
+  term.attachCustomKeyEventHandler(function (e) {
+    if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && term.hasSelection()) {
+      copySel(false); return false;
+    }
+    return true;
+  });
 
   // ---- viewport: keep the terminal sized above the soft keyboard --------------
   function layout() {
@@ -174,7 +209,7 @@ cat > "$DIR/term.html" <<'HTML'
       { l: 'tmux', s: '\x02' }, { l: 'new', s: '\x02c' }, { l: '◀', s: '\x02p' }, { l: '▶', s: '\x02n' },
       { l: '─', s: '\x02"' }, { l: '│', s: '\x02%' }, { l: '⛶', s: '\x02z' },
       { l: 'Home', s: '\x1b[H' }, { l: 'End', s: '\x1b[F' }, { l: 'PgUp', s: '\x1b[5~' }, { l: 'PgDn', s: '\x1b[6~' },
-      { l: '📋', act: 'paste' }, { l: '🎤', act: 'voice' }, { l: '⌨', act: 'toggle' }
+      { l: 'Copy', act: 'copy' }, { l: '📋', act: 'paste' }, { l: '🎤', act: 'voice' }, { l: '⌨', act: 'toggle' }
     ]
   ];
   var bar = document.getElementById('keybar'), voiceBtn = null;
@@ -186,6 +221,7 @@ cat > "$DIR/term.html" <<'HTML'
       if (k.act === 'voice') voiceBtn = b;
       var act = function () {
         if (k.mod) return toggleMod(k.mod);
+        if (k.act === 'copy') return copyOrSelect();
         if (k.act === 'paste') return doPaste();
         if (k.act === 'voice') return toggleVoice();
         if (k.act === 'toggle') return toggleBar();
@@ -201,13 +237,72 @@ cat > "$DIR/term.html" <<'HTML'
   });
   function toggleBar() { bar.classList.toggle('min'); setTimeout(layout, 60); }
 
-  // ---- paste + voice ----------------------------------------------------------
+  // ---- copy (terminal -> host) ------------------------------------------------
+  function writeClip(text, ok) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok || function () {}, function () { legacyCopy(text, ok); });
+    } else legacyCopy(text, ok);
+  }
+  function legacyCopy(text, ok) {
+    try {
+      var t = document.createElement('textarea');
+      t.value = text; t.style.position = 'fixed'; t.style.top = '-1000px'; t.style.opacity = '0';
+      document.body.appendChild(t); t.focus(); t.select();
+      document.execCommand('copy'); document.body.removeChild(t);
+      (ok || function () {})();
+    } catch (e) { toast('copy failed'); }
+  }
+  function copySel(silent) {
+    var s = term.getSelection();
+    if (!s) return false;
+    writeClip(s, function () { if (!silent) toast('copied'); });
+    return true;
+  }
+  // The Copy key: copy an existing drag-selection, else open the selectable view
+  // (the only reliable way to select across lines on touch).
+  function copyOrSelect() {
+    if (term.hasSelection()) { copySel(false); term.focus(); } else openSelect();
+  }
+
+  // ---- select overlay (native selection of the buffer text) -------------------
+  var selView = document.getElementById('selview'), selText = document.getElementById('seltext');
+  function bufferText() {
+    var buf = term.buffer.active, out = [], start = Math.max(0, buf.length - 3000);
+    for (var i = start; i < buf.length; i++) {
+      var ln = buf.getLine(i);
+      out.push(ln ? ln.translateToString(true) : '');
+    }
+    return out.join('\n').replace(/\s+$/, '') + '\n';
+  }
+  function openSelect() {
+    selText.textContent = bufferText();
+    selView.classList.add('show');
+    selText.scrollTop = selText.scrollHeight;   // newest output (a just-printed URL)
+  }
+  function closeSelect() { selView.classList.remove('show'); term.focus(); }
+  document.getElementById('selclose').addEventListener('click', closeSelect);
+  document.getElementById('selall').addEventListener('click', function () {
+    writeClip(selText.textContent, function () { toast('copied'); });
+  });
+
+  // ---- paste (host -> terminal) -----------------------------------------------
+  // Normalize newlines to CR and use bracketed paste when the app enabled it, so a
+  // multi-line key/password is inserted as one paste instead of run line by line.
+  function sendPaste(text) {
+    if (!text) return;
+    text = text.replace(/\r?\n/g, '\r');
+    if (term.modes && term.modes.bracketedPasteMode) text = '\x1b[200~' + text + '\x1b[201~';
+    rawSend(text);
+  }
   function doPaste() {
-    var fallback = function () { var t = prompt('Paste text:'); if (t) rawSend(t); };
+    var fallback = function () { var t = prompt('Paste text:'); if (t) sendPaste(t); };
     if (navigator.clipboard && navigator.clipboard.readText) {
-      navigator.clipboard.readText().then(function (t) { if (t) rawSend(t); }).catch(fallback);
+      navigator.clipboard.readText().then(function (t) { if (t) sendPaste(t); else fallback(); }).catch(fallback);
     } else fallback();
   }
+
+  // ---- voice ------------------------------------------------------------------
   var recog = null, recognizing = false;
   function toggleVoice() {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
