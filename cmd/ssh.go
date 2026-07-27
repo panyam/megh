@@ -66,6 +66,11 @@ argument it connects to the only box.`,
 			}
 		}
 
+		// Copy any megh.yaml `files:` (secrets/rc files not in a repo) onto the box.
+		if err := pushFiles(d, d.keyFor(cfg.SSHKeyFile), cfg.Files); err != nil {
+			fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
+		}
+
 		sshArgs := append(d.opts("-A"), d.userHost())
 		fmt.Fprintf(os.Stderr, "megh: ssh %s (browser access: megh browse)\n", d.userHost())
 		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)

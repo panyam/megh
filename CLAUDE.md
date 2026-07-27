@@ -82,7 +82,14 @@ resolve on the box. Passed as `MEGH_SYMLINKS`. Same symlink primitive as `persis
 but orthogonal intent: `persist` keeps mutable tool STATE alive (auto slot,
 migrates image defaults); `symlinks` MAPS paths to authoritative hydrated repo
 trees (explicit target, no migration). It skips a link that already exists as real
-content.
+content. Targets may be files or dirs and may not exist until `megh hydrate` runs.
+
+`files:` copies LOCAL files onto a box over SSH (on `megh ssh`/`hydrate`, mode
+0600) — rc files and **secret** files that must not live in a repo or image
+(`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
+connect); a `/mnt/work/` path persists. **Never copy a file with `RUNPOD_API_KEY`**
+(a box with it can manage your other boxes). Split of concerns: versioned dotfiles
+-> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
 ## Profiles (`~/.megh/profiles/<name>/`)
 
