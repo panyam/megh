@@ -52,6 +52,17 @@ sessions:
   repo: panyam/megh-sessions
   token_env: MEGH_SESSIONS_TOKEN    # pointer; fine-grained PAT, that repo only
 
+# Home dirs symlinked onto the scratch volume so their state survives box
+# rebuilds. A one-time `claude login` / `codex login` / etc. on a box persists on
+# the volume, so the next box on that volume is already signed in. Add a tool by
+# adding its config/auth dir here (and relaunch, or symlink it on the box).
+persist:
+  - ~/.claude          # Claude Code login + settings
+  - ~/.codex           # Codex login + settings
+  # - ~/.config/gh     # GitHub CLI auth
+  # - ~/.aws           # AWS credentials/config
+  # - ~/.config/gcloud # gcloud auth
+
 # The GitHub identity (profile gh key name) used by repos that don't set one.
 default_gh_key: personal
 

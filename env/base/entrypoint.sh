@@ -23,26 +23,40 @@ ARCH_TAG="${ARCH_TAG:-x86_64}"
 mkdir -p \
   "${WORK_MOUNT}/repos" \
   "${WORK_MOUNT}/worktrees" \
-  "${WORK_MOUNT}/state/claude" \
-  "${WORK_MOUNT}/state/codex" \
+  "${WORK_MOUNT}/state" \
   "${WORK_MOUNT}/cache/${ARCH_TAG}"
 
 # Stable path used everywhere else, independent of the provider's mount point.
 ln -sfn "${WORK_MOUNT}" /mnt/work
 
-# Persist agent state on the volume by pointing the agents' home dirs at it.
-# Only link if the real dir is empty, so we never clobber existing config.
+# Persist tool state on the volume by pointing home dirs at it. Only link if the
+# real dir is empty, so we never clobber existing config.
 link_state() {
   local home_dir="$1" vol_dir="$2"
+  mkdir -p "${vol_dir}"
   if [ -e "${home_dir}" ] && [ ! -L "${home_dir}" ]; then
     # A real dir already exists (image default). Move its contents once.
     cp -a "${home_dir}/." "${vol_dir}/" 2>/dev/null || true
     rm -rf "${home_dir}"
   fi
+  mkdir -p "$(dirname "${home_dir}")"
   ln -sfn "${vol_dir}" "${home_dir}"
 }
-link_state /root/.claude "${WORK_MOUNT}/state/claude"
-link_state /root/.codex  "${WORK_MOUNT}/state/codex"
+
+# Which home dirs to persist. Configurable via megh.yaml `persist:` (passed as
+# MEGH_PERSIST, comma-separated), so a one-time `claude login` / `codex login` /
+# etc. survives box rebuilds on the same volume. Add tools by editing that list.
+# Default keeps the agent auth/config dirs even on older megh binaries.
+PERSIST_DIRS="${MEGH_PERSIST:-~/.claude,~/.codex}"
+IFS=',' read -ra _persist <<< "${PERSIST_DIRS}"
+for _p in "${_persist[@]}"; do
+  _p="${_p//[[:space:]]/}"          # trim whitespace
+  [ -z "${_p}" ] && continue
+  _p="${_p#\~/}"; _p="${_p#/}"      # home-relative: strip a leading ~/ or /
+  # Volume slot name: path with / -> - and the leading dot dropped (.claude -> claude).
+  _name="$(printf '%s' "${_p}" | sed 's#/#-#g; s#^\.##')"
+  link_state "${HOME}/${_p}" "${WORK_MOUNT}/state/${_name}"
+done
 
 # ---------------------------------------------------------------------------
 # 2. SSH. RunPod injects the user's key as PUBLIC_KEY. Agent forwarding means
