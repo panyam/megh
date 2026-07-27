@@ -75,6 +75,12 @@ persist:
   # - ~/.config/gh
   # - ~/.aws
 
+# Map home paths onto volume locations so local paths/scripts work on the box.
+# Targets are relative to /mnt/work (or absolute); filled by `megh hydrate`.
+# symlinks:
+#   ~/newstack: repos/newstack
+#   ~/projects: repos/projects
+
 # GitHub identity (profile gh key name) for repos that don't set `key`.
 default_gh_key: personal
 

@@ -70,7 +70,8 @@ type Config struct {
 	Requires        Requires            `yaml:"requires"`
 	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. example.ts.net); for portal surface URLs
 	Portal          Portal              `yaml:"portal"`
-	Persist         []string            `yaml:"persist"` // home dirs symlinked to the volume so their state survives rebuilds
+	Persist         []string            `yaml:"persist"`  // home dirs symlinked to the volume so their state survives rebuilds
+	Symlinks        map[string]string   `yaml:"symlinks"` // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
 }
 
 // Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)

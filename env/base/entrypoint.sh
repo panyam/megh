@@ -58,6 +58,29 @@ for _p in "${_persist[@]}"; do
   link_state "${HOME}/${_p}" "${WORK_MOUNT}/state/${_name}"
 done
 
+# Map home paths onto volume locations (e.g. ~/newstack -> repos/newstack) so the
+# paths your local scripts/tools expect resolve on the box. Configurable via
+# megh.yaml `symlinks:` (passed as MEGH_SYMLINKS, "link:target" pairs). Targets are
+# relative to /mnt/work unless absolute. Unlike `persist` this does not migrate
+# anything: the target is authoritative (populated by `megh hydrate`). Skips a link
+# that already exists as real content.
+if [ -n "${MEGH_SYMLINKS:-}" ]; then
+  IFS=',' read -ra _links <<< "${MEGH_SYMLINKS}"
+  for _l in "${_links[@]}"; do
+    link="${_l%%:*}"; target="${_l#*:}"
+    [ -z "${link}" ] || [ -z "${target}" ] && continue
+    link="${link/#\~/$HOME}"                              # ~ -> /root
+    case "${target}" in /*) ;; *) target="/mnt/work/${target}" ;; esac   # relative -> /mnt/work
+    if [ -e "${link}" ] && [ ! -L "${link}" ]; then
+      log "symlink: ${link} exists as real content; leaving it"
+      continue
+    fi
+    mkdir -p "${target}" "$(dirname "${link}")"
+    ln -sfn "${target}" "${link}"
+    log "symlink: ${link} -> ${target}"
+  done
+fi
+
 # ---------------------------------------------------------------------------
 # 2. SSH. RunPod injects the user's key as PUBLIC_KEY. Agent forwarding means
 #    no long-lived git credentials ever land on the box.
