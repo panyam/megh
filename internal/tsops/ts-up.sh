@@ -41,10 +41,26 @@ start_daemon() {
 # certs enabled (admin console -> DNS -> HTTPS Certificates), so the box is still
 # reachable either way. HTTPS also requires the full MagicDNS name in the URL.
 SERVE_SCHEME=http
-serve_port() { ts serve --bg --"$SERVE_SCHEME"="$1" "http://127.0.0.1:$1" >/dev/null 2>&1; }
+serve_port() {
+  if [ "$SERVE_SCHEME" = https ]; then
+    # First HTTPS serve may provision a cert (ACME) — allow time, but bound it so a
+    # stuck provision can't hang boot; fall back to HTTP for the port if it doesn't.
+    timeout 60 ts serve --bg --https="$1" "http://127.0.0.1:$1" >/dev/null 2>&1 && return 0
+    ts serve --bg --http="$1" "http://127.0.0.1:$1" >/dev/null 2>&1
+  else
+    ts serve --bg --http="$1" "http://127.0.0.1:$1" >/dev/null 2>&1
+  fi
+}
 do_serve() {
-  # Probe once with :7681; if HTTPS certs exist the serve succeeds.
-  if ts serve --bg --https=7681 http://127.0.0.1:7681 >/dev/null 2>&1; then SERVE_SCHEME=https; else SERVE_SCHEME=http; fi
+  # Decide the scheme from whether the tailnet has HTTPS certs enabled: CertDomains
+  # is populated once "HTTPS Certificates" is on (admin > DNS). Reading status is
+  # safe; a `serve --https` probe would HANG when certs are off. Prefer HTTPS so
+  # phones get a secure context (the clipboard API needs it), else serve HTTP.
+  # Non-empty "CertDomains": [ ... ] means HTTPS certs are enabled. grep (not jq)
+  # so this needs no extra tooling on the box; empty [] or null -> stays HTTP.
+  if tailscale --socket="$SOCK" status --json 2>/dev/null | grep -q '"CertDomains": *\[[^]]'; then
+    SERVE_SCHEME=https
+  fi
   serve_port 7681 || echo "[ts] serve 7681 failed"
   serve_port 7682 || echo "[ts] serve 7682 failed"
   command -v Xvfb >/dev/null 2>&1 && { serve_port 6080 || echo "[ts] serve 6080 failed"; }
@@ -59,7 +75,7 @@ do_up() {
   # login prompt over a non-interactive SSH session.
   if timeout 45 tailscale --socket="$SOCK" up "${up_args[@]}" >"$UPLOG" 2>&1; then
     do_serve
-    local fqdn; fqdn=$(ts status --json 2>/dev/null | jq -r '.Self.DNSName // ""' | sed 's/\.$//')
+    local fqdn=""; command -v jq >/dev/null 2>&1 && fqdn=$(ts status --json 2>/dev/null | jq -r '.Self.DNSName // ""' | sed 's/\.$//')
     if [ "$SERVE_SCHEME" = https ]; then
       echo "[ts] up as $HOST; surfaces served over HTTPS — e.g. https://${fqdn:-$HOST}:7682 (webterm)"
     else
