@@ -81,6 +81,14 @@ persist:
 #   ~/newstack: repos/newstack
 #   ~/projects: repos/projects
 
+# Copy local files onto the box over SSH (mode 0600) — rc files and secret files
+# that must NOT go in a repo/image. local_path: box_path. A ~/ dest is ephemeral
+# (/root, re-copied each connect); a /mnt/work/ dest persists on the volume.
+# SECURITY: never copy a file with RUNPOD_API_KEY — a box with it can manage your
+# OTHER boxes. Scope it. Versioned dotfiles belong in a repo (repos: + symlinks:).
+# files:
+#   ~/.netrc: ~/.netrc
+
 # GitHub identity (profile gh key name) for repos that don't set `key`.
 default_gh_key: personal
 
