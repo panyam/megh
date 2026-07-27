@@ -36,8 +36,14 @@ apt-get update
 apt-get install -y --no-install-recommends \
   ca-certificates curl wget gnupg git git-lfs openssh-server rsync \
   tmux ripgrep fd-find fzf jq unzip zip build-essential pkg-config \
-  python3 python3-pip python3-venv \
+  python3 python3-pip python3-venv zsh \
   sudo locales tzdata less nano vim htop procps net-tools iproute2
+
+# Make zsh root's login shell so a box's shell matches a zsh setup (ttyd/tmux and
+# `megh ssh` both use the login shell). Your zsh config arrives via megh.yaml
+# `files:` (~/.zshenv, ~/.zshrc); with none, zsh just starts bare. Harmless if you
+# stay on bash.
+chsh -s "$(command -v zsh)" root || true
 
 # --- headed-browser display stack (full flavor only) -----------------------
 # Only useful with Playwright's headed browser; slim skips it.

@@ -83,9 +83,18 @@ symlinks:
 #
 # SECURITY: never copy a file containing RUNPOD_API_KEY (or other provider creds) —
 # a box with it can terminate/launch your OTHER boxes. Scope it to what the box needs.
-# files:
-#   ~/personal/box-envvars: ~/personal/envvars   # a box-scoped envvars, NOT the full one
-#   ~/.netrc:               ~/.netrc
+files:
+  # Shell env, so a box's zsh matches (zsh is baked; see provision.sh). ~/.zshenv
+  # sources ~/personal/{envvars,helper_functions}, so those must be on the box too.
+  ~/.zshenv:                   ~/.zshenv
+  ~/.zshrc:                    ~/.zshrc
+  ~/.bashrc:                   ~/.bashrc
+  ~/personal/helper_functions: ~/personal/helper_functions
+  # ~/.zshenv sources ~/personal/envvars. Do NOT copy the real one (it has
+  # RUNPOD_API_KEY). Create a scoped ~/personal/box-envvars (no RUNPOD_API_KEY /
+  # provider creds) -> it lands as the box's ~/personal/envvars. Skipped until the
+  # local file exists, so it's safe to leave here.
+  ~/personal/box-envvars:      ~/personal/envvars
 
 # The GitHub identity (profile gh key name) used by repos that don't set one.
 default_gh_key: personal
