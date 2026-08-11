@@ -178,14 +178,32 @@ Validated on a live RunPod box (2026-07-26): Tailscale userspace `up --ssh` +
 `serve --http`, the box joining the tailnet as its bare `<name>` (the `megh-`
 prefix is the RunPod pod marker only, not the tailnet hostname), `megh doctor`
 probing tailscale + surfaces over SSH, and the bare-name `up`/`list`/`doctor`/`down`
-lifecycle. Not yet run live: code-server, the baked `megh` binary +
-`megh hydrate --local`, and the Codex session transcript path in
-`flush-sessions.sh`. Validate on the next launch after the image rebuilds.
+lifecycle.
 
-Also not yet run live: **webterm** (`:7682`, `internal/features/webterm.sh`). To
-check on a box: `megh enable webterm` then `megh browse 7682` (or open it on the
-tailnet from a phone). Verify the second ttyd attaches the same tmux session as
-`:7681`, the key bar sends the right escape sequences (Ctrl-C, arrows, tmux
-prefix), autocorrect is actually off, and the inlined xterm.js renders offline
-(no CDN; assets are vendored in `internal/features/vendor/` and inlined by
-`features.Script`). This also exercises the baked-`megh`-in-entrypoint path.
+Second pass on a live slim box (2026-08-10, image `f57e6a0`), which cleared the
+rest of the list:
+
+- **webterm** (`:7682`) works end to end. The baked
+  `/opt/megh/webterm/term.html` renders with zero external resource references
+  (only a favicon 404), keystrokes typed in the page land in tmux session `main`
+  (the same session `:7681` serves), the `^C` key-bar button delivers a real
+  SIGINT and `↑` recalls history, and autocorrect / autocapitalize / autocomplete
+  / spellcheck are off on both the paste textarea and xterm's helper textarea.
+  Note the key bar binds `touchstart` + `mousedown` with `preventDefault`
+  (`webterm.sh:271`) so the soft keyboard can't steal focus. It does NOT bind
+  `click`, so a synthetic `.click()` in a test harness is a no-op.
+- **baked `megh` + `megh hydrate --local`** run on the box.
+- **code-server** on slim background-installs and comes up on `:8080` a few
+  minutes after boot (`doctor` shows it `down`, later `up`).
+- **Codex transcript path** in `flush-sessions.sh` stages
+  `codex-sessions/` and `claude-projects/` correctly and the allowlist excludes
+  `.credentials.json`. Only the authenticated push is still unproven, because
+  `MEGH_SESSIONS_TOKEN` was unset; the script exits at line 23 without it.
+
+Gotcha found in that pass: `megh hydrate --local` run from inside
+`/mnt/work/repos/megh` picks up THAT checkout's `megh.yaml` by upward discovery,
+not the baked `/etc/megh/megh.yaml`. A stale on-volume checkout therefore reports
+drift that does not exist. Run it from `/` or pass `--config /etc/megh/megh.yaml`.
+
+Still not run live: **RunPod DinD** (`DESIGN.md` open item) and the authenticated
+session-flush push.
