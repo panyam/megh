@@ -17,7 +17,7 @@ registries:
     username: panyam
     token_env: GH_MEGH_TOKEN        # pointer, not the token
 
-flavors: [base]
+flavors: [base, slim]         # both are published by CI; slim is the launch default
 
 providers:
   runpod:
@@ -142,6 +142,10 @@ repos:
   # ~/projects -> repos/projects/<name>/<default-branch>
   - {url: git@github.com:turnforge/lilbattle.git, dir: projects/lilbattle/main}
   - {url: git@github.com:panyam/notation.git,     dir: projects/notation/master}
+  # Local ~/projects/Agni holds several worktrees (main, web, docs, intents,
+  # template, ws3); this clones the default branch, matching the one-branch-leaf
+  # convention used above. Dir case mirrors the local tree, not the repo name.
+  - {url: git@github.com:panyam/agni.git,         dir: projects/Agni/main}
 
   # ~/work/hw -> repos/hw/... (mirrors the local nested layout; unchanged)
   - {url: git@github.com:hwtools/workspace.git, dir: hw}

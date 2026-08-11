@@ -40,9 +40,21 @@ else
   echo "  tailscale : binary not installed"
 fi
 
-for pl in "7681:shell" "7682:webterm" "6080:vnc" "8080:code"; do
-  p="${pl%%:*}"; label="${pl##*:}"
-  if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then s="up"; else s="down"; fi
+# port:label:binary. A closed port means different things per flavor, so ask the
+# box which binaries it carries. Slim has no frontend stack (no x11vnc) and
+# background-installs code-server at boot. Reporting either as "down" reads as a
+# fault when they are simply absent by design.
+for pl in "7681:shell:ttyd" "7682:webterm:ttyd" "6080:vnc:x11vnc" "8080:code:code-server"; do
+  p="${pl%%:*}"; rest="${pl#*:}"; label="${rest%%:*}"; bin="${rest##*:}"
+  if (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null; then
+    s="up"
+  elif command -v "$bin" >/dev/null 2>&1; then
+    s="down"
+  elif [ -f /tmp/code-server-install.log ] && [ "$bin" = "code-server" ]; then
+    s="installing"
+  else
+    s="n/a (not in this image)"
+  fi
   printf "  surface   : %-8s :%s %s\n" "$label" "$p" "$s"
 done
 

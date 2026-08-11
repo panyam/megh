@@ -140,11 +140,23 @@ func checkScript(c config.Config) string {
 		`if [ -d "/mnt/work/repos/$d/.git" ]; then echo "  present     $d"; ` +
 		`else echo "  MISSING     $d"; fi; done` + "\n")
 	b.WriteString(`echo "== on the volume, not declared =="` + "\n")
-	b.WriteString(`shopt -s nullglob; drift=0; for p in /mnt/work/repos/*/; do ` +
-		`n=$(basename "$p"); ok=0; for d in "${declared[@]}"; do [ "$d" = "$n" ] && ok=1; done; ` +
+	// Declared dests are multi-segment (newstack/oneauth/main), so a one-level
+	// scan of repos/*/ can never match them: it reports every GROUP dir as
+	// undeclared and misses a real stray nested below. Walk for actual clones
+	// instead (a dir holding .git), prune at each one so submodules and vendored
+	// checkouts inside a declared repo stay quiet, and compare the path relative
+	// to repos/.
+	b.WriteString(`drift=0; ` +
+		`while IFS= read -r p; do ` +
+		`n="${p#/mnt/work/repos/}"; ok=0; ` +
+		`for d in "${declared[@]}"; do [ "$d" = "$n" ] && ok=1; done; ` +
 		`if [ "$ok" -eq 0 ]; then o=$(git -C "$p" remote get-url origin 2>/dev/null || echo "(no origin)"); ` +
-		`echo "  UNDECLARED  $n  $o"; drift=1; fi; done; ` +
+		`echo "  UNDECLARED  $n  $o"; drift=1; fi; ` +
+		`done < <(find /mnt/work/repos -mindepth 1 -type d -exec test -d '{}/.git' \; -prune -print 2>/dev/null | sort); ` +
 		`[ "$drift" -eq 0 ] && echo "  (none)"` + "\n")
+	// --check is a report, not a gate: end on a clean exit so a drift finding
+	// does not surface as a bare "Error: exit status 1" from the ssh command.
+	b.WriteString("exit 0\n")
 	return b.String()
 }
 
