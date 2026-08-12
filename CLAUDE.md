@@ -31,7 +31,7 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # plain interactive shell (git-ready)
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
-megh enable [feature]             # add webterm/vnc/playwright/code to a box on demand
+megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
@@ -134,7 +134,53 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   No restic. Scratch = per-provider network volume at `/mnt/work`, DC-pinned,
   shareable by multiple boxes in the same DC.
 
+## Observability (`megh enable lgtm`)
+
+A dev/demo stack: Grafana + Loki + Tempo + Mimir behind ONE OpenTelemetry
+Collector. OTLP in on `:4317`/`:4318`, Grafana on `:3000`. Binaries, configs and
+data all live on the volume (`/mnt/work/state/lgtm`), so a rebuild does not
+re-download ~1 GB. It does NOT start at boot: control it on the box with
+`lgtm start|stop|status|logs <svc>|tenants|purge <tenant>`.
+
+One stack, many projects: a project is a **tenant**, not another instance. Point
+an app at it with two env vars, and its data is isolated from every other
+project's:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+OTEL_EXPORTER_OTLP_HEADERS=X-Scope-OrgID=<project>
+```
+
+`MEGH_LGTM_TENANTS=a,b` provisions a Grafana datasource set per tenant.
+`lgtm purge <tenant>` deletes one project's telemetry (stack must be stopped).
+
 ## Gotchas (things that bit us)
+
+- **RunPod CPU pods CANNOT run containers. Settled, not pending.** The pod has no
+  `cap_sys_admin` (CapEff `a80405fb`), no `/dev/fuse`, and `mount`/`iptables` are
+  denied. Default `dockerd` dies creating the DOCKER NAT chain;
+  `--storage-driver=vfs --iptables=false --bridge=none` makes the daemon *start*,
+  which is a trap, because `docker run` then fails at `failed to register layer:
+  unshare: operation not permitted`. No image can be unpacked, so testcontainers
+  and `docker build` are impossible here (that is what the Hetzner VM artifact is
+  for). Run services NATIVELY instead: apt postgres + `postgresql-16-pgvector`
+  (extension 0.6.0, real `<->` queries verified) and redis both work fine.
+- **OTel multi-tenancy: the `batch` processor silently eats the tenant.** It
+  merges across requests and drops per-request client metadata, so
+  `headers_setter`'s `from_context` finds nothing and EVERY tenant collapses into
+  `default_value` while returning 200s and logging no error. Fix is
+  `batch: {metadata_keys: [x-scope-orgid]}`. Also note `from_context` matches
+  LOWERCASED metadata keys, so `x-scope-orgid`, not `X-Scope-OrgID`.
+- **Mimir in one process still talks to itself over the network.** Each component
+  advertises the box's eth0 address by default, but the servers bind loopback, so
+  the query-scheduler cannot reach the query-frontend and every read hangs until
+  it times out. Pin `instance_addr: 127.0.0.1` on every ring, plus
+  `-query-frontend.instance-addr=127.0.0.1`, which has NO YAML equivalent.
+- **Tempo 3.x dropped the top-level `ingester`/`compactor` config blocks** that
+  2.x accepted; leaving them in is a hard parse error, not a warning.
+- **Deleting data on the NFS volume fails while a writer holds it open**
+  (`Device or resource busy` on `.nfsXXXX` silly-renames). `lgtm purge` therefore
+  refuses unless the stack is stopped, rather than half-deleting.
 
 - **RunPod REST schema differs from its docs.** CPU pods use `computeType:"CPU"`,
   `vcpuCount`, `cpuFlavorIds` (enum `cpu3c/g/m`, `cpu5c/g/m`; c=2/g=4/m=8 GB per
