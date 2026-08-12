@@ -165,10 +165,35 @@ Leaning mesh-hosted. Not built yet; the CLI is the first surface.
   the tie-breaker is the user's Mac arch: match it for tightest local/remote
   parity, unless the deploy target's arch outweighs that.
 - **GPU.** Deferred. A separate explicitly-invoked flow, not this box.
-- **RunPod DinD (verify on box #1).** Does a RunPod CPU pod let the dev workflow
-  run its own containers (`docker build`, testcontainers)? If not, RunPod is a
-  taste-test box and real container-in-dev work belongs on a VM-native box (run
-  directly, native Docker). This decides how far RunPod goes beyond "get a feel."
+- **RunPod DinD. SETTLED: NO, and not fixable by configuration** (measured on a
+  live CPU pod, 2026-08-12). The pod holds 13 capabilities and `cap_sys_admin` is
+  not among them (`CapEff=00000000a80405fb`); `mount` and `iptables` are denied
+  and `/dev/fuse`, `/dev/net/tun`, `/dev/kmsg`, `/dev/loop0` are all absent.
+  Default `dockerd` fails creating the DOCKER NAT chain. The near-miss to be wary
+  of: `dockerd --storage-driver=vfs --iptables=false --bridge=none` *does* start,
+  but `docker run` then dies at `failed to register layer: unshare: operation not
+  permitted`. It cannot unpack an image, so no container runs at all.
+  **Consequences.** Testcontainers and `docker build` are impossible on RunPod;
+  that is what the VM artifact (native Docker) is for, and it is the concrete
+  reason to build the Hetzner backend. But this does NOT block using RunPod as
+  the main box, because the actual need was storage services, and those run
+  natively: apt postgres 16 with `postgresql-16-pgvector` (extension 0.6.0, real
+  `<->` distance queries verified) and redis 7. Prefer one postgres CLUSTER with
+  one DATABASE per project: per-database overhead is negligible while per-cluster
+  memory is not, so isolation stays clean without N instances. Caveat: apt gives
+  pg16 where the repos' compose files pin `pgvector/pgvector:pg18`, so anything
+  depending on pg18 behaviour is a genuine gap.
+- **Vertical over horizontal scaling. SETTLED** (measured 2026-08-12). RunPod CPU
+  pricing is exactly linear: $0.04/vCPU-hr and $0.01/GB-hr, with 2/8, 4/16 and
+  8/32 billing 0.080, 0.160 and 0.320. Two small boxes cost precisely what one
+  double-sized box costs, so there is no cost argument for splitting. One box
+  wins on every other axis: two boxes cannot share a postgres data dir on the
+  same volume without corrupting it, per-box services duplicate memory, and a
+  services box the others depend on stops being disposable. Linear pricing plus
+  disposable boxes also means sizing is a PER-SESSION choice, not a standing one:
+  run 4/16 for ordinary work and launch 8/32 for a demo day. Duty cycle dominates
+  the cost model (8h/day at 4/16 is ~$28/mo against ~$117 always-on). Shared
+  services migrate to the always-on box if and when that exists.
 
 ## Profiles (self-contained key + secrets per context)
 
