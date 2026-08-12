@@ -39,6 +39,19 @@ apt-get install -y --no-install-recommends \
   python3 python3-pip python3-venv zsh \
   sudo locales tzdata less nano vim htop procps net-tools iproute2
 
+# --- GitHub CLI ------------------------------------------------------------
+# Not optional: the PR/issue workflow (start_pr, address_pr_feedback,
+# reviewer_guide, ghissue) is built on `gh`, so a box without it cannot do the
+# thing the box exists for. From the official repo rather than Ubuntu's, which
+# lags. Auth persists across rebuilds via megh.yaml `persist: ~/.config/gh`.
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=${TARGET_ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  > /etc/apt/sources.list.d/github-cli.list
+apt-get update
+apt-get install -y --no-install-recommends gh
+
 # Make zsh root's login shell so a box's shell matches a zsh setup (ttyd/tmux and
 # `megh ssh` both use the login shell). Your zsh config arrives via megh.yaml
 # `files:` (~/.zshenv, ~/.zshrc); with none, zsh just starts bare. Harmless if you
@@ -101,8 +114,10 @@ cat > /etc/profile.d/megh-path.sh <<'EOF'
 export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 EOF
 
-# --- coding agents (both flavors) ------------------------------------------
-npm install -g @anthropic-ai/claude-code @openai/codex
+# --- coding agents + pnpm (both flavors) -----------------------------------
+# pnpm is not interchangeable with npm here: repos carrying a pnpm-lock.yaml
+# resolve differently under npm, so an npm-only box installs the wrong tree.
+npm install -g @anthropic-ai/claude-code @openai/codex pnpm
 
 # --- Playwright + headed browser (full flavor only) ------------------------
 # Deferred on slim: most work is not frontend. Install on demand with
