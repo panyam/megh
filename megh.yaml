@@ -60,7 +60,7 @@ persist:
   - ~/.claude          # Claude Code credentials, projects, sessions
   - ~/.claude.json     # Claude Code login/onboarding state (a FILE beside ~/.claude)
   - ~/.codex           # Codex login + settings
-  # - ~/.config/gh     # GitHub CLI auth
+  - ~/.config/gh       # GitHub CLI auth (gh is baked in; see provision.sh)
   # - ~/.aws           # AWS credentials/config
   # - ~/.config/gcloud # gcloud auth
 
