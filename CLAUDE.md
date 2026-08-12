@@ -231,10 +231,14 @@ drift that does not exist. Run it from `/` or pass `--config /etc/megh/megh.yaml
 
 RunPod DinD is now settled (see `DESIGN.md`); it is a definitive no.
 
-Still not run live:
+Third pass on image `0cf66ed` (2026-08-12) cleared the rest: `gh` 2.97.0 and
+pnpm 11.21.0 are baked, `~/.config/gh` persists to `state/config-gh`, the baked
+`megh hydrate --local --check` now exits 0 with no phantom drift, and Grafana
+renders per-tenant dashboards with correct data and no errors (verified through
+`/api/ds/query`, the panel path, plus a real browser render). a project's EDA tools
+are all apt-installable on 24.04 (`xschem` 3.4.4, `lepton-eda`, `ngspice`,
+`gerbv`, `kicad`), so exampleproj needs no extra provisioning; only `geda` itself has no
+installable candidate, superseded by `lepton-eda`.
 
-- **Grafana dashboards actually rendering** against the `lgtm` datasources. The
-  provisioning and health were checked over the API only, never in a browser, and
-  datasource config can be valid while still querying wrong. Next box: `megh
-  enable lgtm`, `megh browse 3000`, build a panel against each tenant.
-- The authenticated session-flush push (needs `MEGH_SESSIONS_TOKEN`, still unset).
+Still not run live: the authenticated session-flush push (needs
+`MEGH_SESSIONS_TOKEN`, still unset).
