@@ -56,3 +56,27 @@ serve live; serve goes through the `ts` wrapper). The only bare `tailscale` call
 left in `entrypoint.sh` should be the shutdown `logout` in the SIGTERM trap; there
 must be no `tailscaled --tun` or `tailscale up`/`serve --bg` invocation there
 (matches in comments or `log "…"` strings don't count).
+
+## C3: megh never sends a provider credential to a box
+
+A box with `RUNPOD_API_KEY` can terminate and launch your OTHER boxes, so nothing
+megh copies to a box may carry one. This is an invariant across every channel
+megh has, not a property of any one command:
+
+- `megh enable` forwards only `MEGH_`-prefixed environment (`meghEnv` in
+  `cmd/enable.go`), never the ambient environment.
+- `files:` copies only what `megh.yaml` names, which is why the pattern is a
+  scoped `~/personal/box-envvars` rather than the real `~/personal/envvars`.
+- `box_envs:` is an explicit opt-in list, never a wildcard.
+
+New code that ships environment, files, or scripts to a box passes an allowlist,
+never the caller's whole environment.
+
+**Verify:** `grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in
+`meghEnv`. The other `os.Environ()` uses in `cmd/` are NOT violations: they set
+the environment of a LOCAL child process (the ssh client in `sshexec.go`, the
+local bash in `doctorts.go --local`), and megh never configures ssh `SendEnv`, so
+the calling shell's environment is not forwarded to a box. Confirm that with
+`grep -rn 'SendEnv' cmd/ internal/`, which must return nothing. What must never
+happen is a provider key reaching a box through pod env (`box_envs`), a `files:`
+copy, or a script piped over SSH.

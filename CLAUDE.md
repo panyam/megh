@@ -31,7 +31,7 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # plain interactive shell (git-ready)
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
-megh enable [feature]             # add webterm/vnc/playwright/code to a box on demand
+megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
@@ -134,8 +134,32 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   No restic. Scratch = per-provider network volume at `/mnt/work`, DC-pinned,
   shareable by multiple boxes in the same DC.
 
+## Services on a box (no Docker)
+
+RunPod pods cannot run containers (settled; see `DESIGN.md`), so services run
+NATIVELY. apt postgres + `postgresql-16-pgvector` and redis both work. One
+postgres CLUSTER with one DATABASE per project: per-database overhead is tiny,
+per-cluster memory is not.
+
+`megh enable lgtm` is the observability stack (Grafana + Loki + Tempo + Mimir
+behind one OTel collector, OTLP on `:4317`/`:4318`, UI on `:3000`). One stack,
+many projects: a project is a **tenant**, not another instance.
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+OTEL_EXPORTER_OTLP_HEADERS=X-Scope-OrgID=<project>
+```
+
+It does not start at boot; `lgtm start|stop|status|logs|tenants|purge <tenant>`
+runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
+**Implementation lore and its gotchas: `internal/features/NOTES.md`.**
+
 ## Gotchas (things that bit us)
 
+- **RunPod CPU pods CANNOT run containers.** No `cap_sys_admin`; `docker run`
+  dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
+  starting. Testcontainers and `docker build` are impossible here. Full evidence
+  and the native-services answer: `DESIGN.md`.
 - **RunPod REST schema differs from its docs.** CPU pods use `computeType:"CPU"`,
   `vcpuCount`, `cpuFlavorIds` (enum `cpu3c/g/m`, `cpu5c/g/m`; c=2/g=4/m=8 GB per
   vCPU). `dataCenterIds` is an array, `ports` is an array, `env` is a map.
@@ -205,5 +229,12 @@ Gotcha found in that pass: `megh hydrate --local` run from inside
 not the baked `/etc/megh/megh.yaml`. A stale on-volume checkout therefore reports
 drift that does not exist. Run it from `/` or pass `--config /etc/megh/megh.yaml`.
 
-Still not run live: **RunPod DinD** (`DESIGN.md` open item) and the authenticated
-session-flush push.
+RunPod DinD is now settled (see `DESIGN.md`); it is a definitive no.
+
+Still not run live:
+
+- **Grafana dashboards actually rendering** against the `lgtm` datasources. The
+  provisioning and health were checked over the API only, never in a browser, and
+  datasource config can be valid while still querying wrong. Next box: `megh
+  enable lgtm`, `megh browse 3000`, build a panel against each tenant.
+- The authenticated session-flush push (needs `MEGH_SESSIONS_TOKEN`, still unset).
