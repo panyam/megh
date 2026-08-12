@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	"github.com/panyam/megh/internal/features"
 	"github.com/panyam/megh/internal/providers/runpod"
@@ -21,6 +22,24 @@ var (
 // featureName restricts what can be run to a simple slug.
 var featureName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// meghEnv renders the caller's MEGH_* environment as shell `export` lines to
+// prepend to a feature script. RUNPOD_API_KEY and friends are deliberately NOT
+// included: a box holding a provider key could manage your other boxes.
+func meghEnv() []byte {
+	var b bytes.Buffer
+	for _, kv := range os.Environ() {
+		i := strings.IndexByte(kv, '=')
+		if i < 0 || !strings.HasPrefix(kv, "MEGH_") {
+			continue
+		}
+		k, v := kv[:i], kv[i+1:]
+		// Single-quote the value and escape embedded quotes, so arbitrary
+		// characters survive the trip without being re-interpreted.
+		fmt.Fprintf(&b, "export %s='%s'\n", k, strings.ReplaceAll(v, `'`, `'\''`))
+	}
+	return b.Bytes()
+}
+
 var enableCmd = &cobra.Command{
 	Use:   "enable [feature] [box]",
 	Short: "Add a capability to a box on demand (start slim, add features later)",
@@ -33,6 +52,10 @@ works against any box (piped over SSH) and needs no image rebuild.
   megh enable vnc         headed-browser display (noVNC on :6080)
   megh enable playwright  Playwright + Chromium (headed needs 'enable vnc')
   megh enable code        code-server (VS Code on :8080)
+  megh enable lgtm        dev/demo observability: Grafana + Loki + Tempo + Mimir
+                          behind one OTLP collector (:4317/:4318, UI on :3000).
+                          Multi-tenant, one tenant per project. Off until you
+                          run 'lgtm start' on the box.
 
 Runs from the control machine and ssh-es to the box (sole box, or name it as the
 second arg). Use --local when running on the box itself.`,
@@ -53,6 +76,10 @@ second arg). Use --local when running on the box itself.`,
 		if err != nil {
 			return fmt.Errorf("%w (run `megh enable` to list)", err)
 		}
+		// Feature scripts take MEGH_*-prefixed knobs (storage roots, pinned
+		// versions, tenant lists). The script is piped to a remote `bash -s`, which
+		// inherits nothing from this shell, so carry those vars across explicitly.
+		script = append(meghEnv(), script...)
 
 		if enableLocal {
 			c := exec.Command("bash", "-s")
