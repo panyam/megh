@@ -214,7 +214,19 @@ case "${1:-status}" in
       list|"") run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c '\l'" ;;
     esac
     ;;
-  *) echo "usage: pg start|stop|status|logs|psql [db]|db add <name>|db drop <name>|db list"; exit 2 ;;
+  reset)
+    # Dev data is disposable by design. Wipes the whole cluster; the dumps on the
+    # volume are left alone, so `pg start` will restore from them unless you
+    # clear those too (the message says how).
+    read -r -p "destroy the entire cluster at ${PGDATA}? [y/N] " a
+    [ "$a" = y ] || exit 0
+    up && run "${PGBIN}/pg_ctl -D '${PGDATA}' -m immediate -w stop" >/dev/null 2>&1
+    rm -rf "${PGDATA}"
+    echo "  wiped ${PGDATA}"
+    echo "  dumps on the volume are untouched; 'pg start' restores from them."
+    echo "  to start genuinely empty:  rm -f ${PGDUMPS}/*.sql"
+    ;;
+  *) echo "usage: pg start|stop|status|logs|psql [db]|db add <name>|db drop <name>|db list|dump|restore|reset"; exit 2 ;;
 esac
 CTRL
 chmod +x /usr/local/bin/pg

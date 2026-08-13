@@ -60,25 +60,42 @@ One cluster, one database per project. Per-database overhead is negligible while
 per-cluster memory is not, so projects get isolation without N servers. Redis is
 the same idea via numbered databases or a key prefix.
 
-### THE finding: postgres data cannot live on the volume
+### Database data lives on the box's LOCAL disk
 
-Measured on a live box. The volume is `nfs4 ... sec=sys` with root squashed:
+Both features default to local disk (`/var/lib/megh-pg`, `/var/lib/megh-redis`).
+These are dev boxes: there is no expectation that a database outlives one.
+Sharing DB storage between boxes is an explicit non-goal — seed with **fixtures**,
+or use a real cloud datastore if the data genuinely has to persist.
 
-- `chown` is denied for **every** uid, including root. Only a no-op chown to
-  root succeeds. The same `chown` on the container disk works fine, so it is the
-  export, not the container.
-- A `0777` directory does not rescue it, because `initdb` also chmods to `0700`
-  and gets `could not change permissions of directory`.
+**Correction, because an earlier version of this file said otherwise:** postgres
+*can* run from the NFS volume. The blocker is narrower than "NFS cannot host it".
+The volume is `nfs4 ... sec=sys` with root squashed, so `chown` is denied for
+every uid including root — root cannot hand a directory to postgres. But the
+export preserves the *creating* process's uid, so a directory created BY the
+postgres user is owned by postgres and needs no chown. Verified end to end:
+`initdb` succeeds, the server runs, and `kill -9` recovers cleanly via WAL replay.
+The trap that produced the wrong conclusion was testing with a root-created
+`0777` directory, where `initdb`'s own chmod fails because a non-owner cannot
+chmod.
 
-postgres requires ownership of its data directory, so this is not tunable. The
-cluster therefore lives on the box's **local disk** (`/var/lib/megh-pg`) and
-durability comes from logical dumps written to the volume, auto-restored into a
-fresh cluster on the next box. `TestPostgresDataDefaultsOffTheVolume` exists so
-the default cannot drift back, which would look like an improvement.
+We still choose local disk, for reasons that are about fit rather than
+capability:
 
-Redis has no such problem and does keep its data on the volume: it needs write
-access, not ownership. Verified: the RDB lands on `/workspace/state/redis` and
-survives a restart.
+- **Speed.** pgbench (4 clients, 30 s): 1308 tps / 3.06 ms on the volume against
+  4452 tps / 0.90 ms local. Roughly 3.4x.
+- **Postgres will not protect a shared cluster.** A second box mounting the same
+  volume prints `another server might be running; trying to start server anyway`
+  and starts, because its liveness check is a local PID lookup that means nothing
+  on another host. Measured: two boxes on one data directory diverged immediately
+  (1 row vs 2). Anyone who does point `MEGH_PG_DATA` at the volume must guarantee
+  exactly one box uses it.
+
+Redis has no ownership problem at all (it needs write access, not ownership) and
+works on the volume; it defaults to local disk anyway, for consistency and
+because the same "dev data is disposable" logic applies.
+
+Both features have a `reset` subcommand, because disposable data should be
+trivially disposable.
 
 **Dump/restore carries roles separately.** `pg_dump` is per-database and roles
 are cluster-global, so a database-only dump restores tables that nothing can log
