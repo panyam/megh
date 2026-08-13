@@ -68,12 +68,18 @@ func TestNoCommandSubstitutionInUnquotedHeredocs(t *testing.T) {
 	}
 }
 
-// The RunPod volume is nfs4 with root squashed: chown is denied for every uid,
-// and a 0777 directory does not help because initdb also chmods to 0700. Since
-// postgres requires ownership of its data directory, pointing the default at the
-// volume produces a cluster that cannot be created at all. Measured on a live
-// box; this test exists so the default cannot drift back to the volume, which
-// reads like an improvement and is not.
+// Postgres CAN run from the NFS volume (a directory created by the postgres user
+// is owned by it; only root handing one over is denied). The default stays on
+// local disk for two measured reasons, and moving it back would look like an
+// improvement while being neither:
+//
+//   - 3.4x slower: 1308 tps / 3.06 ms on the volume vs 4452 / 0.90 local.
+//   - Postgres does NOT protect a shared cluster. A second box on the same volume
+//     warns "another server might be running" and starts anyway, because its
+//     liveness check is a local PID lookup. Two boxes then diverged on one data
+//     directory in testing.
+//
+// Dev boxes do not need a database to outlive them; share data with fixtures.
 func TestPostgresDataDefaultsOffTheVolume(t *testing.T) {
 	script, err := Script("postgres")
 	if err != nil {
@@ -84,7 +90,8 @@ func TestPostgresDataDefaultsOffTheVolume(t *testing.T) {
 		t.Fatal("could not find the MEGH_PG_DATA default in postgres.sh")
 	}
 	if got := string(def[1]); strings.HasPrefix(got, "/mnt/work") || strings.HasPrefix(got, "/workspace") {
-		t.Errorf("postgres data defaults to %q, which is the NFS volume; postgres cannot own a directory there", got)
+		t.Errorf("postgres data defaults to %q, the shared NFS volume: 3.4x slower, and a "+
+			"second box will open the same cluster and corrupt it", got)
 	}
 }
 
