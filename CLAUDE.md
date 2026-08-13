@@ -139,7 +139,10 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 RunPod pods cannot run containers (settled; see `DESIGN.md`), so services run
 NATIVELY. postgres 18 + pgvector and redis are BAKED into both flavors (~11 MB,
 ~1% of the slim image); `megh enable postgres` / `megh enable redis` create the
-cluster on the volume and install the control scripts. The observability stack
+cluster and install the control scripts. **postgres runs on the box's LOCAL disk
+(the volume cannot own it, see gotchas) with `pg dump` keeping logical dumps on
+the volume that auto-restore into a fresh cluster; redis keeps its data on the
+volume directly.** The observability stack
 stays OUT of the image at ~700 MB and caches on the volume instead. One postgres CLUSTER
 with one DATABASE per project: per-database overhead is tiny, per-cluster memory
 is not. Ports default to what the repos already expect (postgres **5433**, redis
@@ -169,6 +172,14 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
   starting. Testcontainers and `docker build` are impossible here. Full evidence
   and the native-services answer: `DESIGN.md`.
+- **The volume is NFS with root squashed: `chown` is denied for EVERY uid,
+  including root.** Measured. So postgres cannot keep its data directory there
+  (it requires ownership, and a 0777 dir does not help because `initdb` chmods to
+  0700). The cluster runs on local disk and `pg dump` keeps logical dumps on the
+  volume, auto-restored into a fresh cluster on the next box. Redis is fine on
+  the volume: it needs write access, not ownership. Anything else that wants to
+  own files on `/mnt/work` will hit the same wall. See
+  `internal/features/NOTES.md`.
 - **RunPod REST schema differs from its docs.** CPU pods use `computeType:"CPU"`,
   `vcpuCount`, `cpuFlavorIds` (enum `cpu3c/g/m`, `cpu5c/g/m`; c=2/g=4/m=8 GB per
   vCPU). `dataCenterIds` is an array, `ports` is an array, `env` is a map.

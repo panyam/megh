@@ -60,15 +60,48 @@ One cluster, one database per project. Per-database overhead is negligible while
 per-cluster memory is not, so projects get isolation without N servers. Redis is
 the same idea via numbered databases or a key prefix.
 
+### THE finding: postgres data cannot live on the volume
+
+Measured on a live box. The volume is `nfs4 ... sec=sys` with root squashed:
+
+- `chown` is denied for **every** uid, including root. Only a no-op chown to
+  root succeeds. The same `chown` on the container disk works fine, so it is the
+  export, not the container.
+- A `0777` directory does not rescue it, because `initdb` also chmods to `0700`
+  and gets `could not change permissions of directory`.
+
+postgres requires ownership of its data directory, so this is not tunable. The
+cluster therefore lives on the box's **local disk** (`/var/lib/megh-pg`) and
+durability comes from logical dumps written to the volume, auto-restored into a
+fresh cluster on the next box. `TestPostgresDataDefaultsOffTheVolume` exists so
+the default cannot drift back, which would look like an improvement.
+
+Redis has no such problem and does keep its data on the volume: it needs write
+access, not ownership. Verified: the RDB lands on `/workspace/state/redis` and
+survives a restart.
+
+**Dump/restore carries roles separately.** `pg_dump` is per-database and roles
+are cluster-global, so a database-only dump restores tables that nothing can log
+in to own. `pg dump` writes `_roles.sql` via `pg_dumpall --roles-only` and
+`pg restore` applies it first. Validated end to end: create role + db + a pgvector
+row, dump, destroy the cluster, re-enable, and the row reads back through the
+project's own DSN with the distance still correct.
+
 ### Gotchas
 
 - **The Debian package creates its own cluster on the container disk**, which
-  does not survive a rebuild. The feature drops it (`pg_dropcluster`) and manages
-  its own on the volume, started by the `pg` control script rather than systemd.
-- **postgres refuses to run as root**, so the data directory must be owned by the
-  `postgres` user. On the NFS volume that `chown` is the step most likely to
-  fail; the script checks it and points at `MEGH_PG_DATA=/var/lib/megh-pg` (local
-  disk) rather than failing later inside `initdb`.
+  fights the managed one for the port. `provision.sh` and the feature both drop
+  it (`pg_dropcluster`).
+- **Backticks inside an UNQUOTED heredoc execute.** Both features generate their
+  control script with `cat > file <<CTRL`, which expands `${VARS}` (the point)
+  but also runs command substitution (not the point). A doc comment mentioning
+  `` `stop` `` ran `stop` and silently deleted the word from the generated file.
+  It is valid bash, so `bash -n` cannot see it;
+  `TestNoCommandSubstitutionInUnquotedHeredocs` can. Put anything that is not a
+  variable in the quoted heredoc.
+- **Do not report a restore as successful without checking.** An early version
+  printed "restored roles" unconditionally while the role did not exist, which
+  cost real debugging time. Both paths now report what is actually present.
 - **Redis uses RDB snapshots, not AOF.** The data dir defaults to the NFS volume,
   where AOF's per-write fsync is the pathological case, and a dev cache does not
   need per-operation durability.
