@@ -12,13 +12,19 @@
 # key prefix. That is the redis-native equivalent of one postgres cluster with a
 # database per project: isolation without paying for N servers.
 #
+# Data lives on the box's LOCAL disk, like postgres. Redis *can* keep it on the
+# volume (verified: it needs write access, not ownership, unlike postgres), but
+# these are dev boxes and there is no expectation that a database survives one.
+# Sharing DB storage between boxes is a non-goal: seed with fixtures, or use a
+# real cloud datastore if data genuinely has to outlive a box.
+#
 # Knobs: MEGH_REDIS_PORT (default 6399),
-#        MEGH_REDIS_DATA (default /mnt/work/state/redis -> survives a rebuild).
+#        MEGH_REDIS_DATA (default /var/lib/megh-redis; the volume works too).
 set -uo pipefail
 log() { echo "[megh-redis] $*"; }
 
 PORT="${MEGH_REDIS_PORT:-6399}"
-DATA="${MEGH_REDIS_DATA:-/mnt/work/state/redis}"
+DATA="${MEGH_REDIS_DATA:-/var/lib/megh-redis}"
 CONF=/etc/redis/megh.conf
 
 # Current images bake redis (provision.sh), so this is normally a no-op; it
@@ -45,9 +51,9 @@ dir ${DATA}
 dbfilename megh.rdb
 logfile /tmp/redis.log
 daemonize no
-# RDB snapshots rather than appendonly: the data dir defaults to the NFS volume,
-# where AOF's per-write fsync is the pathological case. A dev cache does not
-# need per-operation durability.
+# RDB snapshots rather than appendonly: a dev cache does not need per-operation
+# durability, and AOF's per-write fsync is the pathological case if anyone moves
+# the data dir onto the NFS volume.
 appendonly no
 save 60 1000
 EOF
@@ -78,7 +84,14 @@ case "${1:-status}" in
     ;;
   logs) tail -n 40 /tmp/redis.log ;;
   cli) shift; redis-cli -h 127.0.0.1 -p "${PORT}" "$@" ;;
-  *) echo "usage: redisctl start|stop|status|logs|cli [args]"; exit 2 ;;
+  reset)
+    # Dev data is disposable by design; make throwing it away a one-liner rather
+    # than something you improvise with rm at 2am.
+    up && { redis-cli -h 127.0.0.1 -p "${PORT}" shutdown nosave 2>/dev/null; sleep 1; }
+    rm -rf "${DATA}"/*; mkdir -p "${DATA}"
+    echo "  wiped ${DATA}; start again with: redisctl start"
+    ;;
+  *) echo "usage: redisctl start|stop|status|logs|cli [args]|reset"; exit 2 ;;
 esac
 CTRL
 chmod +x /usr/local/bin/redisctl
