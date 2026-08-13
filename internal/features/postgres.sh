@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Feature: postgres — a real PostgreSQL + pgvector on the box, no containers.
+# Idempotent.
+#
+# Why native: RunPod pods cannot run containers at all (see DESIGN.md), so the
+# compose files these repos ship cannot be used. Native is not a downgrade here:
+# PGDG carries the same major the compose files pin, so this is version parity,
+# not a compromise.
+#
+# ONE CLUSTER, ONE DATABASE PER PROJECT. Per-database overhead is negligible
+# while per-cluster memory is not, so projects get real isolation without paying
+# for N servers. `pg db add <name>` creates the role, the database and the vector
+# extension in one step.
+#
+# Defaults deliberately match what the repos already expect, so a project needs
+# NO config change: port 5433 (diffpp's compose maps 5433->5432 and its default
+# DIFFPP_DB_URL follows), and `pg db add diffpp` yields role/password/database
+# all named diffpp, exactly as its compose environment does.
+#
+# Knobs: MEGH_PG_VERSION (default 18), MEGH_PG_PORT (5433),
+#        MEGH_PG_DATA (default /mnt/work/state/postgres -> survives a rebuild;
+#        point it at /var/lib/megh-pg for local disk instead).
+set -uo pipefail
+log() { echo "[megh-postgres] $*"; }
+
+PGVER="${MEGH_PG_VERSION:-18}"
+PGPORT="${MEGH_PG_PORT:-5433}"
+PGROOT="${MEGH_PG_DATA:-/mnt/work/state/postgres}"
+PGDATA="${PGROOT}/${PGVER}"
+PGBIN="/usr/lib/postgresql/${PGVER}/bin"
+
+# --- 1. install from PGDG (retrofit only) ------------------------------------
+# Current images bake postgres + pgvector (provision.sh), so this is normally a
+# no-op. It stays for boxes launched from an older image, the same way
+# `megh enable webterm` retrofits the baked page. Ubuntu's own archive is a
+# major behind (16); PGDG carries the pinned major.
+if [ ! -x "${PGBIN}/postgres" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  log "installing postgresql-${PGVER} + pgvector from PGDG"
+  apt-get install -y -qq --no-install-recommends curl ca-certificates gnupg >/dev/null 2>&1
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg 2>/dev/null
+  echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "${VERSION_CODENAME}")-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
+  apt-get update -qq >/tmp/pg-apt.log 2>&1
+  if ! apt-get install -y -qq --no-install-recommends \
+        "postgresql-${PGVER}" "postgresql-${PGVER}-pgvector" >>/tmp/pg-apt.log 2>&1; then
+    log "apt install failed (see /tmp/pg-apt.log)"; exit 1
+  fi
+fi
+
+# The package creates its own cluster on the CONTAINER disk, which does not
+# survive a rebuild. Drop it; the cluster this feature manages lives on the
+# volume and is started by the `pg` control script, not by systemd.
+pg_dropcluster --stop "${PGVER}" main >/dev/null 2>&1 || true
+
+# --- 2. initdb onto the data root -------------------------------------------
+mkdir -p "${PGROOT}"
+if [ ! -s "${PGDATA}/PG_VERSION" ]; then
+  # postgres refuses to run as root, so the data directory must belong to the
+  # postgres user. On the NFS volume this chown is the step most likely to fail;
+  # say so plainly rather than failing later inside initdb.
+  mkdir -p "${PGDATA}"
+  if ! chown -R postgres:postgres "${PGROOT}"; then
+    log "cannot chown ${PGROOT} to postgres (NFS?). Re-run with MEGH_PG_DATA=/var/lib/megh-pg to use local disk."
+    exit 1
+  fi
+  chmod 0700 "${PGDATA}"
+  log "initdb -> ${PGDATA}"
+  if ! su postgres -c "${PGBIN}/initdb -D '${PGDATA}' -E UTF8 --locale=C" >/tmp/pg-initdb.log 2>&1; then
+    log "initdb FAILED (see /tmp/pg-initdb.log)"; tail -5 /tmp/pg-initdb.log; exit 1
+  fi
+fi
+
+# Loopback only: RunPod's public proxy is unauthenticated, so a database on a
+# wildcard address would be a database on the public internet. Reach it from the
+# Mac with an SSH tunnel.
+{
+  echo "listen_addresses = 'localhost'"
+  echo "port = ${PGPORT}"
+  echo "unix_socket_directories = '/tmp'"
+} > "${PGDATA}/conf.d-megh.conf"
+grep -q "conf.d-megh.conf" "${PGDATA}/postgresql.conf" 2>/dev/null \
+  || echo "include = '${PGDATA}/conf.d-megh.conf'" >> "${PGDATA}/postgresql.conf"
+chown postgres:postgres "${PGDATA}/conf.d-megh.conf" 2>/dev/null
+
+# --- 3. control script -------------------------------------------------------
+cat > /usr/local/bin/pg <<CTRL
+#!/usr/bin/env bash
+# Control the megh postgres cluster.
+#   pg start|stop|status|logs|psql [db]|db add <name>|db drop <name>|db list
+set -uo pipefail
+PGVER="${PGVER}"; PGPORT="${PGPORT}"; PGDATA="${PGDATA}"; PGBIN="${PGBIN}"
+CTRL
+cat >> /usr/local/bin/pg <<'CTRL'
+LOG=/tmp/postgres.log
+run() { su postgres -c "$1"; }
+up() { "${PGBIN}/pg_isready" -h 127.0.0.1 -p "${PGPORT}" -q 2>/dev/null; }
+
+case "${1:-status}" in
+  start)
+    up && { echo "  already running on 127.0.0.1:${PGPORT}"; exit 0; }
+    run "${PGBIN}/pg_ctl -D '${PGDATA}' -l ${LOG} -w start" || { tail -5 "$LOG"; exit 1; }
+    echo "  postgres up on 127.0.0.1:${PGPORT}"
+    ;;
+  stop)
+    up || { echo "  not running"; exit 0; }
+    run "${PGBIN}/pg_ctl -D '${PGDATA}' -m fast -w stop" && echo "  stopped"
+    ;;
+  status)
+    if up; then echo "  postgres up on 127.0.0.1:${PGPORT} (data ${PGDATA})"
+    else echo "  postgres down (data ${PGDATA})"; fi
+    ;;
+  logs) tail -n 40 "$LOG" ;;
+  psql) shift; run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} ${1:-postgres}" ;;
+  db)
+    case "${2:-}" in
+      add)
+        n="${3:-}"; [ -z "$n" ] && { echo "usage: pg db add <name>"; exit 2; }
+        up || { echo "  start it first: pg start"; exit 1; }
+        # Role, database and password all share the project name. That matches
+        # what the projects' compose files already set, so their existing DSNs
+        # work unchanged. Safe only because the cluster is loopback-only.
+        run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -tAc \"SELECT 1 FROM pg_roles WHERE rolname='$n'\"" \
+          | grep -q 1 || run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c \"CREATE ROLE $n LOGIN PASSWORD '$n'\""
+        run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -tAc \"SELECT 1 FROM pg_database WHERE datname='$n'\"" \
+          | grep -q 1 || run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c \"CREATE DATABASE $n OWNER $n\""
+        run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -d $n -c 'CREATE EXTENSION IF NOT EXISTS vector'"
+        echo "  ready: postgres://$n:$n@127.0.0.1:${PGPORT}/$n"
+        ;;
+      drop)
+        n="${3:-}"; [ -z "$n" ] && { echo "usage: pg db drop <name>"; exit 2; }
+        read -r -p "drop database '$n' and its role? [y/N] " a; [ "$a" = y ] || exit 0
+        run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c 'DROP DATABASE IF EXISTS $n'"
+        run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c 'DROP ROLE IF EXISTS $n'"
+        echo "  dropped $n"
+        ;;
+      list|"") run "${PGBIN}/psql -h 127.0.0.1 -p ${PGPORT} -c '\l'" ;;
+    esac
+    ;;
+  *) echo "usage: pg start|stop|status|logs|psql [db]|db add <name>|db drop <name>|db list"; exit 2 ;;
+esac
+CTRL
+chmod +x /usr/local/bin/pg
+
+# --- 4. start ----------------------------------------------------------------
+/usr/local/bin/pg start || exit 1
+"${PGBIN}/psql" -V 2>/dev/null | sed 's/^/[megh-postgres] /'
+log "control it with: pg start|stop|status|db add <name>|psql <db>"
+log "a project connects with: postgres://<name>:<name>@127.0.0.1:${PGPORT}/<name>"
+log "from your Mac: ssh -L ${PGPORT}:localhost:${PGPORT} ... (nothing is public)"

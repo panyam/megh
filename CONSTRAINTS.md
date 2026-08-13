@@ -80,3 +80,19 @@ the calling shell's environment is not forwarded to a box. Confirm that with
 `grep -rn 'SendEnv' cmd/ internal/`, which must return nothing. What must never
 happen is a provider key reaching a box through pod env (`box_envs`), a `files:`
 copy, or a script piped over SSH.
+
+## C4: Every box service binds loopback
+
+RunPod's public proxy is open and unauthenticated, and only `22/tcp` is meant to
+be reachable. A feature that binds a wildcard address therefore puts a dev
+service (a root shell, a database, a metrics store) on the public internet.
+
+Every service a feature script starts binds `127.0.0.1` and is reached over
+Tailscale (`tailscale serve`, for HTTP surfaces) or an SSH tunnel. This is not a
+per-feature judgment call: it applies to HTTP surfaces, databases, and anything
+else that listens.
+
+**Verify:** `go test ./internal/features/ -run TestFeatureScriptsBindLoopback`.
+The test scans every embedded feature script for a wildcard bind (`0.0.0.0`,
+`[::]`, or `bind *`) outside a comment and fails the build on a match, so this is
+enforced in CI rather than by review.
