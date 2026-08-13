@@ -114,8 +114,29 @@ if [ -n "${PUBLIC_KEY:-}" ]; then
   log "installed injected PUBLIC_KEY"
 fi
 ssh-keygen -A >/dev/null 2>&1 || true
+
+# Key auth ONLY, stated explicitly. Today this changes nothing: root's password
+# is locked and no account on the box has a usable hash, so stock sshd already
+# refuses passwords for root via PermitRootLogin prohibit-password. But that is
+# a distro default, not a decision — the moment anything creates a user with a
+# password, `PasswordAuthentication yes` becomes a live door on a port that is
+# public whenever expose_ssh is true (and it must be, for any control machine
+# that is not on the tailnet). sshd_config Includes this directory near the top
+# and takes the first value it sees, so this wins.
+cat > /etc/ssh/sshd_config.d/megh.conf <<'SSHD'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+PermitEmptyPasswords no
+SSHD
+# Never boot a box with no sshd at all: if the drop-in is somehow invalid, throw
+# it away rather than leave the only door shut.
+if ! /usr/sbin/sshd -t 2>/tmp/sshd-config-test.log; then
+  log "sshd config invalid, dropping the megh hardening (see /tmp/sshd-config-test.log)"
+  rm -f /etc/ssh/sshd_config.d/megh.conf
+fi
 /usr/sbin/sshd
-log "sshd up on :22"
+log "sshd up on :22 (key auth only)"
 
 # ---------------------------------------------------------------------------
 # 3. Headed-browser display: Xvfb -> fluxbox -> x11vnc -> noVNC on :6080.
