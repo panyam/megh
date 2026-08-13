@@ -24,9 +24,13 @@ providers:
     api_key_env: RUNPOD_API_KEY     # pointer, not the key
     default_dc: US-CA-2
     default_volume: d7znsj0qlh
-    vcpu: 2
-    ram: 8
-    disk: 20
+    # 4 vCPU / 40 GB is the most container disk available below an 8-vCPU box:
+    # the cap scales with instance size and is 20-30 at 2 vCPU, 40 at 4, 50+ at 8
+    # (measured; the API rejects anything larger). The DB features keep their data
+    # on this disk, so it is worth the $0.16/hr over $0.08.
+    vcpu: 4
+    ram: 16
+    disk: 40
     # Public break-glass SSH (22/tcp). true today; flip to false once Tailscale
     # SSH is verified to run with ZERO public ports (megh ssh then goes over the
     # tailnet). RunPod console Web Terminal stays the break-glass either way.
