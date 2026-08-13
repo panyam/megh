@@ -88,5 +88,15 @@ and leaves the other intact; Grafana provisions a datasource set per tenant.
 Versions at the time: Grafana 13.1.3, Loki 3.7.6, Tempo 3.0.2, Mimir 3.1.4,
 otelcol-contrib 0.158.0.
 
-**Not yet verified:** dashboards actually rendering in the Grafana UI. Datasource
-config can be valid and still query wrong, so load the browser on the next box.
+Re-verified on image `0cf66ed`: dashboards render per-tenant data in a real
+browser with no panel errors, and a query through `/api/ds/query` (the path a
+panel actually uses) returns each tenant's own value while
+`count(megh_demo_latency_ms)` on the proja datasource sees 1 series, not 2. So
+the provisioned `httpHeaderValue1` tenant header survives Grafana's proxy.
+
+Note that OTLP `service.name` arrives in Mimir as the `job` label
+(`megh_demo_latency_ms{job="svc-a"}`), which is the standard OTLP-to-Prometheus
+translation, not something this config sets.
+
+Re-enabling on a second box took seconds rather than minutes: the binaries were
+already on the volume, which is the point of installing there.
