@@ -29,8 +29,11 @@ PGROOT="${MEGH_PG_DATA:-/mnt/work/state/postgres}"
 PGDATA="${PGROOT}/${PGVER}"
 PGBIN="/usr/lib/postgresql/${PGVER}/bin"
 
-# --- 1. install from PGDG ----------------------------------------------------
-# Ubuntu's own archive is a major behind (16); PGDG carries the pinned major.
+# --- 1. install from PGDG (retrofit only) ------------------------------------
+# Current images bake postgres + pgvector (provision.sh), so this is normally a
+# no-op. It stays for boxes launched from an older image, the same way
+# `megh enable webterm` retrofits the baked page. Ubuntu's own archive is a
+# major behind (16); PGDG carries the pinned major.
 if [ ! -x "${PGBIN}/postgres" ]; then
   export DEBIAN_FRONTEND=noninteractive
   log "installing postgresql-${PGVER} + pgvector from PGDG"
