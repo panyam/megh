@@ -52,6 +52,8 @@ works against any box (piped over SSH) and needs no image rebuild.
   megh enable vnc         headed-browser display (noVNC on :6080)
   megh enable playwright  Playwright + Chromium (headed needs 'enable vnc')
   megh enable code        code-server (VS Code on :8080)
+  megh enable postgres    PostgreSQL + pgvector on :5433 (one db per project)
+  megh enable redis       Redis on :6399
   megh enable lgtm        dev/demo observability: Grafana + Loki + Tempo + Mimir
                           behind one OTLP collector (:4317/:4318, UI on :3000).
                           Multi-tenant, one tenant per project. Off until you

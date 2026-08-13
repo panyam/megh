@@ -137,9 +137,15 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 ## Services on a box (no Docker)
 
 RunPod pods cannot run containers (settled; see `DESIGN.md`), so services run
-NATIVELY. apt postgres + `postgresql-16-pgvector` and redis both work. One
-postgres CLUSTER with one DATABASE per project: per-database overhead is tiny,
-per-cluster memory is not.
+NATIVELY via `megh enable postgres` / `megh enable redis`. One postgres CLUSTER
+with one DATABASE per project: per-database overhead is tiny, per-cluster memory
+is not. Ports default to what the repos already expect (postgres **5433**, redis
+**6399**), so a project connects with no config change.
+
+```
+pg start|stop|status|db add <name>|psql <db>     # postgres://<n>:<n>@127.0.0.1:5433/<n>
+redisctl start|stop|status|cli                   # redis://127.0.0.1:6399
+```
 
 `megh enable lgtm` is the observability stack (Grafana + Loki + Tempo + Mimir
 behind one OTel collector, OTLP on `:4317`/`:4318`, UI on `:3000`). One stack,
