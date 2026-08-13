@@ -34,6 +34,17 @@ Native services, because RunPod pods cannot run containers at all (see
 `DESIGN.md`). Not a downgrade: PGDG carries the same major the compose files
 pin, so this is version parity.
 
+**The binaries are baked into the image; these scripts own the state.** postgres
++ pgvector + redis are ~11 MB, about 1% of the slim image, so the size argument
+that keeps Playwright out does not apply to them. The `initdb` onto the volume,
+the config and the control scripts stay here because they are state, not tooling.
+The apt blocks in both scripts are retrofit paths for boxes from an older image,
+like `megh enable webterm`.
+
+The observability stack deliberately went the other way: at ~700 MB it stays out
+of the image, and `megh enable lgtm` caches it on the volume instead, which also
+preserves the `MEGH_LGTM_*_VERSION` pinning that baking would freeze.
+
 **Ports default to what the repos already expect**, so a project needs no config
 change. `diffpp`'s compose maps `5433->5432` and its default `DIFFPP_DB_URL`
 follows, so the cluster listens on **5433**. `cachewarden`'s maps `6399->6379`,

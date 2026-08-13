@@ -137,7 +137,10 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 ## Services on a box (no Docker)
 
 RunPod pods cannot run containers (settled; see `DESIGN.md`), so services run
-NATIVELY via `megh enable postgres` / `megh enable redis`. One postgres CLUSTER
+NATIVELY. postgres 18 + pgvector and redis are BAKED into both flavors (~11 MB,
+~1% of the slim image); `megh enable postgres` / `megh enable redis` create the
+cluster on the volume and install the control scripts. The observability stack
+stays OUT of the image at ~700 MB and caches on the volume instead. One postgres CLUSTER
 with one DATABASE per project: per-database overhead is tiny, per-cluster memory
 is not. Ports default to what the repos already expect (postgres **5433**, redis
 **6399**), so a project connects with no config change.

@@ -15,6 +15,8 @@
 #   GO_VERSION      go toolchain version   (default 1.22.5)
 #   TTYD_VERSION    ttyd release           (default 1.7.7)
 #   INSTALL_DOCKER  1 to install the Docker engine (VM: yes; container: no)
+#   PG_MAJOR        PostgreSQL major to bake (default 18, matching what the
+#                   projects' compose files pin)
 #   MEGH_SLIM       1 for the slim flavor: skip the frontend stack (Playwright +
 #                   headed-browser display + code-server). The entrypoint
 #                   background-installs code-server to the box's local disk;
@@ -51,6 +53,34 @@ echo "deb [arch=${TARGET_ARCH} signed-by=/usr/share/keyrings/githubcli-archive-k
   > /etc/apt/sources.list.d/github-cli.list
 apt-get update
 apt-get install -y --no-install-recommends gh
+
+# --- database + cache (both flavors) ----------------------------------------
+# RunPod pods cannot run containers (see DESIGN.md), so the compose files the
+# projects ship cannot be used there. These are the native equivalents.
+#
+# Baked rather than installed on demand because they are ~11 MB, about 1% of the
+# slim image, so the size argument that keeps Playwright out does not apply. The
+# observability stack deliberately stays OUT of the image: it is ~700 MB and
+# `megh enable lgtm` already caches it on the volume.
+#
+# PGDG, not Ubuntu's archive, because Ubuntu ships postgres 16 while the projects
+# pin 18 (diffpp uses pgvector/pgvector:pg18). This is version parity.
+#
+# The image carries BINARIES only. Creating the cluster on the volume, writing
+# the config and installing the control scripts belong to `megh enable postgres`
+# / `megh enable redis`, because those are state, not tooling.
+PG_MAJOR="${PG_MAJOR:-18}"
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "${VERSION_CODENAME}")-pgdg main" \
+  > /etc/apt/sources.list.d/pgdg.list
+apt-get update
+apt-get install -y --no-install-recommends \
+  "postgresql-${PG_MAJOR}" "postgresql-${PG_MAJOR}-pgvector" redis-server
+# The postgres package auto-creates a cluster on the CONTAINER disk, which does
+# not survive a rebuild and would fight the one on the volume for the port. Ship
+# the binaries without it.
+pg_dropcluster --stop "${PG_MAJOR}" main 2>/dev/null || true
 
 # Make zsh root's login shell so a box's shell matches a zsh setup (ttyd/tmux and
 # `megh ssh` both use the login shell). Your zsh config arrives via megh.yaml

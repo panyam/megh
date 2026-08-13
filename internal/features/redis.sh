@@ -21,6 +21,8 @@ PORT="${MEGH_REDIS_PORT:-6399}"
 DATA="${MEGH_REDIS_DATA:-/mnt/work/state/redis}"
 CONF=/etc/redis/megh.conf
 
+# Current images bake redis (provision.sh), so this is normally a no-op; it
+# stays as the retrofit path for boxes from an older image.
 if ! command -v redis-server >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   log "installing redis-server"
