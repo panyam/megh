@@ -307,5 +307,22 @@ Also measured that pass: US-CA-2 would not rent 4 vCPU at all (the API really
 does return "no longer any instances"), which is what `megh regions probe` is
 for.
 
+Fifth pass (2026-08-21) validated per-box key minting end to end on a live box
+(`mintlab`, slim, US-CA-2). `megh up` minted a single-use ephemeral key tagged
+`tag:megh` at launch, the box joined the tailnet as its BARE name with no `-1`
+suffix, came up `authorized: True` (so pre-authorization skips manual approval)
+with `keyExpiryDisabled: True` (tagged nodes do not expire), and `RunSSH: true`
+box-side. On `megh down` the node removed ITSELF: the command printed "asked
+mintlab to leave the tailnet" and then nothing further, because the ephemeral
+logout had already deleted the node and the control-plane prune found nothing to
+do. That silence is the fix working. The API delete stays as the safety net for
+a box killed out of band, where no logout can run.
+
+Not verifiable from the control machine: Tailscale SSH INTO a tagged box. The
+ACL rule for `dst: ["tag:megh"]` is in place and the network grants preview
+confirms reachability, but proving the SSH policy needs a client on the tailnet,
+which this Mac is not. The phone is the natural way to confirm it, which folds
+into the Termux item.
+
 Still not run live: the authenticated session-flush push (needs
 `MEGH_SESSIONS_TOKEN`, still unset).
