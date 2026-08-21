@@ -44,14 +44,31 @@ must run in that same DC. So you need a DC that has **both** volume support
   attempt: success, or `no longer any instances`. A failed attempt creates
   nothing and costs nothing, so iterating across DCs is safe.
 - **CPU capacity flaps and varies by DC.** US-TX-3 was dry across every flavor;
-  US-CA-2 had capacity. Volume-supporting US DCs: US-CA-2, US-IL-1, US-MD-1,
-  US-MO-2, US-NC-1, US-NE-1, US-TX-3.
+  US-CA-2 had capacity.
 
-Practical placement today: create the volume in a DC that rents CPU (US-CA-2
-worked), and launch there. If a launch returns `no instances`, the DC went dry;
-move the volume (delete + recreate) to another and retry. Automating this
-"region search" (try candidate DCs until one rents, then create the volume
-there) is the next CLI feature.
+`megh regions` automates the search. It reads the candidate DCs from the pods
+schema in RunPod's published OpenAPI document, which is the closest thing to an
+authoritative list (13 US regions as of 2026-08-20; the older hand-kept list
+here named US-MO-2 and US-NE-1, which RunPod no longer accepts).
+
+```
+megh regions list                       # candidate DCs, marking where volumes already are
+megh regions probe                      # rent-and-terminate in each; report who took it
+megh regions probe --dc US-CA-2 --first # just check one, stop at the first that rents
+megh regions place --name scratch --size 100   # probe, then create the volume where it rents
+```
+
+A probe is a real rent: it creates a pod with the shape you would launch, no
+volume attached, then terminates it immediately. A refused create leaves nothing
+behind, and an accepted one lives about a second and never pulls the image, so a
+sweep costs a fraction of a cent. Probes run one region at a time, so at most one
+probe pod exists at any moment. If one is ever left behind the command says so
+loudly and prints the `megh down` line for it.
+
+Placement by hand still works if you prefer: create the volume in a DC that
+rents CPU (US-CA-2 worked), and launch there. If a launch returns `no
+instances`, the DC went dry; move the volume (delete + recreate) to another and
+retry.
 
 Volume ops (one global view across providers):
 ```

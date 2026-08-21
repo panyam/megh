@@ -37,7 +37,8 @@ postgres, and redis are added per box with `megh enable`.
 
 `megh up` / `list` / `ssh` / `browse` / `down` are the daily loop. Beyond those:
 `enable` adds a feature to a box, `doctor` probes health and repairs Tailscale,
-`storage` manages volumes, `hydrate` clones repos onto one, `profile` holds
+`storage` manages volumes, `regions` finds a datacenter that will actually rent
+the box you want, `hydrate` clones repos onto a volume, `profile` holds
 per-context SSH and GitHub identities, and `portal` publishes a bookmarkable
 index of boxes and URLs. `megh config` shows resolved settings and which secrets
 are set, never their values.
@@ -77,6 +78,4 @@ webterm, code-server, the observability stack, postgres and redis, profiles,
 hydrate, and the portal. Two `enable` features, `vnc` and `playwright`, are
 implemented but not yet exercised on a live box.
 
-Not built yet: the Hetzner backend, volume backup, and datacenter capacity
-search. RunPod has no reliable availability API, so placement still comes down to
-attempting a rent.
+Not built yet: the Hetzner backend and volume backup.
