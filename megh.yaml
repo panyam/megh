@@ -104,7 +104,11 @@ persist:
   # Git identity, so an agent committing on the box does not hit "Please tell me
   # who you are". Persisted rather than copied from the Mac via files:, because
   # the laptop's gitconfig carries osxkeychain settings that break on Linux.
-  - ~/.gitconfig
+  # The file: prefix is REQUIRED here: on a fresh box the path does not exist
+  # yet, and a plain dotfile with no second dot would otherwise be guessed to be
+  # a directory, which is what "unable to access '/root/.gitconfig': Is a
+  # directory" looks like.
+  - file:~/.gitconfig
   # - ~/.aws           # AWS credentials/config
   # - ~/.config/gcloud # gcloud auth
 
