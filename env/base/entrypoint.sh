@@ -234,26 +234,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Session persistence. Flush agent transcripts to a durable, searchable git
-#    repo on a timer and at shutdown, so history survives this disposable box.
-#    Off unless MEGH_SESSIONS_REPO is set. See flush-sessions.sh.
+# 7. Shutdown. Agent transcripts are NOT pushed from here: doing so needed a
+#    long-lived GitHub credential on the box, because a background timer cannot
+#    use SSH agent forwarding. They live on the volume and are collected by the
+#    control machine instead (see DESIGN.md, "Agent session history").
 # ---------------------------------------------------------------------------
-flush() { /usr/local/bin/megh-flush-sessions || true; }
 # Leave the tailnet on shutdown so an ephemeral node is removed immediately (the
 # node-side opposite of `tailscale up`). Best-effort; complements `megh down` and
 # covers terminations megh can't SSH for (tailnet-only boxes, console kills). Only
 # fires if RunPod delivers SIGTERM with grace; a hard SIGKILL relies on ephemeral GC.
 ts_logout() { tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true; }
-on_term() { log "shutdown signal: flushing sessions + leaving tailnet"; flush; ts_logout; exit 0; }
+on_term() { log "shutdown signal: leaving tailnet"; ts_logout; exit 0; }
 trap on_term TERM INT
-
-if [ -n "${MEGH_SESSIONS_REPO:-}" ]; then
-  interval="${MEGH_FLUSH_INTERVAL:-300}"
-  ( while true; do sleep "${interval}"; flush; done ) &
-  log "session flush enabled -> ${MEGH_SESSIONS_REPO} (every ${interval}s + on shutdown)"
-else
-  log "MEGH_SESSIONS_REPO unset; session history stays on the volume only"
-fi
 
 cat <<EOF
 [megh] box is up.

@@ -135,7 +135,9 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   delete ANY node on the tailnet including your laptop's, while a credential
   scoped to `tag:megh` can only touch megh boxes. That is the main argument for
   the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
-- `MEGH_SESSIONS_REPO` / `MEGH_SESSIONS_TOKEN` — optional, session history push
+- Agent transcripts need NO secret. They go to the `sessions.repo` in
+  `megh.yaml`, pushed by the control machine with the profile's GitHub identity;
+  nothing for that repo lives on a box.
 
 ## Architecture (one-liners; see DESIGN.md)
 
@@ -273,10 +275,11 @@ rest of the list:
 - **baked `megh` + `megh hydrate --local`** run on the box.
 - **code-server** on slim background-installs and comes up on `:8080` a few
   minutes after boot (`doctor` shows it `down`, later `up`).
-- **Codex transcript path** in `flush-sessions.sh` stages
+- **Codex transcript path** in the (now removed) `flush-sessions.sh` staged
   `codex-sessions/` and `claude-projects/` correctly and the allowlist excludes
-  `.credentials.json`. Only the authenticated push is still unproven, because
-  `MEGH_SESSIONS_TOKEN` was unset; the script exits at line 23 without it.
+  `.credentials.json`. The authenticated push was never proven and never will be
+  from the box: that path is gone as of 2026-08-21, since it needed a standing
+  GitHub credential on a VM. The control machine collects instead.
 
 Gotcha found in that pass: `megh hydrate --local` run from inside
 `/mnt/work/repos/megh` picks up THAT checkout's `megh.yaml` by upward discovery,
@@ -324,5 +327,7 @@ confirms reachability, but proving the SSH policy needs a client on the tailnet,
 which this Mac is not. The phone is the natural way to confirm it, which folds
 into the Termux item.
 
-Still not run live: the authenticated session-flush push (needs
-`MEGH_SESSIONS_TOKEN`, still unset).
+The live-validation debt list is now empty. The one item that never cleared, the
+authenticated session-flush push, was retired rather than validated: it required
+a standing GitHub credential on a box, which is what the control-machine
+collection replaces.

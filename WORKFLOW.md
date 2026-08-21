@@ -12,9 +12,8 @@ The Makefile sources this file for every recipe that needs a secret.
 |-----|------|-------|
 | `RUNPOD_API_KEY` | RunPod account key | launches, volumes, teardown |
 | `GH_MEGH_TOKEN` | GitHub classic PAT, `read:packages` | lists/pulls the private image; also configured in RunPod as the ghcr.io registry credential |
-| `TS_AUTHKEY` | Tailscale auth key | optional; only for phone/tablet access. reusable + ephemeral |
-| `MEGH_SESSIONS_REPO` | `owner/repo` for session history | optional; e.g. `panyam/megh-sessions` (private) |
-| `MEGH_SESSIONS_TOKEN` | fine-grained PAT, `contents:write` on that repo only | optional; pushes transcripts; narrow blast radius |
+| `MEGH_TAILSCALE_CLIENT_ID` / `_SECRET` | Tailscale trust credential, scoped to `tag:megh` | optional; mints a per-box auth key and deletes stale nodes. Control machine only |
+| `TS_AUTHKEY` | Tailscale auth key | legacy; only needed with `mint_keys` off. A shared key is what leaves persistent nodes behind |
 
 `make vars` shows which are set (no values printed).
 
