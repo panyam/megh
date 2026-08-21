@@ -62,7 +62,14 @@ var configCmd = &cobra.Command{
 			show(p.APIKeyEnv)
 		}
 		show(cfg.Tailscale.AuthKeyEnv)
+		// A missing static node key is the EXPECTED state once minting is on, so
+		// say that rather than leave a bare MISSING reading as a problem.
+		if cfg.Tailscale.MintKeys && os.Getenv(cfg.Tailscale.AuthKeyEnv) == "" {
+			fmt.Printf("  %-22s (not needed: megh mints a key per box)\n", "")
+		}
 		show(cfg.Tailscale.APIKeyEnv)
+		show(cfg.Tailscale.ClientIDEnv)
+		show(cfg.Tailscale.ClientSecretEnv)
 		if cfg.Tailscale.MintKeys {
 			fmt.Printf("  %-22s per-box keys, tag %s\n", "tailscale mint_keys", cfg.Tailscale.Tag)
 		}

@@ -26,7 +26,9 @@ const (
 
 // usesOAuth reports whether the configured credential is an OAuth client secret
 // rather than a directly usable API token.
-func (c *Client) usesOAuth() bool { return strings.HasPrefix(c.key, oauthSecretPrefix) }
+func (c *Client) usesOAuth() bool {
+	return c.forceOAuth || strings.HasPrefix(c.key, oauthSecretPrefix)
+}
 
 // bearer returns the token to put on the Authorization header, exchanging the
 // OAuth secret and caching the result when needed.

@@ -120,15 +120,21 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   console as the ghcr.io Container Registry Auth
 - `TS_AUTHKEY` — optional, Tailscale NODE key (phone/tablet only); reusable +
   ephemeral. Goes to the box, which is how it joins the tailnet.
-- `MEGH_TAILSCALE_API_KEY` — optional, Tailscale CONTROL-PLANE credential.
-  Either a PAT (`tskey-api-...`) or an OAuth client secret (`tskey-client-...`,
-  non-expiring, preferred); megh tells them apart by prefix and exchanges the
-  latter for a short-lived token automatically. Lets `megh down` and
+- `MEGH_TAILSCALE_CLIENT_ID` + `MEGH_TAILSCALE_CLIENT_SECRET` — optional,
+  Tailscale CONTROL-PLANE credential, and the preferred form: it is what the
+  console hands you (Settings > Trust credentials), it does not expire, and
+  scoping it to `tag:megh` means it cannot touch a device that is not a megh
+  box. `MEGH_TAILSCALE_API_KEY` is the older single-value form and holds either
+  a PAT (`tskey-api-...`) or a bare OAuth secret. The pair wins when both are
+  set, so a leftover PAT does not shadow a new credential. megh exchanges an
+  OAuth secret for a short-lived token automatically. Lets `megh down` and
   `megh doctor ts gc` delete stale nodes, and `megh up` mint per-box keys when
-  `tailscale.mint_keys` is on. Control machine ONLY:
-  it can delete any node on the tailnet, including your laptop's, so it never
-  reaches a box. `meghEnv` denies it by name despite the `MEGH_` prefix. See
-  `CONSTRAINTS.md` C5.
+  `tailscale.mint_keys` is on. Control machine ONLY, and never on a box:
+  `meghEnv` denies all three by name despite the `MEGH_` prefix it forwards.
+  How much damage a leaked one does depends on the form: an unscoped PAT can
+  delete ANY node on the tailnet including your laptop's, while a credential
+  scoped to `tag:megh` can only touch megh boxes. That is the main argument for
+  the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
 - `MEGH_SESSIONS_REPO` / `MEGH_SESSIONS_TOKEN` — optional, session history push
 
 ## Architecture (one-liners; see DESIGN.md)
@@ -300,6 +306,23 @@ up in `internal/features/NOTES.md`.
 Also measured that pass: US-CA-2 would not rent 4 vCPU at all (the API really
 does return "no longer any instances"), which is what `megh regions probe` is
 for.
+
+Fifth pass (2026-08-21) validated per-box key minting end to end on a live box
+(`mintlab`, slim, US-CA-2). `megh up` minted a single-use ephemeral key tagged
+`tag:megh` at launch, the box joined the tailnet as its BARE name with no `-1`
+suffix, came up `authorized: True` (so pre-authorization skips manual approval)
+with `keyExpiryDisabled: True` (tagged nodes do not expire), and `RunSSH: true`
+box-side. On `megh down` the node removed ITSELF: the command printed "asked
+mintlab to leave the tailnet" and then nothing further, because the ephemeral
+logout had already deleted the node and the control-plane prune found nothing to
+do. That silence is the fix working. The API delete stays as the safety net for
+a box killed out of band, where no logout can run.
+
+Not verifiable from the control machine: Tailscale SSH INTO a tagged box. The
+ACL rule for `dst: ["tag:megh"]` is in place and the network grants preview
+confirms reachability, but proving the SSH policy needs a client on the tailnet,
+which this Mac is not. The phone is the natural way to confirm it, which folds
+into the Termux item.
 
 Still not run live: the authenticated session-flush push (needs
 `MEGH_SESSIONS_TOKEN`, still unset).

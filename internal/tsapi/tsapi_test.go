@@ -69,10 +69,20 @@ func TestStaleIsConservative(t *testing.T) {
 	}
 }
 
-func TestNewRequiresAKeyAndDefaultsTheTailnet(t *testing.T) {
-	t.Setenv(KeyEnv, "")
+// isolateCreds clears every credential env var. Without this a developer's real
+// environment leaks into the test, which both makes results depend on the
+// machine and prints a live secret into the failure output.
+func isolateCreds(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{KeyEnv, ClientIDEnv, ClientSecretEnv} {
+		t.Setenv(v, "")
+	}
+}
+
+func TestNewRequiresACredentialAndDefaultsTheTailnet(t *testing.T) {
+	isolateCreds(t)
 	if _, err := New("", "example.ts.net"); err == nil {
-		t.Error("New with no key anywhere should fail")
+		t.Error("New with no credential anywhere should fail")
 	}
 	c, err := New("tskey-api-x", "")
 	if err != nil {
@@ -88,5 +98,62 @@ func TestNewRequiresAKeyAndDefaultsTheTailnet(t *testing.T) {
 	}
 	if c.key != "from-env" {
 		t.Errorf("key = %q, want it read from %s", c.key, KeyEnv)
+	}
+}
+
+// The console hands out a client id and secret as separate fields, so that pair
+// is the form people actually have. It must win over a leftover PAT, which is
+// exactly the state a tailnet is in mid-migration.
+func TestOAuthPairWinsOverAStaleAPIKey(t *testing.T) {
+	isolateCreds(t)
+	t.Setenv(KeyEnv, "tskey-api-stale-pat")
+	t.Setenv(ClientIDEnv, "kABC")
+	t.Setenv(ClientSecretEnv, "tskey-client-kABC-secret")
+
+	c, err := New("", "example.ts.net")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if c.key != "tskey-client-kABC-secret" {
+		t.Errorf("key = %q, want the OAuth secret", c.key)
+	}
+	if !c.usesOAuth() {
+		t.Error("the pair must take the OAuth exchange path")
+	}
+	if got := c.clientID(); got != "kABC" {
+		t.Errorf("clientID = %q, want the explicitly configured id", got)
+	}
+}
+
+// A secret supplied through the explicit pair must be exchanged even if it does
+// not carry the usual prefix, otherwise it would be sent as a bearer token and
+// 401 in a way that looks like a bad credential rather than a wrong code path.
+func TestExplicitPairForcesOAuthRegardlessOfPrefix(t *testing.T) {
+	isolateCreds(t)
+	c, err := NewWithCreds(Creds{ClientID: "kABC", ClientSecret: "no-prefix-secret"}, "example.ts.net")
+	if err != nil {
+		t.Fatalf("NewWithCreds: %v", err)
+	}
+	if !c.usesOAuth() {
+		t.Error("an explicitly supplied client secret must always be exchanged")
+	}
+}
+
+// --api-key is an override, so it must not be silently outranked by an OAuth
+// pair sitting in the environment.
+func TestExplicitKeyArgumentOverridesTheEnvironment(t *testing.T) {
+	isolateCreds(t)
+	t.Setenv(ClientIDEnv, "kABC")
+	t.Setenv(ClientSecretEnv, "tskey-client-kABC-secret")
+
+	c, err := New("tskey-api-explicit", "example.ts.net")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if c.key != "tskey-api-explicit" {
+		t.Errorf("key = %q, want the explicitly passed one", c.key)
+	}
+	if c.usesOAuth() {
+		t.Error("an explicit PAT must not take the OAuth path")
 	}
 }
