@@ -75,7 +75,6 @@ megh/
 
 Working end to end on RunPod: the box lifecycle, Tailscale, the web shell and
 webterm, code-server, the observability stack, postgres and redis, profiles,
-hydrate, and the portal. Two `enable` features, `vnc` and `playwright`, are
-implemented but not yet exercised on a live box.
+hydrate, the portal, and the `vnc` and `playwright` features.
 
 Not built yet: the Hetzner backend and volume backup.
