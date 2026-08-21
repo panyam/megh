@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/spf13/cobra"
@@ -13,6 +14,11 @@ var (
 	downProvider string
 	downYes      bool
 )
+
+// deregisterTimeout bounds the pre-terminate tailnet logout. Generous enough for
+// a reachable box (the remote command alone allows 15s) and short enough that an
+// unreachable one does not hold up termination.
+const deregisterTimeout = 25 * time.Second
 
 var downCmd = &cobra.Command{
 	Use:   "down [box-name-or-id]",
@@ -59,9 +65,17 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// (and a persistent one is deauthenticated). Runs over the SSH access megh
 		// already has, so no Tailscale API credential is needed. Never blocks
 		// termination: an unreachable or tailnet-only box just skips it.
+		//
+		// The whole attempt is under a wall-clock deadline. A box with no public
+		// SSH dials its MagicDNS name, and from a control machine that is not on
+		// the tailnet that name never resolves — ssh's ConnectTimeout does not
+		// cover resolution, so without this the terminate step never runs and the
+		// pod keeps billing.
 		d := dialFor(pod)
 		logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
-		if _, err := sshCapture(d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
+		lctx, cancel := context.WithTimeout(ctx, deregisterTimeout)
+		defer cancel()
+		if _, err := sshCaptureCtx(lctx, d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
 			fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.DisplayName())
 		} else {
 			fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())

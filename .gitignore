@@ -22,3 +22,7 @@ megh.local.yaml
 # Repo-local profile store (opt-in via MEGH_HOME=./.megh). Holds private keys
 # and secret values. The canonical location is ~/.megh (outside the repo).
 .megh/
+
+# Session handoff notes (perishable, per-machine). Untracked so a `git add .`
+# does not sweep them into the repo.
+HANDOFF_*.md
