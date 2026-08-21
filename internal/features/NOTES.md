@@ -28,6 +28,41 @@ xterm.js/css are vendored in `vendor/` and inlined at assembly time by
 `features.Script` via `@@...@@` markers, so the page has no CDN dependency.
 `vendor_test.go` fails if the embedded bytes drift from `SHA256SUMS`.
 
+## vnc / playwright
+
+Both were validated on a live slim box on 2026-08-21, and playwright was broken
+in two ways that a passing exit code hid.
+
+**`npx --yes <tool> --version` is not an install probe.** The old guard was
+`if ! npx --yes playwright --version; then npm install -g playwright; fi`. npx
+downloads a throwaway copy into its own cache and happily reports a version, so
+on a box where playwright had never been installed the guard passed, the global
+install never ran, and the script printed "playwright + chromium ready" while
+`require('playwright')` failed with MODULE_NOT_FOUND. The browsers really did
+install, which is what made it convincing. Ask `npm ls -g --depth=0` what is
+actually there, and verify at the end by importing the module rather than
+trusting an exit code. The same trap applies to any other feature tempted to
+probe with npx.
+
+**Node does not resolve global modules.** Even after a correct `npm install -g`,
+a scratch script cannot `require('playwright')`, because the global root is not
+on Node's search path. The feature writes `/etc/profile.d/megh-playwright.sh`
+with `NODE_PATH` so a login shell can. A non-login `ssh box 'node app.js'` still
+cannot, which is why the script prints the `NODE_PATH=` line.
+
+**Browsers live on the volume.** Chromium and friends are ~650 MB. Left at
+playwright's default they land on the container disk, which is 20 GB and thrown
+away with the box, so every rebuild re-downloads them. The feature points
+`PLAYWRIGHT_BROWSERS_PATH` at `/mnt/work/cache/<arch>/ms-playwright` and seeds it
+from any existing local copy. Measured on the box: seeding takes ~5s, the first
+launch after boot pays a cold NFS page cache (649ms against 175ms local), and
+every launch after that is 182ms, which is local-disk speed. A box with no
+writable `/mnt/work` falls back to the default local path.
+
+The noVNC page logs a 404 for `/package.json` on load. It is cosmetic, the same
+class as the webterm favicon 404: noVNC fetches it for version display and works
+fine without it.
+
 ## postgres / redis
 
 Native services, because RunPod pods cannot run containers at all (see
