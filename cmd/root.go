@@ -85,10 +85,6 @@ func adoptSecrets(c config.Config) {
 	adopt("MEGH_TAILSCALE_API_KEY", c.Tailscale.APIKeyEnv)
 	adopt("MEGH_TAILSCALE_CLIENT_ID", c.Tailscale.ClientIDEnv)
 	adopt("MEGH_TAILSCALE_CLIENT_SECRET", c.Tailscale.ClientSecretEnv)
-	adopt("MEGH_SESSIONS_TOKEN", c.Sessions.TokenEnv)
-	if os.Getenv("MEGH_SESSIONS_REPO") == "" && c.Sessions.Repo != "" {
-		os.Setenv("MEGH_SESSIONS_REPO", c.Sessions.Repo)
-	}
 }
 
 func init() {
