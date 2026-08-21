@@ -84,13 +84,11 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 
 	// Base megh env, then copy any extra (box_envs) over it.
 	podEnv := map[string]string{
-		"PUBLIC_KEY":          o.PubKey,
-		"WORK_MOUNT":          "/workspace",
-		"ARCH_TAG":            "x86_64",
-		"TS_AUTHKEY":          cmp.Or(o.TSAuthKey, os.Getenv("TS_AUTHKEY")),
-		"TS_HOSTNAME":         ShortName(o.Name),
-		"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
-		"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
+		"PUBLIC_KEY":  o.PubKey,
+		"WORK_MOUNT":  "/workspace",
+		"ARCH_TAG":    "x86_64",
+		"TS_AUTHKEY":  cmp.Or(o.TSAuthKey, os.Getenv("TS_AUTHKEY")),
+		"TS_HOSTNAME": ShortName(o.Name),
 	}
 	for k, v := range o.ExtraEnv {
 		podEnv[k] = v

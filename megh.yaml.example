@@ -75,7 +75,7 @@ tailscale:
 # token_env NAMES a fine-grained PAT with contents:write on ONLY that repo.
 sessions:
   repo: YOUR_GH_NAMESPACE/megh-sessions
-  token_env: MEGH_SESSIONS_TOKEN
+  # No token: the control machine collects and pushes; boxes hold no credential.
 
 # Home dirs symlinked onto the scratch volume so their state survives box rebuilds
 # (log in once, stay logged in on the next box that mounts the same volume). Add a

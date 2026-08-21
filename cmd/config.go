@@ -73,7 +73,6 @@ var configCmd = &cobra.Command{
 		if cfg.Tailscale.MintKeys {
 			fmt.Printf("  %-22s per-box keys, tag %s\n", "tailscale mint_keys", cfg.Tailscale.Tag)
 		}
-		show(cfg.Sessions.TokenEnv)
 
 		if len(cfg.Requires.Envs) > 0 || len(cfg.Requires.BoxEnvs) > 0 {
 			fmt.Println("\nrequired env (megh.yaml requires; * = also copied to the box):")

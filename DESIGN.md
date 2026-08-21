@@ -73,15 +73,23 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   remote) + Headscale (mesh coordinator) + Forgejo's OCI registry (dev-env
   images). One small box, self-hosted control plane, constraint-2 clean.
 - **Agent session history is persisted to git, not restic. LOCKED.** Claude/Codex
-  store sessions as JSONL transcripts. A timer + shutdown hook (`flush-sessions.sh`)
-  pushes only transcript/memory files (never credentials) to a private
-  `megh-sessions` repo, so history is durable and `git grep`-searchable across
-  every provider and laptop. The push uses a fine-grained PAT scoped to ONLY that
-  repo (`contents:write`), passed as pod env and never written to git config. A
-  compromised box can write your session history and nothing else. This is a
-  deliberate, narrow exception to "no long-lived credentials on the box" that a
-  background timer requires; agent forwarding only works in an interactive SSH
-  session, not for a timer.
+  store sessions as JSONL transcripts. They go to a private `megh-sessions` repo,
+  so history is durable and `git grep`-searchable across every provider and
+  laptop. That destination is the locked part and has not changed.
+  **What changed (2026-08-21): the push direction.** It used to run ON the box, a
+  timer plus shutdown hook (`flush-sessions.sh`) pushing with a fine-grained PAT
+  in the pod env, which was written up here as a deliberate narrow exception to
+  "no long-lived credentials on the box" because a background timer cannot use
+  SSH agent forwarding. The exception is no longer needed. Transcripts live on
+  the volume under `state/`, and the CONTROL machine collects them over the SSH
+  it already has and pushes with the GitHub identity in the active profile. Same
+  repo, same searchability, and now nothing on a box can write your history.
+  The exception was also never actually load-bearing: the token was never set in
+  practice, so the on-box push never once ran. The cost is that history is
+  captured when the control machine collects rather than every five minutes, so a
+  box that dies hard loses the delta since the last collection. That is a smaller
+  window than it sounds, since collection runs on `megh down`, and it buys back a
+  standing credential on every box.
 - **megh is stateless; the provider is the source of truth.** No local state file
   or dotdir. `megh list` / `megh storage list` query the provider live. RunPod
   has no pod tags/labels, so megh-managed resources are identified by a `megh-`
@@ -175,14 +183,16 @@ local disk by an earlier decision. Copying these costs real bytes and buys a
 re-download.
 
 **Belongs in git, and git is already the mechanism.** `repos/` are clones with
-remotes and `worktrees/` hold work in progress. The exposure is not the volume
+remotes, `worktrees/` hold work in progress, and `state/claude/projects` plus
+`state/codex/sessions` are the agent transcripts bound for `megh-sessions`. The exposure is not the volume
 dying, it is uncommitted work at the moment it does, and the fix for uncommitted
 work is to commit it rather than to copy the file. A `megh wip` that commits
 every dirty worktree to a `wip/<box>/<branch>` branch and pushes it turns "back
-up my work" into "put the work where work goes." Agent transcripts already have
-exactly this shape through `flush-sessions.sh` and the `megh-sessions` repo.
+up my work" into "put the work where work goes." Agent transcripts are the same shape and
+the same destination, the `megh-sessions` repo.
 
-**Genuinely un-gittable, and small.** `state/` holds the persisted tool homes:
+**Genuinely un-gittable, and small.** Setting the transcripts aside, `state/`
+holds the persisted tool homes:
 `~/.claude` and `~/.claude.json`, `~/.codex`, `~/.config/gh`. It is megabytes,
 it carries login state and agent memory, and it is the only part of the volume
 whose loss costs a day rather than a re-download. This is what `megh backup`
@@ -314,8 +324,8 @@ box holds nothing precious. Beyond cloning the repo and `make install`, you carr
 (or re-mint) exactly two things:
 
 1. **Secrets** (`~/personal/envvars`): `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` (GHCR
-   pull), `TS_AUTHKEY` (only for the phone path), and once the flush hook is on,
-   `MEGH_SESSIONS_TOKEN`. All regenerate from their consoles in a minute.
+   pull), and `MEGH_TAILSCALE_CLIENT_ID` / `MEGH_TAILSCALE_CLIENT_SECRET` (the
+   tailnet trust credential). All regenerate from their consoles in a minute.
 2. **An SSH keypair** for box access + git push. Can be freshly generated and its
    pubkey re-enrolled (GitHub + `MEGH_PUBKEY`).
 
