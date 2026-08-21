@@ -48,6 +48,24 @@ tailscale:
   # never goes to a box. See CONSTRAINTS.md C5.
   api_key_env: MEGH_TAILSCALE_API_KEY
 
+  # Per-box auth keys. When on, `megh up` mints a single-use, ephemeral,
+  # pre-authorized key for that box instead of shipping the shared static one.
+  # Ephemeral is the point: Tailscale then removes the node itself when the box
+  # goes, which is the ROOT fix for names drifting to <name>-1. It also makes a
+  # stale key impossible, since the key is made at launch.
+  #
+  # Requires, in this order:
+  #   1. tag:megh in the tailnet ACL tagOwners, and an ssh rule with
+  #      dst: ["tag:megh"] (tagged nodes are NOT autogroup:self, so without it
+  #      you lose Tailscale SSH to boxes);
+  #   2. a trust credential (Settings > Trust credentials) scoped to
+  #      Devices>Core>Write and Keys>Auth Keys>Write, tagged tag:megh;
+  #   3. that client secret in MEGH_TAILSCALE_API_KEY.
+  # Until then leave this false. If minting fails megh warns and falls back to
+  # the static key, so a launch never breaks on it.
+  mint_keys: false
+  tag: tag:megh
+
 # MagicDNS suffix of your tailnet — used to build box surface URLs in the portal
 # (https://<box>.<tailnet>:<port>). Find it in `megh doctor ts status` (Self DNSName).
 tailnet: taild311d3.ts.net
