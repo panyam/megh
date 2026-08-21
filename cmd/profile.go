@@ -92,7 +92,7 @@ var profileShowCmd = &cobra.Command{
 			}
 		}
 		fmt.Println("secrets (profile values overlaid on ambient env):")
-		for _, k := range []string{"RUNPOD_API_KEY", "GH_MEGH_TOKEN", "TS_AUTHKEY", "MEGH_SESSIONS_TOKEN"} {
+		for _, k := range []string{"RUNPOD_API_KEY", "GH_MEGH_TOKEN", "TS_AUTHKEY"} {
 			state := "MISSING"
 			if os.Getenv(k) != "" {
 				state = "set"

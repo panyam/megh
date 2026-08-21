@@ -56,7 +56,6 @@ RUN chmod +x /usr/local/bin/megh
 RUN MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
-COPY flush-sessions.sh /usr/local/bin/megh-flush-sessions
-RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-flush-sessions
+RUN chmod +x /usr/local/bin/megh-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/megh-entrypoint"]
