@@ -176,6 +176,8 @@ repos:
   - {url: git@github.com:panyam/protoc-gen-dal.git,       dir: newstack/protoc-gen-dal/main}
   - {url: git@github.com:panyam/protoc-gen-go-mcp.git,    dir: newstack/protoc-gen-go-mcp/main}
   - {url: git@github.com:panyam/protoc-gen-go-wasmjs.git, dir: newstack/protoc-gen-go-wasmjs/main}
+  - {url: git@github.com:panyam/brain.git,                dir: newstack/brain/main}
+  - {url: git@github.com:panyam/protokit.git,             dir: newstack/protokit/main}
 
   # ~/projects -> repos/projects/<name>/<default-branch>
   - {url: git@github.com:turnforge/lilbattle.git, dir: projects/lilbattle/main}
@@ -184,6 +186,28 @@ repos:
   # template, ws3); this clones the default branch, matching the one-branch-leaf
   # convention used above. Dir case mirrors the local tree, not the repo name.
   - {url: git@github.com:panyam/agni.git,         dir: projects/Agni/main}
+  - {url: git@github.com:panyam/diffpp.git,       dir: projects/diffpp/main}
+  - {url: git@github.com:panyam/sdl.git,          dir: projects/sdl/main}
+  - {url: git@github.com:panyam/slyds.git,        dir: projects/slyds/main}
+  - {url: git@github.com:panyam/chakra.git,       dir: projects/chakra/main}
+  - {url: git@github.com:panyam/weemaps.git,      dir: projects/weemaps/main}
+  - {url: git@github.com:panyam/excaliframe.git,  dir: projects/excaliframe/main}
+  - {url: git@github.com:panyam/mcpcontribs.git,  dir: projects/mcpcontrib/main}
+  - {url: git@github.com:panyam/blog.git,         dir: projects/blog/master}
+  - {url: git@github.com:panyam/leetcoach.git,    dir: projects/leetcoach/master}
+  - {url: git@github.com:panyam/notations.git,    dir: projects/notations/master}
+  - {url: git@github.com:panyam/notation_demos.git, dir: projects/notation_demos/master}
+  # Local dir is BOM, the repo is mycgm. Dir mirrors the local tree.
+  - {url: git@github.com:panyam/mycgm.git,        dir: projects/BOM/main}
+  - {url: git@github.com:turnforge/turnengine.git, dir: projects/turnengine/main}
+
+  # Third-party upstreams, cloned read-only over https so they need no identity
+  # (aliasedURL leaves non-github-SSH urls alone). Here because the MCP spec work
+  # reads them constantly; drop any you do not want on a box.
+  - {url: https://github.com/modelcontextprotocol/go-sdk.git,        dir: projects/go-sdk/main}
+  - {url: https://github.com/modelcontextprotocol/ext-apps.git,      dir: projects/ext-apps/main}
+  - {url: https://github.com/modelcontextprotocol/typescript-sdk.git, dir: projects/typescript-sdk/main}
+  - {url: https://github.com/modelcontextprotocol/experimental-ext-triggers-events.git, dir: projects/experimental-ext-triggers-events/main}
 
   # ~/work/hw -> repos/hw/... (mirrors the local nested layout; unchanged)
   - {url: git@github.com:hwtools/workspace.git, dir: hw}
