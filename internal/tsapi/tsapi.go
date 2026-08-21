@@ -14,6 +14,7 @@
 package tsapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,10 +36,21 @@ const (
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-// Client talks to one tailnet.
+// Client talks to one tailnet. It is safe for concurrent use: the only mutable
+// state is the cached OAuth access token.
 type Client struct {
 	key     string
 	tailnet string
+
+	// base is the API root. Overridable so tests can drive a local server.
+	base string
+
+	// OAuth only. oauthClientID is optional; clientID() derives it from the
+	// secret when unset.
+	oauthClientID string
+	mu            sync.Mutex
+	token         string
+	tokenExpiry   time.Time
 }
 
 // New builds a client. key falls back to $MEGH_TAILSCALE_API_KEY, and an empty
@@ -52,7 +65,7 @@ func New(key, tailnet string) (*Client, error) {
 	if tailnet == "" {
 		tailnet = "-"
 	}
-	return &Client{key: key, tailnet: tailnet}, nil
+	return &Client{key: key, tailnet: tailnet, base: apiBase}, nil
 }
 
 // Device is one node on the tailnet, trimmed to the fields megh reasons about.
@@ -97,7 +110,7 @@ func (c *Client) Devices(ctx context.Context) ([]Device, error) {
 	var body struct {
 		Devices []Device `json:"devices"`
 	}
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/tailnet/%s/devices", apiBase, c.tailnet), &body); err != nil {
+	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/tailnet/%s/devices", c.base, c.tailnet), &body); err != nil {
 		return nil, err
 	}
 	return body.Devices, nil
@@ -105,15 +118,37 @@ func (c *Client) Devices(ctx context.Context) ([]Device, error) {
 
 // Delete removes one device from the tailnet.
 func (c *Client) Delete(ctx context.Context, id string) error {
-	return c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/device/%s", apiBase, id), nil)
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/device/%s", c.base, id), nil)
 }
 
 func (c *Client) do(ctx context.Context, method, url string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	return c.doJSON(ctx, method, url, nil, out)
+}
+
+// doJSON is the one request path. body is JSON-encoded when non-nil, and the
+// Authorization header comes from bearer() so an OAuth secret is exchanged
+// (and the resulting token reused) transparently.
+func (c *Client) doJSON(ctx context.Context, method, url string, body, out any) error {
+	var rdr io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		rdr = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, rdr)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.key)
+	tok, err := c.bearer(ctx)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err

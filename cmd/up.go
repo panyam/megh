@@ -144,6 +144,12 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 						upOpts.Name, p.ID, strings.TrimPrefix(upOpts.Name, runpod.NamePrefix))
 				}
 			}
+			// Mint this box its own Tailscale key, if configured. Best effort: a
+			// failure falls back to the shared static key rather than blocking a
+			// launch, because the tailnet is a convenience layer and public SSH is
+			// the path the control machine actually uses.
+			upOpts.TSAuthKey = mintBoxAuthKey(ctx, runpod.ShortName(upOpts.Name))
+
 			res, err := runpod.Up(ctx, upOpts)
 			if err != nil {
 				return err

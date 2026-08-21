@@ -120,8 +120,12 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   console as the ghcr.io Container Registry Auth
 - `TS_AUTHKEY` — optional, Tailscale NODE key (phone/tablet only); reusable +
   ephemeral. Goes to the box, which is how it joins the tailnet.
-- `MEGH_TAILSCALE_API_KEY` — optional, Tailscale CONTROL-PLANE token. Lets
-  `megh down` and `megh doctor ts gc` delete stale nodes. Control machine ONLY:
+- `MEGH_TAILSCALE_API_KEY` — optional, Tailscale CONTROL-PLANE credential.
+  Either a PAT (`tskey-api-...`) or an OAuth client secret (`tskey-client-...`,
+  non-expiring, preferred); megh tells them apart by prefix and exchanges the
+  latter for a short-lived token automatically. Lets `megh down` and
+  `megh doctor ts gc` delete stale nodes, and `megh up` mint per-box keys when
+  `tailscale.mint_keys` is on. Control machine ONLY:
   it can delete any node on the tailnet, including your laptop's, so it never
   reaches a box. `meghEnv` denies it by name despite the `MEGH_` prefix. See
   `CONSTRAINTS.md` C5.
@@ -223,10 +227,14 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   is removed by Tailscale a while after it goes offline, even when the box died
   without a logout). Check that before blaming megh, since no amount of GC fixes
   the source. Clear existing debris with `megh doctor ts gc <name>`, which also
-  takes the `<name>-1` / `<name>-2` variants that made the name drift. Most common real cause: the box was launched with a **stale
-  key** (the launching shell's `TS_AUTHKEY` was older than the box's). Fix in
-  place without a rebuild: `megh doctor ts setkey <name>` re-authenticates with
-  the control machine's current `TS_AUTHKEY` (or `--authkey`) and re-serves.
+  takes the `<name>-1` / `<name>-2` variants that made the name drift.
+  Most common real cause: the box was launched with a **stale key** (the
+  launching shell's `TS_AUTHKEY` was older than the box's). Fix in place without
+  a rebuild: `megh doctor ts setkey <name>` re-authenticates with the control
+  machine's current `TS_AUTHKEY` (or `--authkey`) and re-serves. Turning on
+  `tailscale.mint_keys` makes BOTH of these impossible rather than diagnosable:
+  the key is minted at launch, so it cannot be stale, and it is ephemeral, so
+  the node cannot outlive the box.
 - **Tailscale bring-up is one script** (`internal/tsops/ts-up.sh`), embedded in
   the megh binary. The entrypoint runs it at boot (`megh doctor ts start
   --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
