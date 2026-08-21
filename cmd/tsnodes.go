@@ -38,7 +38,14 @@ func tsClient() (*tsapi.Client, error) {
 	if tailnet == "" {
 		tailnet = cfg.Tailnet
 	}
-	return tsapi.New(tsAPIKey, tailnet)
+	if tsAPIKey != "" {
+		return tsapi.New(tsAPIKey, tailnet)
+	}
+	return tsapi.NewWithCreds(tsapi.Creds{
+		APIKey:       os.Getenv(cfg.Tailscale.APIKeyEnv),
+		ClientID:     os.Getenv(cfg.Tailscale.ClientIDEnv),
+		ClientSecret: os.Getenv(cfg.Tailscale.ClientSecretEnv),
+	}, tailnet)
 }
 
 // liveBoxNames is the set of box names that currently exist at the provider. It
@@ -143,7 +150,18 @@ A node for a box that is still running is never deleted.`,
 		if err != nil {
 			return err
 		}
-		candidates := gcCandidates(devices, args, live, time.Now(), tsGCStale, tsGCTag)
+		// A tag-scoped credential can only delete devices carrying its tag, so a
+		// bare sweep that offered anything else would list candidates it cannot
+		// actually remove. Default the sweep to the configured tag and say so,
+		// which also means the sweep structurally cannot propose a personal
+		// device. Naming boxes explicitly still bypasses this, since that is how
+		// you clear untagged debris from before tagging existed.
+		tag := tsGCTag
+		if tag == "" && len(args) == 0 && cfg.Tailscale.Tag != "" && !cmd.Flags().Changed("tag") {
+			tag = cfg.Tailscale.Tag
+			fmt.Printf("sweeping only %s devices (pass --tag \"\" to consider every node)\n", tag)
+		}
+		candidates := gcCandidates(devices, args, live, time.Now(), tsGCStale, tag)
 		if len(candidates) == 0 {
 			fmt.Println("no stale tailnet nodes")
 			return nil
@@ -177,6 +195,10 @@ A node for a box that is still running is never deleted.`,
 		for _, d := range candidates {
 			if err := c.Delete(ctx, d.ID); err != nil {
 				fmt.Printf("  %s: %v\n", d.BareName(), err)
+				if isScopeError(err) {
+					fmt.Printf("      the credential is tag-scoped, so it cannot delete an untagged device;\n")
+					fmt.Printf("      remove it in the admin console, or use a credential with wider scope\n")
+				}
 				failed++
 				continue
 			}
@@ -193,6 +215,15 @@ A node for a box that is still running is never deleted.`,
 // those boxes and their -N variants. Without, it sweeps nodes that are stale
 // and unclaimed. Either way a node whose name is a live box is excluded, and so
 // is anything outside --tag when one is given.
+// isScopeError spots the failure mode a tag-scoped credential produces when
+// asked to touch a device outside its tag, so the message explains the cause
+// rather than showing a bare status code.
+func isScopeError(err error) bool {
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "403") || strings.Contains(m, "forbidden") ||
+		strings.Contains(m, "scope") || strings.Contains(m, "not permitted")
+}
+
 func gcCandidates(devices []tsapi.Device, names []string, live map[string]bool, now time.Time, staleAfter time.Duration, tag string) []tsapi.Device {
 	var out []tsapi.Device
 	for _, d := range devices {

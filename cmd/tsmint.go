@@ -34,10 +34,6 @@ func mintBoxAuthKey(ctx context.Context, box string) string {
 	if !cfg.Tailscale.MintKeys {
 		return ""
 	}
-	if os.Getenv("MEGH_TAILSCALE_API_KEY") == "" {
-		fmt.Fprintln(os.Stderr, "megh: mint_keys is on but no Tailscale API key is set; using the static TS_AUTHKEY")
-		return ""
-	}
 	c, err := tsClient()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "megh: %v; using the static TS_AUTHKEY\n", err)

@@ -48,6 +48,9 @@ tailscale:
   # Optional control-plane token, used only from this machine, to delete tailnet
   # nodes whose box is gone. Never sent to a box (CONSTRAINTS.md C5).
   api_key_env: MEGH_TAILSCALE_API_KEY
+  # Preferred: the client id + secret pair the console gives you.
+  client_id_env: MEGH_TAILSCALE_CLIENT_ID
+  client_secret_env: MEGH_TAILSCALE_CLIENT_SECRET
   # Mint a single-use ephemeral key per box instead of sharing one static key.
   # Needs tag:megh in the ACL tagOwners plus an ssh rule for dst: ["tag:megh"],
   # and a trust credential scoped to Devices>Core>Write + Keys>Auth Keys>Write.

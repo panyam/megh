@@ -30,7 +30,9 @@ var featureName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // machines megh never created, so it is strictly worse in a box's hands than the
 // provider key C3 already excludes. See CONSTRAINTS.md C5.
 var meghEnvDeny = map[string]bool{
-	"MEGH_TAILSCALE_API_KEY": true,
+	"MEGH_TAILSCALE_API_KEY":       true,
+	"MEGH_TAILSCALE_CLIENT_ID":     true,
+	"MEGH_TAILSCALE_CLIENT_SECRET": true,
 }
 
 // meghEnv renders the caller's MEGH_* environment as shell `export` lines to
