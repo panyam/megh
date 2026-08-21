@@ -34,13 +34,10 @@ func mintBoxAuthKey(ctx context.Context, box string) string {
 	if !cfg.Tailscale.MintKeys {
 		return ""
 	}
-	if os.Getenv("MEGH_TAILSCALE_API_KEY") == "" {
-		fmt.Fprintln(os.Stderr, "megh: mint_keys is on but no Tailscale API key is set; using the static TS_AUTHKEY")
-		return ""
-	}
 	c, err := tsClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "megh: %v; using the static TS_AUTHKEY\n", err)
+		fmt.Fprintf(os.Stderr, "megh: %v\n", err)
+		warnNoMintedKey()
 		return ""
 	}
 	var tags []string
@@ -56,7 +53,7 @@ func mintBoxAuthKey(ctx context.Context, box string) string {
 		if len(tags) > 0 {
 			fmt.Fprintf(os.Stderr, "megh: check that %q exists in the tailnet ACL tagOwners, and that the credential is scoped to it\n", tags[0])
 		}
-		fmt.Fprintln(os.Stderr, "megh: falling back to the static TS_AUTHKEY")
+		warnNoMintedKey()
 		return ""
 	}
 	fmt.Printf("minted a single-use ephemeral tailnet key for %s", box)
@@ -65,4 +62,18 @@ func mintBoxAuthKey(ctx context.Context, box string) string {
 	}
 	fmt.Println()
 	return key
+}
+
+// warnNoMintedKey explains what a box loses when minting did not happen. Once
+// TS_AUTHKEY is gone from the environment there is nothing to fall back TO, so
+// saying "falling back to the static key" would point at something that does
+// not exist. The box still launches either way: the control machine drives it
+// over public SSH, and the tailnet is the phone's path.
+func warnNoMintedKey() {
+	if os.Getenv("TS_AUTHKEY") != "" {
+		fmt.Fprintln(os.Stderr, "megh: falling back to the static TS_AUTHKEY")
+		return
+	}
+	fmt.Fprintln(os.Stderr, "megh: no static TS_AUTHKEY either, so this box will not join the tailnet")
+	fmt.Fprintln(os.Stderr, "megh: it still launches and `megh ssh` still works over public SSH")
 }
