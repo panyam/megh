@@ -29,10 +29,36 @@ import (
 
 const (
 	apiBase = "https://api.tailscale.com/api/v2"
-	// KeyEnv is the canonical env var holding the Tailscale API access token.
-	// megh.yaml points at it by name (tailscale.api_key_env), never by value.
+	// KeyEnv holds either a personal access token or, for the single-value form,
+	// an OAuth client secret. megh.yaml points at these by name, never by value.
 	KeyEnv = "MEGH_TAILSCALE_API_KEY"
+	// ClientIDEnv / ClientSecretEnv are the two-value OAuth form, which is what
+	// the Tailscale console hands you when you generate a trust credential: it
+	// shows a client id and a secret as separate fields. Supporting both shapes
+	// means you can paste what the console gave you rather than reverse the id
+	// out of the secret.
+	ClientIDEnv     = "MEGH_TAILSCALE_CLIENT_ID"
+	ClientSecretEnv = "MEGH_TAILSCALE_CLIENT_SECRET"
 )
+
+// Creds is how the control machine authenticates to Tailscale. ClientID +
+// ClientSecret is the preferred form and wins when both are set; APIKey is the
+// single-value fallback and may itself hold either a PAT or an OAuth secret.
+type Creds struct {
+	APIKey       string
+	ClientID     string
+	ClientSecret string
+}
+
+// CredsFromEnv reads the credential from the environment, preferring the
+// explicit OAuth pair.
+func CredsFromEnv() Creds {
+	return Creds{
+		APIKey:       os.Getenv(KeyEnv),
+		ClientID:     os.Getenv(ClientIDEnv),
+		ClientSecret: os.Getenv(ClientSecretEnv),
+	}
+}
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -46,26 +72,48 @@ type Client struct {
 	base string
 
 	// OAuth only. oauthClientID is optional; clientID() derives it from the
-	// secret when unset.
+	// secret when unset. forceOAuth marks the credential as an OAuth secret
+	// regardless of its shape, set when the caller supplied the explicit pair,
+	// so a secret that does not carry the usual prefix is still exchanged rather
+	// than sent as a bearer token.
 	oauthClientID string
+	forceOAuth    bool
 	mu            sync.Mutex
 	token         string
 	tokenExpiry   time.Time
 }
 
-// New builds a client. key falls back to $MEGH_TAILSCALE_API_KEY, and an empty
-// tailnet becomes "-", which Tailscale reads as "the token's default tailnet".
+// New builds a client from a single credential value, falling back to the
+// environment. Kept for callers that only have one string (the --api-key flag).
 func New(key, tailnet string) (*Client, error) {
-	if key == "" {
-		key = os.Getenv(KeyEnv)
+	c := CredsFromEnv()
+	if key != "" {
+		// An explicit value overrides the environment entirely, including the
+		// OAuth pair, so --api-key means what it says.
+		c = Creds{APIKey: key}
 	}
-	if key == "" {
-		return nil, fmt.Errorf("no Tailscale API key (set %s, or pass --api-key)", KeyEnv)
-	}
+	return NewWithCreds(c, tailnet)
+}
+
+// NewWithCreds builds a client. An empty tailnet becomes "-", which Tailscale
+// reads as "the token's default tailnet".
+func NewWithCreds(cr Creds, tailnet string) (*Client, error) {
 	if tailnet == "" {
 		tailnet = "-"
 	}
-	return &Client{key: key, tailnet: tailnet, base: apiBase}, nil
+	c := &Client{tailnet: tailnet, base: apiBase}
+	switch {
+	case cr.ClientSecret != "":
+		c.key = cr.ClientSecret
+		c.oauthClientID = cr.ClientID
+		c.forceOAuth = true
+	case cr.APIKey != "":
+		c.key = cr.APIKey
+	default:
+		return nil, fmt.Errorf("no Tailscale credential (set %s and %s, or %s)",
+			ClientIDEnv, ClientSecretEnv, KeyEnv)
+	}
+	return c, nil
 }
 
 // Device is one node on the tailnet, trimmed to the fields megh reasons about.
