@@ -120,15 +120,21 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   console as the ghcr.io Container Registry Auth
 - `TS_AUTHKEY` — optional, Tailscale NODE key (phone/tablet only); reusable +
   ephemeral. Goes to the box, which is how it joins the tailnet.
-- `MEGH_TAILSCALE_API_KEY` — optional, Tailscale CONTROL-PLANE credential.
-  Either a PAT (`tskey-api-...`) or an OAuth client secret (`tskey-client-...`,
-  non-expiring, preferred); megh tells them apart by prefix and exchanges the
-  latter for a short-lived token automatically. Lets `megh down` and
+- `MEGH_TAILSCALE_CLIENT_ID` + `MEGH_TAILSCALE_CLIENT_SECRET` — optional,
+  Tailscale CONTROL-PLANE credential, and the preferred form: it is what the
+  console hands you (Settings > Trust credentials), it does not expire, and
+  scoping it to `tag:megh` means it cannot touch a device that is not a megh
+  box. `MEGH_TAILSCALE_API_KEY` is the older single-value form and holds either
+  a PAT (`tskey-api-...`) or a bare OAuth secret. The pair wins when both are
+  set, so a leftover PAT does not shadow a new credential. megh exchanges an
+  OAuth secret for a short-lived token automatically. Lets `megh down` and
   `megh doctor ts gc` delete stale nodes, and `megh up` mint per-box keys when
-  `tailscale.mint_keys` is on. Control machine ONLY:
-  it can delete any node on the tailnet, including your laptop's, so it never
-  reaches a box. `meghEnv` denies it by name despite the `MEGH_` prefix. See
-  `CONSTRAINTS.md` C5.
+  `tailscale.mint_keys` is on. Control machine ONLY, and never on a box:
+  `meghEnv` denies all three by name despite the `MEGH_` prefix it forwards.
+  How much damage a leaked one does depends on the form: an unscoped PAT can
+  delete ANY node on the tailnet including your laptop's, while a credential
+  scoped to `tag:megh` can only touch megh boxes. That is the main argument for
+  the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
 - `MEGH_SESSIONS_REPO` / `MEGH_SESSIONS_TOKEN` — optional, session history push
 
 ## Architecture (one-liners; see DESIGN.md)

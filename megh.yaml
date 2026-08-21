@@ -47,6 +47,11 @@ tailscale:
   # Wider reach than the provider key (it can delete your laptop's node), so it
   # never goes to a box. See CONSTRAINTS.md C5.
   api_key_env: MEGH_TAILSCALE_API_KEY
+  # The Tailscale console hands out a trust credential as a client id + secret
+  # pair, so megh takes that form too and prefers it when both are set. A
+  # leftover PAT in api_key_env is then ignored rather than shadowing it.
+  client_id_env: MEGH_TAILSCALE_CLIENT_ID
+  client_secret_env: MEGH_TAILSCALE_CLIENT_SECRET
 
   # Per-box auth keys. When on, `megh up` mints a single-use, ephemeral,
   # pre-authorized key for that box instead of shipping the shared static one.
@@ -63,7 +68,7 @@ tailscale:
   #   3. that client secret in MEGH_TAILSCALE_API_KEY.
   # Until then leave this false. If minting fails megh warns and falls back to
   # the static key, so a launch never breaks on it.
-  mint_keys: false
+  mint_keys: true
   tag: tag:megh
 
 # MagicDNS suffix of your tailnet — used to build box surface URLs in the portal
