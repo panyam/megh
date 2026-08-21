@@ -48,6 +48,14 @@ func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }
 type Tailscale struct {
 	AuthKeyEnv string `yaml:"authkey_env"`
 	APIKeyEnv  string `yaml:"api_key_env"`
+	// Tag applied to boxes when megh mints their auth key itself. Tailscale
+	// REQUIRES a tag on keys minted through an OAuth client, and the tag must
+	// already exist in the tailnet's ACL tagOwners. Empty disables per-box
+	// minting, falling back to the static AuthKeyEnv.
+	Tag string `yaml:"tag"`
+	// MintKeys turns per-box auth keys on. When false (or no API key is set),
+	// `megh up` passes the static auth key through unchanged.
+	MintKeys bool `yaml:"mint_keys"`
 }
 
 // Sessions configures the durable, searchable agent-history repo. Repo is not a
@@ -187,7 +195,7 @@ func Default() Config {
 		Providers: map[string]Provider{
 			"runpod": {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
 		},
-		Tailscale: Tailscale{AuthKeyEnv: "TS_AUTHKEY", APIKeyEnv: "MEGH_TAILSCALE_API_KEY"},
+		Tailscale: Tailscale{AuthKeyEnv: "TS_AUTHKEY", APIKeyEnv: "MEGH_TAILSCALE_API_KEY", Tag: "tag:megh"},
 		Sessions:  Sessions{TokenEnv: "MEGH_SESSIONS_TOKEN"},
 	}
 }
