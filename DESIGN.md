@@ -149,6 +149,70 @@ Hosting the phone-facing control panel, two options:
 
 Leaning mesh-hosted. Not built yet; the CLI is the first surface.
 
+## Volume durability (DESIGNED, NOT BUILT)
+
+The scratch volume is the one place megh keeps data that no other system holds,
+and until this is built it has no copy anywhere. Three facts fix the shape of
+the answer.
+
+- **RunPod cannot snapshot a volume.** Its network volume API is create, list,
+  get, delete, and an update that only renames or grows one (the size must
+  increase). Verified against the published OpenAPI document, which has no
+  snapshot, clone, or copy path for volumes.
+- **A volume is pinned to its data center** and a pod must run in that data
+  center to mount it. Changing region therefore already means creating a second
+  volume and refilling it, which is the same operation as a restore.
+- **The only copy path is a running box**, over the SSH megh already uses. Any
+  design that needs a scheduled push from the box also needs a long-lived
+  credential on the box, which `CONSTRAINTS.md` C3 forbids.
+
+So the design sorts what is on the volume by what the data actually is, and
+copies only the part that nothing else holds.
+
+**Regenerate, never copy.** `cache/<arch>` is package-manager caches,
+`state/lgtm` is observability data for a dev box, and any postgres cluster is on
+local disk by an earlier decision. Copying these costs real bytes and buys a
+re-download.
+
+**Belongs in git, and git is already the mechanism.** `repos/` are clones with
+remotes and `worktrees/` hold work in progress. The exposure is not the volume
+dying, it is uncommitted work at the moment it does, and the fix for uncommitted
+work is to commit it rather than to copy the file. A `megh wip` that commits
+every dirty worktree to a `wip/<box>/<branch>` branch and pushes it turns "back
+up my work" into "put the work where work goes." Agent transcripts already have
+exactly this shape through `flush-sessions.sh` and the `megh-sessions` repo.
+
+**Genuinely un-gittable, and small.** `state/` holds the persisted tool homes:
+`~/.claude` and `~/.claude.json`, `~/.codex`, `~/.config/gh`. It is megabytes,
+it carries login state and agent memory, and it is the only part of the volume
+whose loss costs a day rather than a re-download. This is what `megh backup`
+copies, pulling it to the control machine over the SSH path that `megh ssh` and
+`hydrate` already use, into `~/.megh/backups/<volume-id>/<timestamp>.tar.zst`.
+
+Pulling to the laptop rather than pushing to object storage is the whole point.
+It adds no service, no bucket, and no credential on the box. What it copies is
+login state the laptop already holds its own copies of, so landing it on an
+encrypted local disk does not widen the blast radius the way a new bucket and a
+new long-lived key would. restic was already rejected for session history, and
+the same reasoning applies here: git for what git can hold, one plain archive
+for the small remainder.
+
+Restore runs the same path backwards, and it is also the region-move story.
+`megh regions place` finds a data center that will rent, creates the volume
+there, `megh hydrate` refills `repos/`, and `megh backup restore` unpacks
+`state/`. That recovery path is one we walk whenever we change region, so it
+stays exercised instead of rotting until the day it is needed.
+
+Deliberately out of scope: no scheduled backup running on the box (it would need
+a credential there, C3), no cross-DC replica (two volumes and two boxes to keep
+one dev environment alive), and no whole-volume image (most of the volume is
+cache).
+
+Open inside this design: whether `megh down` should pull a backup automatically
+before terminating. It is the moment we know the data is about to be
+unreachable, but it also makes teardown slow and failable, and `down` is the one
+command that must always succeed.
+
 ## Open, not yet committed
 
 - **Remote access. DECIDED.** Security comes from SSH (key auth) plus binding the
