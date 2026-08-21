@@ -102,13 +102,19 @@ enforced in CI rather than by review.
 megh holds two Tailscale secrets and they are not interchangeable.
 
 - `TS_AUTHKEY` is a NODE auth key. It is sent to a box as pod env, because the
-  box needs it to join the tailnet. It can enrol a machine, nothing more.
+  box needs it to join the tailnet. It can enrol a machine, nothing more. The
+  same is true of a key megh mints per box (`tailscale.mint_keys`): still a node
+  key, still goes to the box, and single-use plus short-lived on top, so it is
+  strictly less exposure than the shared static one.
 - `MEGH_TAILSCALE_API_KEY` is a CONTROL-PLANE token. It can enumerate and DELETE
   every node on the tailnet, which is a wider blast radius than the RunPod key:
   it reaches machines megh never created, including your laptop and phone.
 
 The API key is used only by the control machine, in `internal/tsapi`, for
-`megh down` and `megh doctor ts gc`. It must never reach a box. This is C3's
+`megh down`, `megh doctor ts gc`, and minting per-box node keys in `megh up`.
+It must never reach a box. Note the asymmetry that makes this easy to get wrong:
+`megh up` uses the API key to PRODUCE something the box does receive, so the
+minted key travels while the credential that made it does not. This is C3's
 reasoning applied to a credential that is not a provider key, so C3's letter
 does not cover it while its spirit plainly does.
 

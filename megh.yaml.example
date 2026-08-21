@@ -48,6 +48,11 @@ tailscale:
   # Optional control-plane token, used only from this machine, to delete tailnet
   # nodes whose box is gone. Never sent to a box (CONSTRAINTS.md C5).
   api_key_env: MEGH_TAILSCALE_API_KEY
+  # Mint a single-use ephemeral key per box instead of sharing one static key.
+  # Needs tag:megh in the ACL tagOwners plus an ssh rule for dst: ["tag:megh"],
+  # and a trust credential scoped to Devices>Core>Write + Keys>Auth Keys>Write.
+  mint_keys: false
+  tag: tag:megh
 
 # Optional: your tailnet's MagicDNS suffix (see `megh doctor ts status` Self DNSName),
 # used to build box surface URLs in the portal.

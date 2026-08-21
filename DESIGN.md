@@ -225,6 +225,19 @@ command that must always succeed.
   device. Headscale (self-hosted coordinator on the always-on box) stays the
   constraint-2-pure upgrade if the hosted coordinator ever bothers us. Plain
   WireGuard rejected: clunky for a phone and for disposable boxes.
+- **Tailscale keys are minted per box, not shared. DESIGNED, off by default.**
+  One reusable static key for every box has three failure modes we actually hit:
+  a persistent node survives its box and the name drifts to `<name>-1`; the key
+  sits in every pod's env valid for its full 90 days; and a box launched from a
+  shell holding an older key fails to join, silently, which was the single most
+  common tailnet bug in this project. `megh up` can instead mint a single-use,
+  ephemeral, pre-authorized, tagged key with a minutes-long expiry, which
+  removes all three by construction rather than by diagnosis. It needs a
+  control-plane credential (`CONSTRAINTS.md` C5) and a tag declared in the
+  tailnet ACL, so it stays opt-in via `tailscale.mint_keys`, and any failure
+  warns and falls back to the static key rather than blocking a launch. Boxes
+  are reachable over public SSH regardless, so the tailnet is never on the
+  critical path for a launch.
 - **Default architecture** for VM providers. RunPod forces x86_64. For Hetzner,
   the tie-breaker is the user's Mac arch: match it for tightest local/remote
   parity, unless the deploy target's arch outweighs that.
