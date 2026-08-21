@@ -36,6 +36,7 @@ megh down [name] [-y]             # terminate a box (volume survives; leaves the
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
 megh storage list|create|rm       # network volumes, one global cross-provider view
+megh regions list|probe|place     # find a DC that will actually rent (probe = real rent + immediate terminate)
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
