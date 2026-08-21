@@ -71,7 +71,11 @@ the env, and `megh up` reads volume/DC/defaults from `megh.yaml`.
 `megh up` if any is missing) and `box_envs` (also copied into the box as pod env
 for the repos/services there). `megh config` shows each as `set`/`MISSING`.
 
-`persist:` lists home paths the entrypoint symlinks onto the scratch volume
+`persist:` entries may be prefixed `file:` or `dir:` to declare which they are
+(`file:~/.gitconfig`). Do it for any FILE whose name has no second dot: the
+fallback guess reads `.claude.json` as a file but `.gitconfig` as a directory,
+and guessing wrong CREATES a directory where the file belongs, after which every
+tool reports "Is a directory". `persist:` lists home paths the entrypoint symlinks onto the scratch volume
 (`state/<name>`), so a one-time `claude login`/`codex login`/etc. survives box
 rebuilds on the same volume. Entries may be dirs OR files: `~/.claude` (dir) plus
 `~/.claude.json` (a FILE beside it holding claude's login/onboarding state — miss
