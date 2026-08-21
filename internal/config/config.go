@@ -41,9 +41,13 @@ type Provider struct {
 // true; set expose_ssh: false to run tailnet-only (zero public ports).
 func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }
 
-// Tailscale points at the env var holding the (optional) Tailscale auth key.
+// Tailscale points at the env vars holding the (optional) Tailscale secrets.
+// The two are deliberately distinct. AuthKeyEnv is a NODE auth key and is sent
+// to the box so it can join the tailnet. APIKeyEnv is a CONTROL-PLANE token
+// that can delete nodes, and it must never reach a box (CONSTRAINTS.md C5).
 type Tailscale struct {
 	AuthKeyEnv string `yaml:"authkey_env"`
+	APIKeyEnv  string `yaml:"api_key_env"`
 }
 
 // Sessions configures the durable, searchable agent-history repo. Repo is not a
@@ -183,7 +187,7 @@ func Default() Config {
 		Providers: map[string]Provider{
 			"runpod": {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
 		},
-		Tailscale: Tailscale{AuthKeyEnv: "TS_AUTHKEY"},
+		Tailscale: Tailscale{AuthKeyEnv: "TS_AUTHKEY", APIKeyEnv: "MEGH_TAILSCALE_API_KEY"},
 		Sessions:  Sessions{TokenEnv: "MEGH_SESSIONS_TOKEN"},
 	}
 }
