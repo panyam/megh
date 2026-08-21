@@ -215,29 +215,35 @@ case "${1:-status}" in
     esac
     ;;
   reset)
-    # Dev data is disposable by design. Wipes the whole cluster; the dumps on the
-    # volume are left alone, so `pg start` will restore from them unless you
-    # clear those too (the message says how).
+    # Dev data is disposable by design. Wipes the cluster; nothing restores it
+    # unless you ask, so reset means reset.
     read -r -p "destroy the entire cluster at ${PGDATA}? [y/N] " a
     [ "$a" = y ] || exit 0
     up && run "${PGBIN}/pg_ctl -D '${PGDATA}' -m immediate -w stop" >/dev/null 2>&1
     rm -rf "${PGDATA}"
     echo "  wiped ${PGDATA}"
-    echo "  dumps on the volume are untouched; 'pg start' restores from them."
-    echo "  to start genuinely empty:  rm -f ${PGDUMPS}/*.sql"
+    if compgen -G "${PGDUMPS}/*.sql" >/dev/null 2>&1; then
+      echo "  dumps on the volume are untouched; 'pg restore' brings them back."
+      echo "  to discard those too:  rm -f ${PGDUMPS}/*.sql"
+    fi
     ;;
   *) echo "usage: pg start|stop|status|logs|psql [db]|db add <name>|db drop <name>|db list|dump|restore|reset"; exit 2 ;;
 esac
 CTRL
 chmod +x /usr/local/bin/pg
 
-# --- 4. start, rehydrating a fresh cluster from the volume --------------------
+# --- 4. start -----------------------------------------------------------------
 /usr/local/bin/pg start || exit 1
-# A fresh cluster on a rebuilt box is empty, but the dumps on the volume are not.
-# Restoring here is what makes the local-disk data directory acceptable.
+# A fresh cluster starts EMPTY, deliberately. Dev data is disposable: a database
+# is not expected to outlive the box, and projects seed from fixtures. Restoring
+# automatically made `pg reset` fail to reset (the wipe left the dumps, so the
+# next start brought the same data back) and quietly resurrected a previous
+# session's database on an unrelated rebuild. `pg dump` and `pg restore` are
+# still here for the rare time you do want data carried across; wanting it is
+# now something you say rather than something that happens to you.
 if [ "${FRESH}" = "1" ] && compgen -G "${PGDUMPS}/*.sql" >/dev/null 2>&1; then
-  log "fresh cluster; restoring dumps from ${PGDUMPS}"
-  /usr/local/bin/pg restore
+  log "fresh cluster; ${PGDUMPS} holds dumps from a previous box"
+  log "run 'pg restore' if you want them back; otherwise this cluster stays empty"
 fi
 "${PGBIN}/psql" -V 2>/dev/null | sed 's/^/[megh-postgres] /'
 log "control it with: pg start|stop|status|db add <name>|psql <db>"
