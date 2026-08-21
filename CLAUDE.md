@@ -179,14 +179,17 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   that user is owned by it and needs no chown. (This bit us: postgres was briefly
   declared impossible on the volume when the real bug was creating the dir as
   root first.)
-- **Container disk caps scale with instance size** (measured, the API rejects
-  more): 20-30 GB at 2 vCPU, 40 at 4, 50+ at 8. The DB features keep data on this
-  disk, which is why the default is now 4 vCPU / 40 GB.
+- **Container disk caps scale with instance size, and they MOVE.** Roughly 20-30
+  GB at 2 vCPU, 40 at 4, 50+ at 8, but the real cap follows whichever CPU flavor
+  is actually free at that instant, not the vCPU count you asked for. Measured in
+  US-CA-2 within one minute on 2026-08-21: 30 GB accepted with no volume
+  attached, then 20 GB was the stated maximum for the same 2 vCPU shape with the
+  volume attached. The DB features keep data on this disk, which is why the
+  default is 4 vCPU / 40 GB. This is the ephemeral OS disk, NOT scratch; real
+  scratch is the 100 GB volume.
 - **RunPod REST schema differs from its docs.** CPU pods use `computeType:"CPU"`,
   `vcpuCount`, `cpuFlavorIds` (enum `cpu3c/g/m`, `cpu5c/g/m`; c=2/g=4/m=8 GB per
   vCPU). `dataCenterIds` is an array, `ports` is an array, `env` is a map.
-- **Container disk is capped by instance size** (~20 at 2 vCPU, up to ~60). That
-  is the ephemeral OS disk, NOT scratch. Real scratch is the 100 GB volume.
 - **Placement: storage + CPU must coexist in one DC, and there's no reliable
   availability API.** "Flavor defined in a DC" != "rentable." Only a real rent
   attempt proves capacity (a failed one costs nothing). US-TX-3 was dry; US-CA-2
@@ -261,6 +264,19 @@ renders per-tenant dashboards with correct data and no errors (verified through
 are all apt-installable on 24.04 (`xschem` 3.4.4, `lepton-eda`, `ngspice`,
 `gerbv`, `kicad`), so Agni needs no extra provisioning; only `geda` itself has no
 installable candidate, superseded by `lepton-eda`.
+
+Fourth pass on a live slim box (2026-08-21) cleared the last two features.
+`megh enable vnc` comes up in ~35s and noVNC really attaches to the Xvfb display
+(page title becomes `<container>:99 - noVNC`), with the auto-started xterm
+visible. `megh enable playwright` then drives headed Chromium on `DISPLAY=:99`,
+rendered through noVNC over a `megh browse` tunnel. Two real bugs fell out of it
+and are fixed: the npx install probe that never installed anything, and the
+650 MB browser cache landing on the throwaway container disk. Both are written
+up in `internal/features/NOTES.md`.
+
+Also measured that pass: US-CA-2 would not rent 4 vCPU at all (the API really
+does return "no longer any instances"), which is what `megh regions probe` is
+for.
 
 Still not run live: the authenticated session-flush push (needs
 `MEGH_SESSIONS_TOKEN`, still unset).
