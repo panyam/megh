@@ -173,6 +173,15 @@ func liveSurfaces(boxKey string, d dial) ([]int, error) {
 
 // sshCapture runs a remote command on the box and returns its stdout.
 func sshCapture(keyFile string, d dial, remote string) (string, error) {
+	return sshCaptureCtx(context.Background(), keyFile, d, remote)
+}
+
+// sshCaptureCtx is sshCapture bounded by a context. ssh's own ConnectTimeout
+// only covers the TCP connect, so a call that stalls earlier — name resolution
+// of a MagicDNS host from a machine that is not on the tailnet is the case that
+// bit us — hangs indefinitely without an outer deadline. Cancelling the context
+// kills the ssh process.
+func sshCaptureCtx(ctx context.Context, keyFile string, d dial, remote string) (string, error) {
 	var args []string
 	if keyFile != "" {
 		args = append(args, "-i", config.ExpandPath(keyFile), "-o", "IdentitiesOnly=yes")
@@ -182,7 +191,7 @@ func sshCapture(keyFile string, d dial, remote string) (string, error) {
 		args = append(args, "-p", strconv.Itoa(d.port))
 	}
 	args = append(args, d.userHost(), remote)
-	out, err := exec.Command("ssh", args...).Output()
+	out, err := exec.CommandContext(ctx, "ssh", args...).Output()
 	return string(out), err
 }
 

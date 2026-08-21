@@ -12,43 +12,70 @@ box costs minutes, not work.
 ## Shape
 
 - **Dev environment** is declared once (`env/base/provision.sh`) and built into
-  two artifacts, a container image and a VM image, never a hand-mutated snapshot.
-- **Compute** is one backend per provider behind the `megh` CLI. Container-native
-  providers run the image directly; VM-native providers run the dev env directly
-  on the VM (native Docker, no nested containers). RunPod first (US); Hetzner next.
-- **Scratch** is a per-provider volume mounted at `/mnt/work`. Per-provider by
-  design; it does not migrate.
-- **Canonical state** is git plus restic to object storage. The only layer that
-  crosses providers.
+  two flavors, `base` (full, Playwright and code-server baked) and `slim` (lean
+  and fast to pull), never a hand-mutated snapshot.
+- **Compute** is one backend per provider behind the `megh` CLI. RunPod is the
+  only backend today; Hetzner is next. megh keeps no local state, so the
+  provider is the source of truth and boxes are found by a `megh-` name prefix.
+- **Scratch** is a per-provider network volume mounted at `/mnt/work`, pinned to
+  a datacenter and shareable by boxes in it. Per-provider by design; it does not
+  migrate.
+- **Canonical state** is git: your code in its own repos, agent transcripts
+  pushed to a `megh-sessions` repo by a timer on the box. That is the only layer
+  that crosses providers.
+- **Reachability** is two paths, both load-bearing. Public SSH on 22/tcp with key
+  auth is how the laptop drives a box (`ssh`, `browse`, `hydrate`, `doctor`).
+  Tailscale, in userspace mode with `tailscale serve`, is how a phone or tablet
+  reaches one. Web surfaces bind to loopback and are never published to RunPod's
+  open proxy.
 
-Every box ships a web shell (ttyd + tmux), a headed-browser view for Playwright
-(noVNC, works on a phone), and SSH with agent forwarding.
+Boxes ship a web shell (ttyd plus tmux) and a browser-based terminal. A headed
+browser display (noVNC), Playwright, code-server, an observability stack,
+postgres, and redis are added per box with `megh enable`.
+
+## Commands
+
+`megh up` / `list` / `ssh` / `browse` / `down` are the daily loop. Beyond those:
+`enable` adds a feature to a box, `doctor` probes health and repairs Tailscale,
+`storage` manages volumes, `regions` finds a datacenter that will actually rent
+the box you want, `hydrate` clones repos onto a volume, `profile` holds
+per-context SSH and GitHub identities, and `portal` publishes a bookmarkable
+index of boxes and URLs. `megh config` shows resolved settings and which secrets
+are set, never their values.
+
+Settings and pointers to secrets (env-var names) live in `megh.yaml`, which is
+checked in. Secret values live in the environment.
 
 ## Start here
 
 - `SETUP.md` — stand up your first box on RunPod.
+- `WORKFLOW.md` — the operational runbook.
 - `DESIGN.md` — the settled decisions and rationale.
+- `internal/features/NOTES.md` — implementation lore for the `enable` features.
 
 ## Layout
 
 ```
 megh/
 ├── main.go, cmd/                # Go + Cobra CLI (the provider abstraction seam)
-│   ├── up.go                    #   megh up <name> --provider ...
-│   ├── registry.go              #   megh registry ls | tags
-│   └── doctor.go                #   megh doctor (planned)
 ├── internal/
-│   ├── config/                  # registries + provider config
+│   ├── config/                  # megh.yaml, registries, provider settings
+│   ├── profile/                 # per-context box key + GitHub identity keys
 │   ├── registry/                # OCI v2 tag inspection (stdlib only)
+│   ├── features/                # `megh enable` scripts, embedded in the binary
+│   ├── tsops/                   # Tailscale bring-up, shared by boot and repair
 │   └── providers/runpod/        # RunPod backend (REST API)
 ├── env/base/                    # provision.sh (source of truth) + Dockerfile + entrypoint
-├── .github/workflows/           # build + push env images to a registry
-├── SETUP.md
-└── DESIGN.md
+├── .github/workflows/           # build + push env images to GHCR
+├── SETUP.md, WORKFLOW.md, DESIGN.md, CONSTRAINTS.md
+└── megh.yaml
 ```
 
 ## Status
 
-First drop: RunPod backend, base image, web shell + noVNC + SSH. Not yet: the
-mesh (Headscale/Tailscale), the Hetzner backend, `megh down/list/shell`, and the
-shutdown flush hook.
+Working end to end on RunPod: the box lifecycle, Tailscale, the web shell and
+webterm, code-server, the observability stack, postgres and redis, profiles,
+hydrate, and the portal. Two `enable` features, `vnc` and `playwright`, are
+implemented but not yet exercised on a live box.
+
+Not built yet: the Hetzner backend and volume backup.
