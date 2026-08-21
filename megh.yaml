@@ -99,6 +99,12 @@ persist:
   - ~/.claude.json     # Claude Code login/onboarding state (a FILE beside ~/.claude)
   - ~/.codex           # Codex login + settings
   - ~/.config/gh       # GitHub CLI auth (gh is baked in; see provision.sh)
+  - ~/.config/code-server      # generated password; a new one every box otherwise
+  - ~/.local/share/code-server # extensions, settings, workspace state
+  # Git identity, so an agent committing on the box does not hit "Please tell me
+  # who you are". Persisted rather than copied from the Mac via files:, because
+  # the laptop's gitconfig carries osxkeychain settings that break on Linux.
+  - ~/.gitconfig
   # - ~/.aws           # AWS credentials/config
   # - ~/.config/gcloud # gcloud auth
 

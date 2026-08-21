@@ -243,6 +243,22 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   `tailscale.mint_keys` makes BOTH of these impossible rather than diagnosable:
   the key is minted at launch, so it cannot be stale, and it is ephemeral, so
   the node cannot outlive the box.
+- **"claude wants me to log in again" is usually token expiry, not broken
+  persistence.** `persist:` symlinks `~/.claude` and `~/.claude.json` onto the
+  volume and that works, but the credential inside has its own clock: measured
+  2026-08-21, the access token lasts ~7h and the REFRESH token ~3.5 days. Rebuild
+  a box within a few days of last use and there is no login; come back after a
+  week and there is, however healthy the volume. Check
+  `/mnt/work/state/claude/.credentials.json` for `expiresAt` /
+  `refreshTokenExpiresAt` before suspecting megh. The giveaway that persistence
+  is fine is old `projects/` and `history.jsonl` mtimes sitting next to a
+  freshly written `.credentials.json`.
+- **A persisted dir is not a logged-in tool.** `~/.config/gh` and `~/.codex`
+  symlink to the volume from the first boot, which is easy to read as "gh is set
+  up". It is not: nothing ever ran `gh auth login`, so the dir is empty and
+  `gh auth status` reports no hosts. Git over SSH still works (forwarded agent),
+  only the `gh` CLI is affected. One login on any box fixes it for every box
+  after, since that is the point of persisting it.
 - **Tailscale bring-up is one script** (`internal/tsops/ts-up.sh`), embedded in
   the megh binary. The entrypoint runs it at boot (`megh doctor ts start
   --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
