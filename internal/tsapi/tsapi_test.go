@@ -6,7 +6,10 @@ import (
 )
 
 func TestBareNamePrefersTheFirstLabel(t *testing.T) {
-	cases := []struct{ in Device; want string }{
+	cases := []struct {
+		in   Device
+		want string
+	}{
 		{Device{Name: "devbox-2.taild311d3.ts.net"}, "devbox-2"},
 		{Device{Name: "vnclab.taild311d3.ts.net"}, "vnclab"},
 		{Device{Name: "", Hostname: "fallback.example.com"}, "fallback"},

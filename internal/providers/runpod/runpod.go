@@ -6,6 +6,7 @@ package runpod
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -42,6 +43,10 @@ type Options struct {
 	PubKey     string
 	ExposeSSH  bool              // expose public 22/tcp break-glass SSH
 	ExtraEnv   map[string]string // copied into the pod env (e.g. box_envs)
+	// TSAuthKey is the Tailscale node key to boot with. Set when megh minted a
+	// key for this box specifically; empty falls back to the ambient
+	// TS_AUTHKEY, which is the shared static key.
+	TSAuthKey string
 }
 
 // Result is a successful launch. Name is the box's bare name — the Tailscale
@@ -82,7 +87,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		"PUBLIC_KEY":          o.PubKey,
 		"WORK_MOUNT":          "/workspace",
 		"ARCH_TAG":            "x86_64",
-		"TS_AUTHKEY":          os.Getenv("TS_AUTHKEY"),
+		"TS_AUTHKEY":          cmp.Or(o.TSAuthKey, os.Getenv("TS_AUTHKEY")),
 		"TS_HOSTNAME":         ShortName(o.Name),
 		"MEGH_SESSIONS_REPO":  os.Getenv("MEGH_SESSIONS_REPO"),
 		"MEGH_SESSIONS_TOKEN": os.Getenv("MEGH_SESSIONS_TOKEN"),
