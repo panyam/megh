@@ -39,6 +39,12 @@ link_state() {
     # A FILE (e.g. ~/.claude.json — claude's login/onboarding state, which lives
     # next to ~/.claude, so the dir symlink alone misses it).
     mkdir -p "$(dirname "${vol}")"
+    # Heal a slot an earlier boot got wrong. A file entry that was once guessed
+    # to be a directory leaves an empty dir on the VOLUME, and linking to it
+    # reproduces "Is a directory" on every later box however the kind is decided
+    # now. rmdir, not rm -rf: it refuses on a non-empty directory, so real data
+    # is never at risk.
+    [ -d "${vol}" ] && [ ! -L "${vol}" ] && rmdir "${vol}" 2>/dev/null || true
     if [ -f "${home_dir}" ]; then
       [ -e "${vol}" ] || cp -a "${home_dir}" "${vol}" 2>/dev/null || true
       rm -f "${home_dir}"
