@@ -41,7 +41,7 @@ func tsHelperAction(action string) (helper string, injectKey bool, err error) {
 }
 
 var tsCmd = &cobra.Command{
-	Use:   "ts <logs|status|start|stop|restart|setkey> [box]",
+	Use:   "ts <logs|status|start|stop|restart|setkey|gc> [box]",
 	Short: "Inspect and control Tailscale on a box (diagnose, restart, re-key)",
 	Long: `Manage a box's Tailscale connection — the usual reason a box is unreachable.
 
@@ -53,6 +53,8 @@ var tsCmd = &cobra.Command{
   setkey   (re)authenticate with a fresh key, then serve — the fix for an expired
            or invalid TS_AUTHKEY. The key comes from --authkey, else the control
            machine's TS_AUTHKEY.
+  gc       delete tailnet nodes left behind by boxes that no longer exist
+           (acts on the control plane, not on a box; see megh doctor ts gc -h)
 
 Bring-up uses the same logic as boot (internal/tsops/ts-up.sh), shipped from this
 binary, so it works on any box regardless of image age. With no box name it

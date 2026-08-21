@@ -62,6 +62,7 @@ var configCmd = &cobra.Command{
 			show(p.APIKeyEnv)
 		}
 		show(cfg.Tailscale.AuthKeyEnv)
+		show(cfg.Tailscale.APIKeyEnv)
 		show(cfg.Sessions.TokenEnv)
 
 		if len(cfg.Requires.Envs) > 0 || len(cfg.Requires.BoxEnvs) > 0 {

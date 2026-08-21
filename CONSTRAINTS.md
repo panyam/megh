@@ -96,3 +96,29 @@ else that listens.
 The test scans every embedded feature script for a wildcard bind (`0.0.0.0`,
 `[::]`, or `bind *`) outside a comment and fails the build on a match, so this is
 enforced in CI rather than by review.
+
+## C5: the Tailscale API key stays on the control machine
+
+megh holds two Tailscale secrets and they are not interchangeable.
+
+- `TS_AUTHKEY` is a NODE auth key. It is sent to a box as pod env, because the
+  box needs it to join the tailnet. It can enrol a machine, nothing more.
+- `MEGH_TAILSCALE_API_KEY` is a CONTROL-PLANE token. It can enumerate and DELETE
+  every node on the tailnet, which is a wider blast radius than the RunPod key:
+  it reaches machines megh never created, including your laptop and phone.
+
+The API key is used only by the control machine, in `internal/tsapi`, for
+`megh down` and `megh doctor ts gc`. It must never reach a box. This is C3's
+reasoning applied to a credential that is not a provider key, so C3's letter
+does not cover it while its spirit plainly does.
+
+Concretely: never add it to `box_envs:`, never name it in `files:`, never put it
+in the pod env map in `internal/providers/runpod/runpod.go`, and never let a
+feature script read it (the `MEGH_` prefix means `meghEnv` in `cmd/enable.go`
+WOULD forward it, so a feature must not want it).
+
+**Verify:** `go test ./cmd/ -run TestMeghEnvNeverForwardsTheTailscaleAPIKey`,
+which fails if the key ever survives `meghEnv`. Also
+`grep -rn 'MEGH_TAILSCALE_API_KEY' env/ internal/features/` and
+`grep -rn 'TAILSCALE_API' internal/providers/` must both return nothing. The key
+may appear only in `internal/tsapi/`, `internal/config/`, `cmd/`, and the docs.
