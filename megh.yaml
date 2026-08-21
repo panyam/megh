@@ -31,9 +31,13 @@ providers:
     vcpu: 4
     ram: 16
     disk: 40
-    # Public break-glass SSH (22/tcp). true today; flip to false once Tailscale
-    # SSH is verified to run with ZERO public ports (megh ssh then goes over the
-    # tailnet). RunPod console Web Terminal stays the break-glass either way.
+    # Public SSH (22/tcp, key auth only). Keep this true. It is not a leftover
+    # to flip off once Tailscale settles: the control Mac cannot join the
+    # tailnet, so public SSH is the only path `megh ssh` / `browse` / `hydrate` /
+    # `doctor` have from there. Both paths are load-bearing and they serve
+    # different clients — the tailnet is how the phone reaches a box, public SSH
+    # is how the laptop does. Turning this off leaves the phone and the RunPod
+    # console Web Terminal as the only ways in.
     expose_ssh: true
 
 tailscale:
