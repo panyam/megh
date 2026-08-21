@@ -130,13 +130,9 @@ func Probe(ctx context.Context, o Options) ProbeResult {
 	// image pull finishes, so it never runs the entrypoint. If a terminate ever
 	// fails, though, the survivor would boot and join the tailnet, leaving
 	// exactly the kind of stale node that makes the next real box come up as
-	// <name>-1. Blank the credentials so an orphan is inert: ExtraEnv is applied
-	// over the base pod env, and an empty TS_AUTHKEY means "do not join".
-	o.ExtraEnv = map[string]string{
-		"TS_AUTHKEY":          "",
-		"MEGH_SESSIONS_TOKEN": "",
-		"MEGH_SESSIONS_REPO":  "",
-	}
+	// <name>-1. Blank the key so an orphan is inert: ExtraEnv is applied over the
+	// base pod env, and an empty TS_AUTHKEY means "do not join".
+	o.ExtraEnv = map[string]string{"TS_AUTHKEY": ""}
 
 	name := ShortName(o.Name)
 	res, err := Up(ctx, o)

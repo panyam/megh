@@ -218,6 +218,9 @@ const secretsTemplate = `# Secrets for this megh profile (values; kept 0600; nev
 # you can migrate gradually.
 export RUNPOD_API_KEY=
 export GH_MEGH_TOKEN=
+export MEGH_TAILSCALE_CLIENT_ID=
+export MEGH_TAILSCALE_CLIENT_SECRET=
+# Legacy static node key. Only needed if tailscale.mint_keys is off; a shared
+# key is what leaves persistent nodes behind when a box goes away.
 export TS_AUTHKEY=
-export MEGH_SESSIONS_TOKEN=
 `

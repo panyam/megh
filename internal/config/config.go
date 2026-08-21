@@ -63,11 +63,12 @@ type Tailscale struct {
 	MintKeys bool `yaml:"mint_keys"`
 }
 
-// Sessions configures the durable, searchable agent-history repo. Repo is not a
-// secret; TokenEnv points at the PAT that pushes to it.
+// Sessions configures the durable, searchable agent-history repo. There is no
+// token here on purpose: transcripts are collected by the CONTROL machine and
+// pushed with the GitHub identity it already has, so no credential for this
+// repo ever lives on a box. See DESIGN.md.
 type Sessions struct {
-	Repo     string `yaml:"repo"`
-	TokenEnv string `yaml:"token_env"`
+	Repo string `yaml:"repo"`
 }
 
 // Config is the resolved megh configuration. It contains settings and pointers
@@ -207,7 +208,6 @@ func Default() Config {
 			ClientSecretEnv: "MEGH_TAILSCALE_CLIENT_SECRET",
 			Tag:             "tag:megh",
 		},
-		Sessions: Sessions{TokenEnv: "MEGH_SESSIONS_TOKEN"},
 	}
 }
 
