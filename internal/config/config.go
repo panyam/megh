@@ -48,6 +48,11 @@ func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }
 type Tailscale struct {
 	AuthKeyEnv string `yaml:"authkey_env"`
 	APIKeyEnv  string `yaml:"api_key_env"`
+	// The two-value OAuth form the Tailscale console actually hands you. When
+	// both are set they win over APIKeyEnv, so a leftover PAT does not shadow a
+	// freshly created trust credential.
+	ClientIDEnv     string `yaml:"client_id_env"`
+	ClientSecretEnv string `yaml:"client_secret_env"`
 	// Tag applied to boxes when megh mints their auth key itself. Tailscale
 	// REQUIRES a tag on keys minted through an OAuth client, and the tag must
 	// already exist in the tailnet's ACL tagOwners. Empty disables per-box
@@ -195,8 +200,14 @@ func Default() Config {
 		Providers: map[string]Provider{
 			"runpod": {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
 		},
-		Tailscale: Tailscale{AuthKeyEnv: "TS_AUTHKEY", APIKeyEnv: "MEGH_TAILSCALE_API_KEY", Tag: "tag:megh"},
-		Sessions:  Sessions{TokenEnv: "MEGH_SESSIONS_TOKEN"},
+		Tailscale: Tailscale{
+			AuthKeyEnv:      "TS_AUTHKEY",
+			APIKeyEnv:       "MEGH_TAILSCALE_API_KEY",
+			ClientIDEnv:     "MEGH_TAILSCALE_CLIENT_ID",
+			ClientSecretEnv: "MEGH_TAILSCALE_CLIENT_SECRET",
+			Tag:             "tag:megh",
+		},
+		Sessions: Sessions{TokenEnv: "MEGH_SESSIONS_TOKEN"},
 	}
 }
 

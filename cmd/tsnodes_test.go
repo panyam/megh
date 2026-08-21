@@ -109,12 +109,21 @@ func TestUnitsReadCoarsely(t *testing.T) {
 // the tailnet, including machines megh never created. Enforced here rather than
 // left to review, because the prefix rule makes forwarding it the DEFAULT.
 func TestMeghEnvNeverForwardsTheTailscaleAPIKey(t *testing.T) {
-	t.Setenv("MEGH_TAILSCALE_API_KEY", "tskey-api-secret")
+	secrets := map[string]string{
+		"MEGH_TAILSCALE_API_KEY":       "tskey-api-secret",
+		"MEGH_TAILSCALE_CLIENT_ID":     "kSECRETID",
+		"MEGH_TAILSCALE_CLIENT_SECRET": "tskey-client-kSECRETID-secret",
+	}
+	for k, v := range secrets {
+		t.Setenv(k, v)
+	}
 	t.Setenv("MEGH_HARMLESS_KNOB", "keepme")
 
 	got := string(meghEnv())
-	if strings.Contains(got, "tskey-api-secret") || strings.Contains(got, "MEGH_TAILSCALE_API_KEY") {
-		t.Errorf("meghEnv forwarded the Tailscale API key to a box:\n%s", got)
+	for k, v := range secrets {
+		if strings.Contains(got, k) || strings.Contains(got, v) {
+			t.Errorf("meghEnv forwarded %s to a box:\n%s", k, got)
+		}
 	}
 	if !strings.Contains(got, "MEGH_HARMLESS_KNOB") {
 		t.Errorf("meghEnv dropped an ordinary MEGH_ knob:\n%s", got)

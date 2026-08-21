@@ -63,6 +63,8 @@ var configCmd = &cobra.Command{
 		}
 		show(cfg.Tailscale.AuthKeyEnv)
 		show(cfg.Tailscale.APIKeyEnv)
+		show(cfg.Tailscale.ClientIDEnv)
+		show(cfg.Tailscale.ClientSecretEnv)
 		if cfg.Tailscale.MintKeys {
 			fmt.Printf("  %-22s per-box keys, tag %s\n", "tailscale mint_keys", cfg.Tailscale.Tag)
 		}

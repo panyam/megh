@@ -106,7 +106,8 @@ megh holds two Tailscale secrets and they are not interchangeable.
   same is true of a key megh mints per box (`tailscale.mint_keys`): still a node
   key, still goes to the box, and single-use plus short-lived on top, so it is
   strictly less exposure than the shared static one.
-- `MEGH_TAILSCALE_API_KEY` is a CONTROL-PLANE token. It can enumerate and DELETE
+- `MEGH_TAILSCALE_API_KEY`, or the preferred `MEGH_TAILSCALE_CLIENT_ID` +
+  `MEGH_TAILSCALE_CLIENT_SECRET` pair, is a CONTROL-PLANE credential. It can enumerate and DELETE
   every node on the tailnet, which is a wider blast radius than the RunPod key:
   it reaches machines megh never created, including your laptop and phone.
 
@@ -120,11 +121,13 @@ does not cover it while its spirit plainly does.
 
 Concretely: never add it to `box_envs:`, never name it in `files:`, never put it
 in the pod env map in `internal/providers/runpod/runpod.go`, and never let a
-feature script read it (the `MEGH_` prefix means `meghEnv` in `cmd/enable.go`
-WOULD forward it, so a feature must not want it).
+feature script read it. All three names begin with `MEGH_`, which is exactly the
+prefix `meghEnv` in `cmd/enable.go` forwards, so each must be listed in
+`meghEnvDeny`. Adding a fourth control-plane variable means adding it there too;
+the prefix rule makes leaking it the default, not the accident.
 
 **Verify:** `go test ./cmd/ -run TestMeghEnvNeverForwardsTheTailscaleAPIKey`,
-which fails if the key ever survives `meghEnv`. Also
-`grep -rn 'MEGH_TAILSCALE_API_KEY' env/ internal/features/` and
+which fails if any of them survives `meghEnv`. Also
+`grep -rn 'MEGH_TAILSCALE' env/ internal/features/ internal/providers/` and
 `grep -rn 'TAILSCALE_API' internal/providers/` must both return nothing. The key
 may appear only in `internal/tsapi/`, `internal/config/`, `cmd/`, and the docs.
