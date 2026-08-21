@@ -35,6 +35,7 @@ megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a bo
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
+megh doctor ts gc [name...]       # delete tailnet nodes whose box is gone (control plane; needs MEGH_TAILSCALE_API_KEY)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh regions list|probe|place     # find a DC that will actually rent (probe = real rent + immediate terminate)
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
@@ -117,7 +118,13 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 - `RUNPOD_API_KEY` — provider access
 - `GH_MEGH_TOKEN` — GHCR pull (classic PAT, `read:packages`); also set in RunPod
   console as the ghcr.io Container Registry Auth
-- `TS_AUTHKEY` — optional, Tailscale (phone/tablet only); reusable + ephemeral
+- `TS_AUTHKEY` — optional, Tailscale NODE key (phone/tablet only); reusable +
+  ephemeral. Goes to the box, which is how it joins the tailnet.
+- `MEGH_TAILSCALE_API_KEY` — optional, Tailscale CONTROL-PLANE token. Lets
+  `megh down` and `megh doctor ts gc` delete stale nodes. Control machine ONLY:
+  it can delete any node on the tailnet, including your laptop's, so it never
+  reaches a box. `meghEnv` denies it by name despite the `MEGH_` prefix. See
+  `CONSTRAINTS.md` C5.
 - `MEGH_SESSIONS_REPO` / `MEGH_SESSIONS_TOKEN` — optional, session history push
 
 ## Architecture (one-liners; see DESIGN.md)
@@ -200,12 +207,20 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   agent forwarding). Use a fine-grained PAT scoped to only `megh-sessions`.
 - **"Box not on the tailnet" is usually not a code bug.** Tailscale comes up
   ~1-2 min after the pod is RUNNING (image pull, then `tailscale up`), so a check
-  in the first minute sees nothing. `megh down` deregisters the ephemeral node
-  immediately, so a `down`+re-`up` of the same name can briefly race GC and land
-  as `<name>-1` (a stale offline node still holding the name). Diagnose with
-  `megh doctor <name>` (or `megh doctor ts logs <name>` for the raw tailscale
-  logs). The `TS_AUTHKEY` must be reusable + ephemeral; a single-use/expired key
-  fails silently. Most common real cause: the box was launched with a **stale
+  in the first minute sees nothing. `megh down` deregisters the node immediately
+  (`tailscale logout` over SSH, plus a control-plane delete when
+  `MEGH_TAILSCALE_API_KEY` is set), so a `down`+re-`up` of the same name can
+  briefly race GC and land as `<name>-1` (a stale offline node still holding the
+  name). The SSH logout alone cannot cover a box that was already unreachable,
+  which is the case that leaves debris, and is why the API delete exists.
+  Diagnose with `megh doctor <name>` (or `megh doctor ts logs <name>` for the raw
+  tailscale logs). The `TS_AUTHKEY` must be reusable + ephemeral; a
+  single-use/expired key fails silently. **If nodes pile up permanently instead
+  of clearing on their own, suspect the key is NOT ephemeral** (an ephemeral node
+  is removed by Tailscale a while after it goes offline, even when the box died
+  without a logout). Check that before blaming megh, since no amount of GC fixes
+  the source. Clear existing debris with `megh doctor ts gc <name>`, which also
+  takes the `<name>-1` / `<name>-2` variants that made the name drift. Most common real cause: the box was launched with a **stale
   key** (the launching shell's `TS_AUTHKEY` was older than the box's). Fix in
   place without a rebuild: `megh doctor ts setkey <name>` re-authenticates with
   the control machine's current `TS_AUTHKEY` (or `--authkey`) and re-serves.

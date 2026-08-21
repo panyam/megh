@@ -85,6 +85,11 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 			return err
 		}
 		fmt.Printf("terminated %s (%s)\n", pod.DisplayName(), pod.ID)
+		// The SSH logout above is the clean path, but it cannot run on a box that
+		// was already unreachable, which is how nodes go stale in the first place.
+		// Now that the box is definitely gone, remove its node from the control
+		// plane too. Best effort and silent when no API key is configured.
+		pruneNodesBestEffort(ctx, pod.DisplayName())
 		publishPortalBestEffort()
 		return nil
 	},

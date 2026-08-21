@@ -82,6 +82,7 @@ func adoptSecrets(c config.Config) {
 		adopt("RUNPOD_API_KEY", p.APIKeyEnv)
 	}
 	adopt("TS_AUTHKEY", c.Tailscale.AuthKeyEnv)
+	adopt("MEGH_TAILSCALE_API_KEY", c.Tailscale.APIKeyEnv)
 	adopt("MEGH_SESSIONS_TOKEN", c.Sessions.TokenEnv)
 	if os.Getenv("MEGH_SESSIONS_REPO") == "" && c.Sessions.Repo != "" {
 		os.Setenv("MEGH_SESSIONS_REPO", c.Sessions.Repo)
