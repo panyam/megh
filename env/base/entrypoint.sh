@@ -63,15 +63,37 @@ IFS=',' read -ra _persist <<< "${PERSIST_DIRS}"
 for _p in "${_persist[@]}"; do
   _p="${_p//[[:space:]]/}"          # trim whitespace
   [ -z "${_p}" ] && continue
+  # An entry may declare its kind explicitly: "file:~/.gitconfig". Guessing is
+  # only a fallback, because guessing wrong CREATES A DIRECTORY where a file
+  # belongs and every tool then fails with "Is a directory".
+  _forced=""
+  case "${_p}" in
+    file:*) _forced=file; _p="${_p#file:}" ;;
+    dir:*)  _forced=dir;  _p="${_p#dir:}"  ;;
+  esac
   _p="${_p#\~/}"; _p="${_p#/}"      # home-relative: strip a leading ~/ or /
   _home="${HOME}/${_p}"
   # Volume slot name: path with / -> - and the leading dot dropped (.claude -> claude).
   _name="$(printf '%s' "${_p}" | sed 's#/#-#g; s#^\.##')"
-  # File or dir? Use what's on disk; if absent, a dot in the basename (after the
-  # leading one) means a file (.claude.json), else a dir (.claude, .config/gh).
-  if [ -f "${_home}" ] && [ ! -d "${_home}" ]; then _kind=file
+  # Kind: an explicit declaration wins, then what is actually on disk, then the
+  # volume slot if a previous box already made one, and only then a guess.
+  _b="$(basename "${_p}")"; _b="${_b#.}"
+  if [ -n "${_forced}" ]; then _kind="${_forced}"
+  elif [ -f "${_home}" ] && [ ! -d "${_home}" ]; then _kind=file
   elif [ -d "${_home}" ]; then _kind=dir
-  else _b="$(basename "${_p}")"; _b="${_b#.}"; case "${_b}" in *.*) _kind=file ;; *) _kind=dir ;; esac
+  elif [ -f "${WORK_MOUNT}/state/${_name}" ]; then _kind=file
+  elif [ -d "${WORK_MOUNT}/state/${_name}" ]; then _kind=dir
+  else
+    # A second dot means a file (.claude.json). Plain dotfiles are ambiguous:
+    # .claude and .codex are dirs, .gitconfig and .npmrc are files, and the name
+    # alone cannot tell you. These are the common rc-style FILES; anything else
+    # unknown stays a dir, which is the safer default for tool state.
+    case "${_b}" in
+      *.*) _kind=file ;;
+      gitconfig|gitignore|gitattributes|bashrc|bash_profile|zshrc|zprofile|profile|inputrc|netrc|npmrc|curlrc|vimrc|gemrc|editorconfig|tmux.conf)
+        _kind=file ;;
+      *) _kind=dir ;;
+    esac
   fi
   link_state "${_home}" "${WORK_MOUNT}/state/${_name}" "${_kind}"
 done
