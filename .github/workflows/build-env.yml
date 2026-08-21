@@ -17,6 +17,11 @@ on:
     branches: [main]
     paths:
       - "env/**"
+      # The image bakes the repo-root megh.yaml to /etc/megh/megh.yaml (see the
+      # cp below), which the box reads when no other config is discoverable. It
+      # is NOT under env/, so without this line a repos/settings change lands on
+      # main and the baked copy silently stays on the previous revision.
+      - "megh.yaml"
       - ".github/workflows/build-env.yml"
   workflow_dispatch:
 
