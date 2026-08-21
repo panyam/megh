@@ -42,6 +42,11 @@ providers:
 
 tailscale:
   authkey_env: TS_AUTHKEY           # optional; omit env value for SSH-only
+  # Control-plane token, used ONLY from this machine, to delete tailnet nodes
+  # left behind by boxes that no longer exist (`megh down`, `megh doctor ts gc`).
+  # Wider reach than the provider key (it can delete your laptop's node), so it
+  # never goes to a box. See CONSTRAINTS.md C5.
+  api_key_env: MEGH_TAILSCALE_API_KEY
 
 # MagicDNS suffix of your tailnet — used to build box surface URLs in the portal
 # (https://<box>.<tailnet>:<port>). Find it in `megh doctor ts status` (Self DNSName).
