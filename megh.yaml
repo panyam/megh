@@ -102,17 +102,7 @@ persist:
   - ~/.config/code-server      # generated password; a new one every box otherwise
   - ~/.local/share/code-server # extensions, settings, workspace state
   # Git identity, so an agent committing on the box does not hit "Please tell me
-  # who you are". Persisted rather than copied from the Mac via # Mirror LOCAL directory trees onto the box (local_dir: box_dir). Unlike files:,
-# which only ever adds single files at 0600, sync: MIRRORS and propagates
-# deletes, so reorganising skills on the laptop removes the superseded ones from
-# the box instead of leaving both on offer. A /mnt/work/ destination lands on the
-# volume, so it survives rebuilds; ~/ is ephemeral. Runs on `megh ssh` and
-# `megh hydrate`. *.bak and .DS_Store are always excluded.
-sync:
-  ~/.claude/skills:   /mnt/work/state/claude/skills
-  ~/.claude/commands: /mnt/work/state/claude/commands
-
-files:, because
+  # who you are". Persisted rather than copied from the Mac via files:, because
   # the laptop's gitconfig carries osxkeychain settings that break on Linux.
   # The file: prefix is REQUIRED here: on a fresh box the path does not exist
   # yet, and a plain dotfile with no second dot would otherwise be guessed to be
@@ -133,6 +123,16 @@ symlinks:
   ~/hw:       repos/hw
   ~/books:    repos/books
   ~/.vim:     repos/dotfiles/myvim   # vim config repo (panyam/myvim)
+
+# Mirror LOCAL directory trees onto the box (local_dir: box_dir). Unlike files:,
+# which only ever adds single files at 0600, sync: MIRRORS and propagates
+# deletes, so reorganising skills on the laptop removes the superseded ones from
+# the box instead of leaving both on offer. A /mnt/work/ destination lands on the
+# volume, so it survives rebuilds; ~/ is ephemeral. Runs on `megh ssh` and
+# `megh hydrate`. *.bak and .DS_Store are always excluded.
+sync:
+  ~/.claude/skills:   /mnt/work/state/claude/skills
+  ~/.claude/commands: /mnt/work/state/claude/commands
 
 # Copy local files onto a box over SSH (on `megh ssh`/`hydrate`), mode 0600. For
 # things that must NOT live in a repo or the image — machine rc files, and secret
