@@ -91,6 +91,7 @@ type Config struct {
 	Persist         []string            `yaml:"persist"`  // home dirs symlinked to the volume so their state survives rebuilds
 	Symlinks        map[string]string   `yaml:"symlinks"` // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
 	Files           map[string]string   `yaml:"files"`    // local path -> box path; copied over SSH (secrets/rc files not in a repo)
+	Sync            map[string]string   `yaml:"sync"`     // local DIR -> box dir; mirrored over SSH, deletes included
 }
 
 // Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)

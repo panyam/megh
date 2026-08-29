@@ -92,6 +92,15 @@ migrates image defaults); `symlinks` MAPS paths to authoritative hydrated repo
 trees (explicit target, no migration). It skips a link that already exists as real
 content. Targets may be files or dirs and may not exist until `megh hydrate` runs.
 
+`sync:` MIRRORS local directory trees onto a box over SSH (`local_dir: box_dir`,
+on `megh ssh`/`hydrate`), deletes included. That is the difference from `files:`
+and the reason it exists: skills and commands get reorganised on the laptop, and
+a copy that only ever adds leaves the superseded ones on the box so both get
+offered. Point it at `/mnt/work/...` to land on the volume and survive rebuilds.
+It shells out to rsync with `-rlptz --no-owner --no-group`, NOT `-a`, because
+the volume is NFS with root squashed and preserving ownership fails the whole
+transfer.
+
 `files:` copies LOCAL files onto a box over SSH (on `megh ssh`/`hydrate`, mode
 0600) — rc files and **secret** files that must not live in a repo or image
 (`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
