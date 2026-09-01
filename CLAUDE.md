@@ -231,6 +231,17 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   Only `22/tcp` is public (key auth).
 - **RunPod containers have no TUN device.** Tailscale must run userspace mode +
   `tailscale serve` (not normal tun mode).
+- **A forwarded agent dies with its connection, so tmux loses it.** `ssh -A`
+  makes a NEW socket per connection and deletes it on logout, while tmux keeps
+  whatever `SSH_AUTH_SOCK` held when the session was created. Reattach the next
+  day, or open the same session in webterm, and git push fails with "Permission
+  denied (publickey)" though the keys are fine. The entrypoint writes
+  `/etc/profile.d/megh-ssh-agent.sh`, which repoints `~/.ssh/agent.sock` at the
+  live socket on every login and exports that stable path, so an old session
+  follows whichever connection is open now. It is deliberately NOT a persistent
+  agent holding a key: with no session open there is no agent, so an unattended
+  box cannot write to your repos. Pushing from the phone therefore needs a
+  session open somewhere, webterm alone is not one.
 - **Session flush needs a credential on the box** (background timer can't use SSH
   agent forwarding). Use a fine-grained PAT scoped to only `megh-sessions`.
 - **"Box not on the tailnet" is usually not a code bug.** Tailscale comes up
