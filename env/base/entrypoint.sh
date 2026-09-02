@@ -168,6 +168,24 @@ fi
 unset _megh_sock
 AGENTRC
 chmod 0644 /etc/profile.d/megh-ssh-agent.sh
+
+# tmux defaults aimed at a phone. /etc/tmux.conf is read BEFORE ~/.tmux.conf, so
+# anything you put in your own file still wins.
+#   - mouse on: without it a touchscreen cannot scroll a pane at all, which is
+#     the single biggest difference on mobile.
+#   - 50k scrollback: the default 2000 loses the start of any real build log.
+#   - session name in the status bar: you attach from several places, so knowing
+#     WHICH session you are looking at matters.
+cat > /etc/tmux.conf <<'TMUXCONF'
+set -g mouse on
+set -g history-limit 50000
+set -g base-index 1
+set -g escape-time 10
+set -g status-left '[#S] '
+set -g status-left-length 30
+set -g default-terminal 'screen-256color'
+TMUXCONF
+chmod 0644 /etc/tmux.conf
 if [ -n "${PUBLIC_KEY:-}" ]; then
   echo "${PUBLIC_KEY}" >> /root/.ssh/authorized_keys
   chmod 600 /root/.ssh/authorized_keys
@@ -188,6 +206,12 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 PermitEmptyPasswords no
+# Mobile links go through NAT that drops idle mappings without telling either
+# end, which leaves a session hung rather than closed. Probe every 30s and give
+# up after 6, so a dead connection is noticed in ~3 minutes and its tmux client
+# detaches cleanly instead of lingering and holding the pane.
+ClientAliveInterval 30
+ClientAliveCountMax 6
 SSHD
 # Never boot a box with no sshd at all: if the drop-in is somehow invalid, throw
 # it away rather than leave the only door shut.
