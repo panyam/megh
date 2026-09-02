@@ -29,7 +29,7 @@ Run `megh` directly only after `source ~/personal/envvars`.
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
-megh ssh [name]                   # plain interactive shell (git-ready)
+megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --no-tmux, --session
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
 megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
@@ -226,6 +226,16 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   availability API.** "Flavor defined in a DC" != "rentable." Only a real rent
   attempt proves capacity (a failed one costs nothing). US-TX-3 was dry; US-CA-2
   worked. Volume-supporting US DCs are enumerated in WORKFLOW.md.
+- **mosh is impossible on RunPod. SETTLED, two independent blockers** (checked
+  2026-09-01). RunPod's `ports` takes only `http` or `tcp` per its own schema, so
+  there is no way to expose the UDP 60000-61000 mosh needs. And Tailscale runs
+  `--tun=userspace-networking` here (no TUN device), which proxies inbound TCP
+  and HTTP through `tailscale serve` but cannot deliver inbound UDP to a local
+  port, so the tailnet is not a way around it either. The mobile answer instead
+  is tmux plus webterm, which reconnects in the browser: `megh ssh` attaches
+  session `main`, sshd sends keepalives so a dropped mobile link is noticed in
+  ~3 min, and `/etc/tmux.conf` turns the mouse on so a touchscreen can scroll.
+  mosh WOULD work on the Hetzner VM backend, which has a real TUN and real UDP.
 - **RunPod's public proxy is open and unauthenticated.** Never expose ttyd/noVNC
   there. They bind to `127.0.0.1`; reach via `megh ssh` (tunnels) or Tailscale.
   Only `22/tcp` is public (key auth).
