@@ -60,10 +60,17 @@ image), `make registry`.
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
 
-## Config (`megh.yaml`, checked in)
+## Config (`megh.yaml`, NOT checked in)
 
-Settings live in `megh.yaml` (auto-discovered walking up from cwd, then
-`~/.config/megh/megh.yaml`; override with `--config`/`$MEGH_CONFIG`). It holds
+The real `megh.yaml` is private and lives in the dotfiles repo at
+`megh/megh.yaml`, because it names every repo you work on. This repo tracks only
+`megh.yaml.example`. `install.sh` fetches the real one to
+`~/.config/megh/megh.yaml`; on a box it arrives via `files:` + `symlinks:`, and
+the image bakes the EXAMPLE to `/etc/megh/megh.yaml` as a last resort.
+
+Settings are auto-discovered walking up from cwd, then
+`~/.config/megh/megh.yaml`, then `/etc/megh/megh.yaml`; override with
+`--config`/`$MEGH_CONFIG`. It holds
 non-secret settings and **pointers** to secrets (env-var names), never secret
 values, so it is safe in the repo. `megh config` shows the resolved settings and
 which secrets are set (never values). `megh.yaml.example` + `secrets.env.example`
@@ -337,10 +344,7 @@ Third pass on image `0cf66ed` (2026-08-12) cleared the rest: `gh` 2.97.0 and
 pnpm 11.21.0 are baked, `~/.config/gh` persists to `state/config-gh`, the baked
 `megh hydrate --local --check` now exits 0 with no phantom drift, and Grafana
 renders per-tenant dashboards with correct data and no errors (verified through
-`/api/ds/query`, the panel path, plus a real browser render). A hardware/EDA project's tools
-are all apt-installable on 24.04 (`xschem` 3.4.4, `lepton-eda`, `ngspice`,
-`gerbv`, `kicad`), so that flavor needs no extra provisioning; only `geda` itself
-has no installable candidate, superseded by `lepton-eda`.
+`/api/ds/query`, the panel path, plus a real browser render).
 
 Fourth pass on a live slim box (2026-08-21) cleared the last two features.
 `megh enable vnc` comes up in ~35s and noVNC really attaches to the Xvfb display

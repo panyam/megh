@@ -168,9 +168,15 @@ returns 404 without auth. `gh` can read it, and gh auth is needed anyway for the
 release assets, so it costs no extra prerequisite.
 
 It picks the artifact for the machine, verifies the checksum, installs to
-`$PREFIX/bin` on Termux (`~/.local/bin` elsewhere), and drops `megh.yaml` at
-`~/.config/megh/megh.yaml` without overwriting one that is already there. Re-run
-it to upgrade. `MEGH_TARGET` and `MEGH_INSTALL_DIR` override the guesses.
+`$PREFIX/bin` on Termux (`~/.local/bin` elsewhere), and writes
+`~/.config/megh/megh.yaml` without overwriting one already there. Re-run it to
+upgrade. `MEGH_TARGET` and `MEGH_INSTALL_DIR` override the guesses.
+
+The config comes from a **second, private** source: the real `megh.yaml` names
+every repo you work on, so it lives in the dotfiles repo rather than this one.
+The installer fetches it with `gh` and falls back to `megh.yaml.example` if that
+repo is unreachable. `MEGH_CONFIG_REPO` and `MEGH_CONFIG_PATH` point it
+elsewhere.
 
 Taking the **android** build rather than linux/arm64 matters and the script
 handles it: the arch is the same, but Go's static linux binary is `ET_EXEC` and
