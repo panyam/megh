@@ -124,45 +124,94 @@ hardware you physically hold rather than on rented compute. A phone is enough:
 megh is a static Go binary and Termux runs it fine.
 
 The split it buys you is that spawning is rare and privileged while working is
-constant and unprivileged, so they live on different machines. `megh up` refuses
-to run on a box for exactly this reason (see `CONSTRAINTS.md` C3).
+constant and unprivileged, so they belong on different machines. `megh up`
+refuses to run on a box for exactly this reason (`CONSTRAINTS.md` C3).
 
 **Nothing is copied from your laptop.** Every credential here is re-mintable from
-its own console in a browser on the phone, and re-minting is better than copying
-because you then revoke the old one. That revocation is what makes "only the
-phone can spawn" true rather than "the phone can also spawn". Do not mail
-yourself an envvars file: plaintext at rest, permanent, and synced to every
-device you own.
+its own console in a browser on the phone, and re-minting beats copying because
+you then revoke the old one. That revocation is what makes "only the phone can
+spawn" true rather than "the phone can also spawn". Do not mail yourself an
+envvars file: plaintext at rest, permanent, and synced to every device you own.
+
+### 6.1 Termux packages
 
 ```sh
-pkg install openssh gh                 # Termux; no Go toolchain needed
-gh auth login                          # device flow, approve in the phone browser
+pkg install openssh gh git
+```
 
-# Binary + config, straight from the rolling release. No repo clone needed.
+`openssh` is not optional. megh shells out to `ssh`, `ssh-agent` and `ssh-add`
+for every box operation and for the scoped agent that forwards your GitHub keys.
+No Go toolchain is needed, which is the point of publishing binaries.
+
+### 6.2 Authenticate GitHub
+
+```sh
+gh auth login                                        # device flow, approve in the browser
+gh auth refresh -h github.com -s admin:public_key    # needed by --register below
+```
+
+This is the bootstrap credential and it is obtained fresh on the phone, so
+nothing is transported. A default `gh` login does not carry `admin:public_key`,
+and without it step 6.4 fails with a bare `HTTP 403: Resource not accessible`
+that names neither the scope nor the fix.
+
+### 6.3 Binary and config
+
+```sh
 gh release download latest --repo panyam/megh -p 'megh-linux-arm64' -p 'megh.yaml'
 mv megh-linux-arm64 megh && chmod +x megh
 mkdir -p ~/.config/megh && mv megh.yaml ~/.config/megh/megh.yaml
-
-./megh profile create phone            # mints its own box key + GitHub key here
-
-# Mint the GitHub identity AND enrol it, so no base64 blob is ever pasted into a
-# mobile browser. Keys are never copied between devices, so a new device always
-# mints its own; --register is what stops that being the annoying part.
-gh auth refresh -h github.com -s admin:public_key
-./megh profile gh add personal --profile phone --register
+mkdir -p ~/bin && mv megh ~/bin/
 ```
 
-Then fill in the secrets, which live
-at `~/.megh/profiles/phone/secrets.env` at mode 0600, outside any repo:
+`latest` is a rolling prerelease rebuilt on every push to main, so this is
+always current. `~/.config/megh/megh.yaml` is the second place megh looks (after
+walking up from the cwd), so it resolves from any directory. No repo clone is
+needed: the config rides along as a release asset, and it holds only settings and
+env-var names.
 
-| variable | where to mint it |
+### 6.4 Mint the profile
+
+```sh
+megh profile create phone
+megh profile gh add personal --profile phone --register
+megh profile use phone
+```
+
+The profile mints its own box key and GitHub key locally. `--register` uploads
+the pubkey to GitHub, so no base64 blob is ever pasted into a mobile browser.
+
+### 6.5 Re-mint the secrets
+
+They live in `~/.megh/profiles/phone/secrets.env`, mode 0600, outside any repo.
+
+| variable | mint at |
 |---|---|
 | `RUNPOD_API_KEY` | RunPod console > Settings > API Keys |
-| `MEGH_TAILSCALE_CLIENT_ID` / `_SECRET` | Tailscale console > Settings > Trust credentials, scoped to `tag:megh` |
-| `GH_MEGH_TOKEN` | GitHub PAT, `read:packages` (only needed for `megh registry ls`) |
+| `MEGH_TAILSCALE_CLIENT_ID` / `_SECRET` | Tailscale > Settings > Trust credentials, scoped `tag:megh` |
+| `GH_MEGH_TOKEN` | GitHub PAT, `read:packages`; only for `megh registry ls` |
 
-Then revoke the old ones wherever they used to live. `megh config` shows what is
-set without printing values.
+`megh config` shows which are set without printing values.
+
+### 6.6 Launch
+
+```sh
+megh config
+megh regions probe --dc US-CA-2 --first -y   # capacity flaps; a probe costs a fraction of a cent
+megh up devbox
+megh ssh devbox                              # lands in tmux `main`
+```
+
+### The surprise worth knowing first
+
+**The phone's profile has a new box key, so it can create boxes but cannot SSH
+into any box launched with a different device's key.** `megh up` injects
+whichever profile is active, and existing boxes only trust the key they were
+born with. Either relaunch the box from the phone, or append the phone's pubkey
+to the running box's `authorized_keys` by hand once.
+
+For the same reason, keep the old control machine able to spawn until the phone
+has taken a box from `up` to `ssh` successfully. Revoke afterwards, not before.
 
 **Losing the phone does not lock you out.** The RunPod web console still
 terminates pods and mints a fresh API key, and `megh up` injects whatever pubkey
