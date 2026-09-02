@@ -48,6 +48,16 @@ Settings and pointers to secrets (env-var names) live in `megh.yaml`. Only
 it belongs in your own private config repo. Secret values live in the
 environment and never in either.
 
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | sh
+```
+
+Picks the right build for the machine (including Android/Termux, which needs a
+PIE binary a plain `linux/arm64` build cannot give it), verifies the checksum,
+and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
+
 ## Start here
 
 - `SETUP.md` — stand up your first box on RunPod, and (§6) run megh from a phone
