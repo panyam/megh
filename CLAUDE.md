@@ -28,6 +28,7 @@ Run `megh` directly only after `source ~/personal/envvars`.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
+                                  # refuses to run ON a box (C3); --i-am-the-control-plane overrides
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
