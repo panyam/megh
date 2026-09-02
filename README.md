@@ -43,8 +43,10 @@ per-context SSH and GitHub identities, and `portal` publishes a bookmarkable
 index of boxes and URLs. `megh config` shows resolved settings and which secrets
 are set, never their values.
 
-Settings and pointers to secrets (env-var names) live in `megh.yaml`, which is
-checked in. Secret values live in the environment.
+Settings and pointers to secrets (env-var names) live in `megh.yaml`. Only
+`megh.yaml.example` is tracked here: a real one names every repo you work on, so
+it belongs in your own private config repo. Secret values live in the
+environment and never in either.
 
 ## Start here
 
