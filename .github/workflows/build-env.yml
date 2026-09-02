@@ -17,11 +17,10 @@ on:
     branches: [main]
     paths:
       - "env/**"
-      # The image bakes the repo-root megh.yaml to /etc/megh/megh.yaml (see the
-      # cp below), which the box reads when no other config is discoverable. It
-      # is NOT under env/, so without this line a repos/settings change lands on
-      # main and the baked copy silently stays on the previous revision.
-      - "megh.yaml"
+      # The image bakes megh.yaml.example to /etc/megh/megh.yaml, the box's
+      # last-resort config. The REAL one is private and reaches a box through
+      # files: + symlinks: at ~/.config/megh/megh.yaml, which discovery prefers.
+      - "megh.yaml.example"
       - ".github/workflows/build-env.yml"
   workflow_dispatch:
 
@@ -52,7 +51,7 @@ jobs:
       - name: Stage megh binary + config into the build context
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o env/base/megh .
-          cp megh.yaml env/base/megh.yaml
+          cp megh.yaml.example env/base/megh.yaml
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3

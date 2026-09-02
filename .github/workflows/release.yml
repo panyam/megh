@@ -9,10 +9,10 @@ name: release
 # means "current main", which is the thing you want on a phone; versioned
 # releases stay a separate, deliberate act (see the release skill).
 #
-# megh.yaml rides along as an asset on purpose. The phone needs the binary AND
-# the config, and shipping both here means the bootstrap never has to clone the
-# repo. It holds only settings and env-var NAMES, never secret values, so it is
-# safe to attach.
+# megh.yaml.example rides along as an asset. The REAL config is private and lives
+# in the dotfiles repo, because it names every repo you work on; install.sh
+# fetches that separately. Shipping the template still means a fresh machine has
+# something to start from without cloning anything.
 
 on:
   push:
@@ -21,7 +21,7 @@ on:
       - "**.go"
       - "go.mod"
       - "go.sum"
-      - "megh.yaml"
+      - "megh.yaml.example"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -57,7 +57,7 @@ jobs:
               -ldflags "-s -w" \
               -o "dist/megh-${os}-${arch}" .
           done
-          cp megh.yaml dist/megh.yaml
+          cp megh.yaml.example dist/megh.yaml.example
           cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       - name: Publish the rolling `latest` release
@@ -74,7 +74,7 @@ jobs:
             "" \
             "Phone (Termux):" \
             "" \
-            "    gh release download latest --repo ${REPO} -p 'megh-android-arm64' -p 'megh.yaml'" \
+            "    gh release download latest --repo ${REPO} -p 'megh-android-arm64'" \
             "    mv megh-android-arm64 megh && chmod +x megh" \
             "" \
             "Verify against SHA256SUMS. Versioned releases are cut separately." \
