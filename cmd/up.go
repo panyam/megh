@@ -15,6 +15,7 @@ var (
 	upProvider  string
 	upFlavor    string
 	upExposeSSH bool
+	upFromBox   bool
 	upOpts      runpod.Options
 )
 
@@ -104,6 +105,9 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		}
 		upOpts.Name = name
 
+		if err := refuseToSpawnFromABox(); err != nil {
+			return err
+		}
 		if miss := cfg.MissingEnvs(); len(miss) > 0 {
 			return fmt.Errorf("required env vars not set (megh.yaml requires): %s", strings.Join(miss, ", "))
 		}
@@ -167,6 +171,8 @@ func init() {
 	f := upCmd.Flags()
 	// Defaults are empty/zero so `Changed` distinguishes an explicit flag from a
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
+	f.BoolVar(&upFromBox, "i-am-the-control-plane", false,
+		"allow launching from a box (needs a provider credential there; see CONSTRAINTS C3)")
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use base for frontend)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
@@ -178,4 +184,39 @@ func init() {
 	f.StringVar(&upOpts.PubKey, "pubkey", "", "SSH public key (default $MEGH_PUBKEY, else config ssh_pubkey_file)")
 	f.BoolVar(&upExposeSSH, "expose-ssh", true, "expose public break-glass SSH 22/tcp (default: config; false = tailnet-only)")
 	rootCmd.AddCommand(upCmd)
+}
+
+// boxMarker is written into the image by the Dockerfile, so its presence is a
+// reliable "we are running ON a megh box" signal.
+const boxMarker = "/etc/megh/build-info"
+
+// refuseToSpawnFromABox stops `megh up` running on a box.
+//
+// Launching boxes needs a provider credential, and a box holding one can
+// terminate and launch every other box on the account, which is what
+// CONSTRAINTS C3 exists to prevent. megh already refuses to SEND that credential
+// to a box; this closes the other half, where someone puts it there by hand and
+// the property quietly stops holding.
+//
+// The intended shape is that spawning happens from a device you physically hold
+// (a phone running megh in Termux is enough) while boxes only ever do the work.
+// Spawning is rare and privileged, working is constant and unprivileged, so they
+// belong on different machines.
+//
+// --i-am-the-control-plane overrides it, deliberately verbose: an escape hatch
+// you cannot type by accident, for a box you have decided to elevate.
+func refuseToSpawnFromABox() error {
+	if upFromBox {
+		return nil
+	}
+	if _, err := os.Stat(boxMarker); err != nil {
+		return nil // not a box; the normal case
+	}
+	return fmt.Errorf(`refusing to launch a box from another box.
+
+A box that can spawn boxes needs a provider credential, and one that holds it can
+terminate every other box on the account (CONSTRAINTS.md C3). Spawn from a device
+you hold instead; megh runs fine on a phone under Termux.
+
+If this box IS your control plane, say so: megh up --i-am-the-control-plane`)
 }

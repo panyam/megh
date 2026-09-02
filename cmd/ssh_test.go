@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -116,5 +117,26 @@ func TestValidTmuxSession(t *testing.T) {
 		if err := validTmuxSession(ok); err != nil {
 			t.Errorf("%q should be accepted: %v", ok, err)
 		}
+	}
+}
+
+// CONSTRAINTS C3. megh already refuses to SEND a provider credential to a box;
+// this covers the other half, where someone puts one there by hand and the
+// property quietly stops holding. The marker is written into the image, so its
+// presence is the signal.
+func TestRefuseToSpawnFromABox(t *testing.T) {
+	// On a laptop there is no marker, so up must proceed.
+	if _, err := os.Stat(boxMarker); err == nil {
+		t.Skip("running on a megh box; this test assumes a control machine")
+	}
+	upFromBox = false
+	if err := refuseToSpawnFromABox(); err != nil {
+		t.Errorf("should not refuse off a box: %v", err)
+	}
+	// The override exists so an intentionally elevated box still works.
+	upFromBox = true
+	defer func() { upFromBox = false }()
+	if err := refuseToSpawnFromABox(); err != nil {
+		t.Errorf("--i-am-the-control-plane should allow it: %v", err)
 	}
 }
