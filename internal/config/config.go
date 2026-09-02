@@ -86,7 +86,7 @@ type Config struct {
 	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
 	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
 	Requires        Requires            `yaml:"requires"`
-	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. example.ts.net); for portal surface URLs
+	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. tailXXXX.ts.net); for portal surface URLs
 	Portal          Portal              `yaml:"portal"`
 	Persist         []string            `yaml:"persist"`  // home dirs symlinked to the volume so their state survives rebuilds
 	Symlinks        map[string]string   `yaml:"symlinks"` // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
