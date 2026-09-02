@@ -120,3 +120,30 @@ requires:
     - GH_MEGH_TOKEN
   box_envs:
     - OPENAI_API_KEY
+
+# MagicDNS suffix of your tailnet, used to build box surface URLs in the portal.
+# Find it in `megh doctor ts status` (Self DNSName).
+tailnet: example.ts.net
+
+# `megh portal`: a bookmarkable box+URL index force-pushed to a branch of a
+# private repo, so on mobile you tap a link instead of typing host:port.
+portal:
+  repo: git@github.com:YOUR_GH_NAMESPACE/YOUR_REPO.git
+  branch: portal
+  scheme: http
+
+# Home paths mapped onto volume locations, so paths your local scripts expect
+# resolve on the box. Targets are relative to /mnt/work unless absolute, and may
+# be files or dirs that do not exist until `megh hydrate` runs.
+symlinks:
+  ~/projects: repos/projects
+  ~/.zshrc:   repos/dotfiles/YOUR_DOTFILES_REPO/box/zshrc
+
+# Copy LOCAL files onto a box over SSH (local_path: box_path, mode 0600). For
+# secrets and machine rc files that must not live in a repo or the image. A ~/
+# box path is ephemeral; a /mnt/work/ path persists on the volume.
+#
+# SECURITY: never copy a file containing a provider credential. A box holding one
+# can terminate and launch your OTHER boxes (CONSTRAINTS.md C3).
+files:
+  ~/personal/box-envvars: /mnt/work/state/personal/envvars
