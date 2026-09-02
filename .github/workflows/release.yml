@@ -44,9 +44,14 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           sha=$(git rev-parse --short HEAD)
-          # linux/arm64 is the phone (Termux). The others are here so the same
-          # release covers a laptop of either arch without a second pipeline.
-          for target in linux/arm64 linux/amd64 darwin/arm64 darwin/amd64; do
+          # android/arm64 is the phone. NOT linux/arm64: Go's static linux build
+          # is ET_EXEC, and Android's loader only accepts ET_DYN, so Termux
+          # rejects it outright with `unexpected e_type: 2`. Building -buildmode=pie
+          # for linux fixes the type but asks for /lib/ld-linux-aarch64.so.1,
+          # which Android does not have. GOOS=android gets both right: PIE, and an
+          # interpreter of /system/bin/linker64. With cgo off it needs no NDK and
+          # pulls in no shared libraries at all, only raw syscalls.
+          for target in android/arm64 linux/arm64 linux/amd64 darwin/arm64 darwin/amd64; do
             os=${target%/*}; arch=${target#*/}
             GOOS=$os GOARCH=$arch go build \
               -ldflags "-s -w" \
@@ -69,8 +74,8 @@ jobs:
             "" \
             "Phone (Termux):" \
             "" \
-            "    gh release download latest --repo ${REPO} -p 'megh-linux-arm64' -p 'megh.yaml'" \
-            "    mv megh-linux-arm64 megh && chmod +x megh" \
+            "    gh release download latest --repo ${REPO} -p 'megh-android-arm64' -p 'megh.yaml'" \
+            "    mv megh-android-arm64 megh && chmod +x megh" \
             "" \
             "Verify against SHA256SUMS. Versioned releases are cut separately." \
             > notes.md
