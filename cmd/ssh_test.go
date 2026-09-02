@@ -38,3 +38,83 @@ func TestTmuxAttachSessionNameIsQuoted(t *testing.T) {
 		t.Error("shQuote should single-quote")
 	}
 }
+
+// Precedence, and the reason TMUX is handled last and carefully.
+func TestResolveTmuxSession(t *testing.T) {
+	clear := func(t *testing.T) {
+		t.Helper()
+		for _, v := range []string{"MEGH_TMUX", "MEGH_TMUX_SESSION", "TMUX"} {
+			t.Setenv(v, "")
+		}
+	}
+
+	t.Run("defaults to main", func(t *testing.T) {
+		clear(t)
+		if got := resolveTmuxSession(""); got != "main" {
+			t.Errorf("got %q, want main", got)
+		}
+	})
+
+	t.Run("MEGH_TMUX is honoured", func(t *testing.T) {
+		clear(t)
+		t.Setenv("MEGH_TMUX", "agni")
+		if got := resolveTmuxSession(""); got != "agni" {
+			t.Errorf("got %q, want agni", got)
+		}
+	})
+
+	t.Run("the flag beats the environment", func(t *testing.T) {
+		clear(t)
+		t.Setenv("MEGH_TMUX", "fromenv")
+		if got := resolveTmuxSession("fromflag"); got != "fromflag" {
+			t.Errorf("got %q, want fromflag", got)
+		}
+	})
+
+	t.Run("MEGH_TMUX beats the older MEGH_TMUX_SESSION", func(t *testing.T) {
+		clear(t)
+		t.Setenv("MEGH_TMUX", "new")
+		t.Setenv("MEGH_TMUX_SESSION", "old")
+		if got := resolveTmuxSession(""); got != "new" {
+			t.Errorf("got %q, want new", got)
+		}
+	})
+
+	t.Run("a plain TMUX value is honoured", func(t *testing.T) {
+		clear(t)
+		t.Setenv("TMUX", "work")
+		if got := resolveTmuxSession(""); got != "work" {
+			t.Errorf("got %q, want work", got)
+		}
+	})
+
+	// tmux exports TMUX itself inside a session. Reading that as a session name
+	// is the trap this guard exists for.
+	t.Run("tmux's own TMUX value is ignored", func(t *testing.T) {
+		for _, v := range []string{
+			"/private/tmp/tmux-501/default,4242,0",
+			"/tmp/tmux-1000/default,987,2",
+		} {
+			clear(t)
+			t.Setenv("TMUX", v)
+			if got := resolveTmuxSession(""); got != "main" {
+				t.Errorf("TMUX=%q leaked through as %q; want the default", v, got)
+			}
+		}
+	})
+}
+
+// tmux rejects these itself, so catch them before the remote command does and
+// fails with nothing useful.
+func TestValidTmuxSession(t *testing.T) {
+	for _, bad := range []string{"", "has:colon", "has.dot", "has space"} {
+		if err := validTmuxSession(bad); err == nil {
+			t.Errorf("%q should be rejected", bad)
+		}
+	}
+	for _, ok := range []string{"main", "agni", "work-1", "feat_x"} {
+		if err := validTmuxSession(ok); err != nil {
+			t.Errorf("%q should be accepted: %v", ok, err)
+		}
+	}
+}
