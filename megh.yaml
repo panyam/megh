@@ -123,6 +123,16 @@ symlinks:
   ~/hw:       repos/hw
   ~/books:    repos/books
   ~/.vim:     repos/dotfiles/myvim   # vim config repo (panyam/myvim)
+  # Shell config from the dotfiles repo rather than copied per connect. box/*
+  # sources ../shared/*, so common edits happen once.
+  ~/.zshenv:                   repos/dotfiles/dotfiles/box/zshenv
+  ~/.zshrc:                    repos/dotfiles/dotfiles/box/zshrc
+  ~/.bashrc:                   repos/dotfiles/dotfiles/box/bashrc
+  ~/personal/helper_functions: repos/dotfiles/dotfiles/shared/helper_functions
+  ~/personal/anchor_pr_files:  repos/dotfiles/dotfiles/shared/anchor_pr_files
+  ~/personal/completions:      repos/dotfiles/dotfiles/shared/completions
+  ~/.claude/skills:            repos/dotfiles/dotfiles/shared/claude/skills
+  ~/.claude/commands:          repos/dotfiles/dotfiles/shared/claude/commands
 
 # Mirror LOCAL directory trees onto the box (local_dir: box_dir). Unlike files:,
 # which only ever adds single files at 0600, sync: MIRRORS and propagates
@@ -130,9 +140,11 @@ symlinks:
 # the box instead of leaving both on offer. A /mnt/work/ destination lands on the
 # volume, so it survives rebuilds; ~/ is ephemeral. Runs on `megh ssh` and
 # `megh hydrate`. *.bak and .DS_Store are always excluded.
-sync:
-  ~/.claude/skills:   /mnt/work/state/claude/skills
-  ~/.claude/commands: /mnt/work/state/claude/commands
+sync: {}
+  # Skills and commands moved to the dotfiles repo (symlinks: above). Leaving
+  # them here would be actively harmful: rsync --delete would write into the git
+  # worktree and could remove tracked files. sync: remains for genuinely
+  # unversioned trees, of which there are currently none.
 
 # Copy local files onto a box over SSH (on `megh ssh`/`hydrate`), mode 0600. For
 # things that must NOT live in a repo or the image — machine rc files, and secret
@@ -143,17 +155,17 @@ sync:
 # SECURITY: never copy a file containing RUNPOD_API_KEY (or other provider creds) —
 # a box with it can terminate/launch your OTHER boxes. Scope it to what the box needs.
 files:
-  # Shell env, so a box's zsh matches (zsh is baked; see provision.sh). ~/.zshenv
-  # sources ~/personal/{envvars,helper_functions}, so those must be on the box too.
-  ~/.zshenv:                   ~/.zshenv
-  ~/.zshrc:                    ~/.zshrc
-  ~/.bashrc:                   ~/.bashrc
-  ~/personal/helper_functions: ~/personal/helper_functions
+  # Only credentials belong here now; everything versioned comes from the
+  # dotfiles repo via repos: + symlinks: above, which works from any control
+  # device. files: copies from the machine running megh, so a source that does
+  # not exist there is silently skipped -- from a phone that would leave a box
+  # with no shell config at all.
+  #
   # ~/.zshenv sources ~/personal/envvars. Do NOT copy the real one (it has
-  # RUNPOD_API_KEY). Create a scoped ~/personal/box-envvars (no RUNPOD_API_KEY /
-  # provider creds) -> it lands as the box's ~/personal/envvars. Skipped until the
-  # local file exists, so it's safe to leave here.
-  ~/personal/box-envvars:      ~/personal/envvars
+  # RUNPOD_API_KEY). A scoped ~/personal/box-envvars (no provider creds) lands on
+  # the VOLUME, so it survives rebuilds and a phone never has to supply it.
+  # Skipped until the local file exists, so it is safe to leave here.
+  ~/personal/box-envvars:      /mnt/work/state/personal/envvars
 
 # The GitHub identity (profile gh key name) used by repos that don't set one.
 default_gh_key: personal
@@ -245,6 +257,10 @@ repos:
   # dotfiles-as-repos -> symlinked into ~ below (a config repo, so kept flat, no
   # branch leaf: ~/.vim points straight at the clone).
   - {url: git@github.com:panyam/myvim.git, dir: dotfiles/myvim}
+  # Shell + tool config, per machine. The box reads the box/ dir; this Mac reads
+  # gmmac/ via its own symlinks. Fetched by hydrate, so it works from any control
+  # device including a phone that has never seen these files.
+  - {url: git@github.com:panyam/dotfiles.git, dir: dotfiles/dotfiles}
 
 # Env vars that must be present on the host. megh blocks `megh up` if any is
 # missing, so you catch gaps before launching. box_envs are ALSO copied into the
