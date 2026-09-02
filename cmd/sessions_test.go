@@ -70,3 +70,26 @@ func TestSessionTarCmdReallyDropsCredentialFiles(t *testing.T) {
 		t.Errorf("want just the transcript, got %v", got)
 	}
 }
+
+// PORTAL.md names every box and its tailnet URLs and is rewritten on every up
+// and down, so publishing it to a public repo is a disclosure that re-creates
+// itself. That is not hypothetical: it happened the moment the megh repo went
+// public while portal.repo still pointed at a branch of it.
+func TestRepoSlugHandlesTheUrlFormsMeghYamlUses(t *testing.T) {
+	for in, want := range map[string]string{
+		"git@github.com:panyam/dotfiles.git":     "panyam/dotfiles",
+		"git@panyam-github:panyam/dotfiles.git":  "panyam/dotfiles",
+		"https://github.com/panyam/dotfiles.git": "panyam/dotfiles",
+		"https://github.com/panyam/dotfiles":     "panyam/dotfiles",
+		"panyam-github:panyam/megh.git":          "panyam/megh",
+	} {
+		if got := repoSlug(in); got != want {
+			t.Errorf("repoSlug(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, bad := range []string{"", "notaurl", "git@github.com:"} {
+		if got := repoSlug(bad); got != "" {
+			t.Errorf("repoSlug(%q) = %q, want empty", bad, got)
+		}
+	}
+}
