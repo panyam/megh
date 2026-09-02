@@ -1,0 +1,118 @@
+#!/usr/bin/env sh
+# megh installer. One command on any machine that will be a control device:
+#
+#   gh api repos/panyam/megh/contents/install.sh -H "Accept: application/vnd.github.raw" | sh
+#
+# Not the usual `curl | sh`: this repo is private, so raw.githubusercontent.com
+# returns 404 without auth. `gh` can read it, and gh auth is needed anyway to
+# download the private release assets, so it is not an extra prerequisite.
+#
+# Idempotent. Re-run it to upgrade; it never overwrites an existing megh.yaml.
+set -eu
+
+REPO="${MEGH_REPO:-panyam/megh}"
+RELEASE="${MEGH_RELEASE:-latest}"
+
+say()  { printf '  %s\n' "$*"; }
+die()  { printf 'megh install: %s\n' "$*" >&2; exit 1; }
+
+# --- 1. Which artifact does this machine need? -------------------------------
+# Termux is the case worth getting right. Its arch is arm64, but a linux/arm64
+# Go binary is ET_EXEC and Android's loader takes only ET_DYN, so it is rejected
+# with "unexpected e_type: 2". The android build is PIE with an interpreter of
+# /system/bin/linker64, which is what Android actually provides.
+# MEGH_TARGET forces the artifact, for a machine this script guesses wrong about
+# and for testing the Termux path from somewhere that is not Termux.
+os="$(uname -s)"
+arch="$(uname -m)"
+case "$arch" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64)  arch=amd64 ;;
+  *) die "unsupported architecture: $arch" ;;
+esac
+case "${MEGH_TARGET:-$os}" in
+  "$MEGH_TARGET") target="$MEGH_TARGET" ;;
+  Darwin) target="darwin-$arch" ;;
+  Linux)
+    if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" != "${PREFIX#*com.termux}" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
+      target="android-$arch"
+    else
+      target="linux-$arch"
+    fi
+    ;;
+  *) die "unsupported OS: $os" ;;
+esac
+
+# --- 2. Where does it go? ----------------------------------------------------
+if [ -n "${MEGH_INSTALL_DIR:-}" ]; then bindir="$MEGH_INSTALL_DIR"
+elif [ -n "${PREFIX:-}" ] && [ -d "${PREFIX}/bin" ]; then bindir="${PREFIX}/bin"   # Termux
+elif [ -d "$HOME/.local/bin" ]; then bindir="$HOME/.local/bin"
+elif [ -d "$HOME/bin" ]; then bindir="$HOME/bin"
+else bindir="$HOME/.local/bin"
+fi
+mkdir -p "$bindir"
+
+say "target:  $target"
+say "install: $bindir/megh"
+
+# --- 3. Prerequisites --------------------------------------------------------
+command -v gh  >/dev/null 2>&1 || die "needs the gh CLI. Termux: pkg install gh"
+command -v tar >/dev/null 2>&1 || die "needs tar"
+gh auth status >/dev/null 2>&1 || die "gh is not logged in. Run: gh auth login"
+# megh shells out to these for every box operation; better to say so now than to
+# fail later inside a command.
+for c in ssh ssh-agent ssh-add; do
+  command -v "$c" >/dev/null 2>&1 || say "WARNING: $c not found; megh needs it (Termux: pkg install openssh)"
+done
+
+# --- 4. Fetch ----------------------------------------------------------------
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT INT TERM
+say "downloading $RELEASE ..."
+gh release download "$RELEASE" --repo "$REPO" --dir "$tmp" --clobber \
+  -p "megh-$target" -p "megh.yaml" -p "SHA256SUMS" \
+  || die "download failed (is $target published in the $RELEASE release?)"
+[ -f "$tmp/megh-$target" ] || die "the release has no asset megh-$target"
+
+# --- 5. Verify ---------------------------------------------------------------
+# A tampered or truncated download should not become an executable on PATH.
+if [ -f "$tmp/SHA256SUMS" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then sum="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then sum="shasum -a 256"
+  else sum=""; fi
+  if [ -n "$sum" ]; then
+    want="$(awk -v f="megh-$target" '$2 == f || $2 == "*"f {print $1}' "$tmp/SHA256SUMS")"
+    got="$(cd "$tmp" && $sum "megh-$target" | awk '{print $1}')"
+    [ -n "$want" ] && [ "$want" != "$got" ] && die "checksum mismatch for megh-$target"
+    [ -n "$want" ] && say "checksum ok"
+  fi
+fi
+
+# --- 6. Install --------------------------------------------------------------
+chmod +x "$tmp/megh-$target"
+mv "$tmp/megh-$target" "$bindir/megh"
+
+cfg="$HOME/.config/megh/megh.yaml"
+if [ -f "$cfg" ]; then
+  say "config:  $cfg already exists, left alone"
+elif [ -f "$tmp/megh.yaml" ]; then
+  mkdir -p "$(dirname "$cfg")"
+  cp "$tmp/megh.yaml" "$cfg"
+  say "config:  $cfg"
+fi
+
+# --- 7. What now -------------------------------------------------------------
+printf '\n'
+say "installed: $bindir/megh"
+case ":$PATH:" in
+  *":$bindir:"*) ;;
+  *) say "NOTE: $bindir is not on your PATH. Add it:"; say "  export PATH=\"$bindir:\$PATH\"" ;;
+esac
+printf '\n'
+say "Next, once per device:"
+say "  gh auth refresh -h github.com -s admin:public_key"
+say "  megh profile create \$(hostname -s 2>/dev/null || echo device)"
+say "  megh profile gh add personal --profile <name> --register"
+say "  megh profile use <name>"
+say "Then fill ~/.megh/profiles/<name>/secrets.env and run: megh config"
+say "Full walkthrough: SETUP.md section 6"

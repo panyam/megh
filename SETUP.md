@@ -157,17 +157,28 @@ that names neither the scope nor the fix.
 
 ### 6.3 Binary and config
 
+One command, and it is the same one on every machine:
+
 ```sh
-gh release download latest --repo panyam/megh -p 'megh-android-arm64' -p 'megh.yaml'
-mv megh-android-arm64 megh && chmod +x megh
-mkdir -p ~/.config/megh && mv megh.yaml ~/.config/megh/megh.yaml
-mkdir -p ~/bin && mv megh ~/bin/
+gh api repos/panyam/megh/contents/install.sh -H "Accept: application/vnd.github.raw" | sh
 ```
 
+Not `curl | sh`, because this repo is private and raw.githubusercontent.com
+returns 404 without auth. `gh` can read it, and gh auth is needed anyway for the
+release assets, so it costs no extra prerequisite.
+
+It picks the artifact for the machine, verifies the checksum, installs to
+`$PREFIX/bin` on Termux (`~/.local/bin` elsewhere), and drops `megh.yaml` at
+`~/.config/megh/megh.yaml` without overwriting one that is already there. Re-run
+it to upgrade. `MEGH_TARGET` and `MEGH_INSTALL_DIR` override the guesses.
+
+Taking the **android** build rather than linux/arm64 matters and the script
+handles it: the arch is the same, but Go's static linux binary is `ET_EXEC` and
+Android's loader accepts only `ET_DYN`, so Termux refuses it with
+`unexpected e_type: 2`.
+
 `latest` is a rolling prerelease rebuilt on every push to main, so this is
-always current. Take the **android** build, not linux/arm64: the arch is the
-same, but Go's static linux binary is `ET_EXEC` and Android's loader accepts only
-`ET_DYN`, so Termux refuses it with `unexpected e_type: 2`. `~/.config/megh/megh.yaml` is the second place megh looks (after
+always current. `~/.config/megh/megh.yaml` is the second place megh looks (after
 walking up from the cwd), so it resolves from any directory. No repo clone is
 needed: the config rides along as a release asset, and it holds only settings and
 env-var names.
