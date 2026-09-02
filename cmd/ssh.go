@@ -10,14 +10,83 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var sshProvider string
+var (
+	sshProvider string
+	sshNoTmux   bool
+	sshSession  string
+)
+
+// defaultTmuxSession is the session `megh ssh` attaches, and it matches the one
+// webterm and ttyd serve. Sharing the name is the point: the desktop and the
+// phone land in the same place with no session id to carry between them.
+const defaultTmuxSession = "main"
+
+// resolveTmuxSession picks the session name to attach: --session, then
+// MEGH_TMUX, then MEGH_TMUX_SESSION, then TMUX, then "main".
+//
+// TMUX is accepted last and only when it does not look like tmux's own value.
+// tmux EXPORTS TMUX inside every session, set to "<socket>,<pid>,<index>", so
+// running `megh ssh` from inside a local tmux would otherwise try to attach a
+// session named /tmp/tmux-501/default,4242,0 on the box. That is not a session
+// name tmux will even accept, since names may not contain ':' or '.', so it
+// fails in a way that points nowhere near the cause. A value containing a comma
+// or starting with a slash is therefore tmux's, not yours, and is ignored.
+func resolveTmuxSession(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	for _, v := range []string{os.Getenv("MEGH_TMUX"), os.Getenv("MEGH_TMUX_SESSION")} {
+		if v != "" {
+			return v
+		}
+	}
+	if v := os.Getenv("TMUX"); v != "" && !strings.ContainsAny(v, ",") && !strings.HasPrefix(v, "/") {
+		return v
+	}
+	return defaultTmuxSession
+}
+
+// validTmuxSession rejects names tmux itself will not take, so the failure is a
+// clear message here rather than a bare non-zero exit from the remote command.
+func validTmuxSession(name string) error {
+	switch {
+	case name == "":
+		return fmt.Errorf("tmux session name is empty")
+	case strings.ContainsAny(name, ":."):
+		return fmt.Errorf("tmux session name %q cannot contain ':' or '.'", name)
+	case strings.ContainsAny(name, "\n\r\t "):
+		return fmt.Errorf("tmux session name %q cannot contain whitespace", name)
+	}
+	return nil
+}
+
+// tmuxAttachCmd is the remote command for an interactive session.
+//
+// `tmux new -A -s <name>` attaches the session if it exists and creates it
+// otherwise, so it is the same command on the first connect and the hundredth.
+// Working in a plain shell is the failure this removes: the shell dies with the
+// connection and takes any running work with it, which on a flaky mobile link
+// is a matter of when rather than whether.
+//
+// Falls back to a login shell if tmux is somehow missing, because failing to
+// find tmux should not mean failing to get a shell.
+func tmuxAttachCmd(session string) string {
+	q := shQuote(session)
+	return "if command -v tmux >/dev/null 2>&1; then exec tmux new -A -s " + q +
+		"; else echo 'megh: tmux not found, plain shell' >&2; exec \"$SHELL\" -l; fi"
+}
 
 var sshCmd = &cobra.Command{
 	Use:   "ssh [box-name-or-id]",
 	Short: "Open an interactive shell on a box (git-ready via forwarded keys)",
 	Long: `SSH into a box with the profile's box key, forwarding the profile's GitHub
 identity keys (private keys never touch the box) and configuring per-identity
-Host aliases so git works. This is a plain shell.
+Host aliases so git works.
+
+Attaches the tmux session 'main', the same one webterm and ttyd serve, so work
+survives a disconnect and the desktop and phone share one session with no id to
+carry between them. --no-tmux gives a plain shell. Pick another session with --session, or
+MEGH_TMUX=<name> (MEGH_TMUX_SESSION also works).
 
 For browser access to the box's web surfaces, use 'megh browse' (localhost
 tunnels) or Tailscale.
@@ -79,13 +148,27 @@ argument it connects to the only box.`,
 			fmt.Fprintf(os.Stderr, "megh: warning: sync failed: %v\n", err)
 		}
 
-		sshArgs := append(d.opts("-A"), d.userHost())
-		fmt.Fprintf(os.Stderr, "megh: ssh %s (browser access: megh browse)\n", d.userHost())
+		if sshNoTmux {
+			sshArgs := append(d.opts("-A"), d.userHost())
+			fmt.Fprintf(os.Stderr, "megh: ssh %s (plain shell; browser access: megh browse)\n", d.userHost())
+			return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
+		}
+		// -t forces a TTY: without it a remote command gets none and tmux refuses
+		// to start.
+		session := resolveTmuxSession(sshSession)
+		if err := validTmuxSession(session); err != nil {
+			return err
+		}
+		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session))
+		fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
+			d.userHost(), session)
 		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
 	},
 }
 
 func init() {
 	sshCmd.Flags().StringVar(&sshProvider, "provider", "runpod", "provider (runpod)")
+	sshCmd.Flags().BoolVar(&sshNoTmux, "no-tmux", false, "plain shell instead of attaching tmux")
+	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
 	rootCmd.AddCommand(sshCmd)
 }
