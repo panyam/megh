@@ -60,6 +60,26 @@ image), `make registry`.
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
 
+## The repo is public; history is not fully purged
+
+`main` is clean and code search finds nothing, but do NOT assume the old
+`megh.yaml` is unreachable. It was tracked until 2026-09-02, the repo went public
+before that landed, and a `filter-repo` rewrite plus force-push followed. GitHub
+keeps unreachable objects alive, and the 41 `refs/pull/*` refs from merged PRs
+pin the pre-rewrite commits permanently, so anyone with an old SHA can still read
+it:
+
+    gh api "repos/panyam/megh/contents/megh.yaml?ref=<old-sha>" -H "Accept: application/vnd.github.raw"
+
+What is retrievable that way is a list of repo names, a RunPod volume id and a
+tailnet name. No credentials: an audit of all 130 commits found zero, because
+`megh.yaml` has only ever held env-var NAMES. Only GitHub support can expunge the
+objects, and that was judged not worth it for an inventory that is not sensitive.
+
+The lesson for anything future: a rewrite closes the browsable surface, not the
+addressable one. Nothing secret should ever reach a commit, because removing it
+afterwards is not something you fully control.
+
 ## Config (`megh.yaml`, NOT checked in)
 
 The real `megh.yaml` is private and lives in the dotfiles repo at
