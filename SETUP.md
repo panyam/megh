@@ -144,11 +144,15 @@ mv megh-linux-arm64 megh && chmod +x megh
 mkdir -p ~/.config/megh && mv megh.yaml ~/.config/megh/megh.yaml
 
 ./megh profile create phone            # mints its own box key + GitHub key here
-./megh profile gh add personal --profile phone
-./megh profile show                    # print the pubkeys
+
+# Mint the GitHub identity AND enrol it, so no base64 blob is ever pasted into a
+# mobile browser. Keys are never copied between devices, so a new device always
+# mints its own; --register is what stops that being the annoying part.
+gh auth refresh -h github.com -s admin:public_key
+./megh profile gh add personal --profile phone --register
 ```
 
-Register the GitHub pubkey on your account, then fill in the secrets, which live
+Then fill in the secrets, which live
 at `~/.megh/profiles/phone/secrets.env` at mode 0600, outside any repo:
 
 | variable | where to mint it |
