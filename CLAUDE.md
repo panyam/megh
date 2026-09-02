@@ -2,7 +2,9 @@
 
 Disposable cloud dev boxes for agentic coding. Provider-abstracted CLI; RunPod
 first (US), Hetzner next. Read `DESIGN.md` for the settled architecture and
-`WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run.
+`WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run, and its §6 is
+the phone-as-control-device bootstrap (Termux, re-minted credentials, the
+new-box-key gotcha).
 
 ## Build / run
 
