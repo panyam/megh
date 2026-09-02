@@ -48,7 +48,8 @@ checked in. Secret values live in the environment.
 
 ## Start here
 
-- `SETUP.md` — stand up your first box on RunPod.
+- `SETUP.md` — stand up your first box on RunPod, and (§6) run megh from a phone
+  as the control device.
 - `WORKFLOW.md` — the operational runbook.
 - `DESIGN.md` — the settled decisions and rationale.
 - `internal/features/NOTES.md` — implementation lore for the `enable` features.
