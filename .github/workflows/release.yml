@@ -1,0 +1,85 @@
+name: release
+
+# Publish a megh binary you can fetch from anywhere, which is what makes a phone
+# usable as the control device: Termux downloads a static arm64 binary instead of
+# carrying a ~500 MB Go toolchain to rebuild on every change.
+#
+# Every push to main updates ONE rolling prerelease tagged `latest`, rather than
+# cutting a version per commit. `gh release download latest` therefore always
+# means "current main", which is the thing you want on a phone; versioned
+# releases stay a separate, deliberate act (see the release skill).
+#
+# megh.yaml rides along as an asset on purpose. The phone needs the binary AND
+# the config, and shipping both here means the bootstrap never has to clone the
+# repo. It holds only settings and env-var NAMES, never secret values, so it is
+# safe to attach.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "megh.yaml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"   # static, so it runs on Termux/musl/any glibc vintage
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          sha=$(git rev-parse --short HEAD)
+          # linux/arm64 is the phone (Termux). The others are here so the same
+          # release covers a laptop of either arch without a second pipeline.
+          for target in linux/arm64 linux/amd64 darwin/arm64 darwin/amd64; do
+            os=${target%/*}; arch=${target#*/}
+            GOOS=$os GOARCH=$arch go build \
+              -ldflags "-s -w" \
+              -o "dist/megh-${os}-${arch}" .
+          done
+          cp megh.yaml dist/megh.yaml
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish the rolling `latest` release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --short HEAD)
+          # printf, not a heredoc: a heredoc body would have to sit at column 0,
+          # which is less indented than this YAML block scalar and so ends it.
+          printf '%s\n' \
+            "Rolling build of main @ ${sha}. Updated on every push; not a version." \
+            "" \
+            "Phone (Termux):" \
+            "" \
+            "    gh release download latest --repo ${REPO} -p 'megh-linux-arm64' -p 'megh.yaml'" \
+            "    mv megh-linux-arm64 megh && chmod +x megh" \
+            "" \
+            "Verify against SHA256SUMS. Versioned releases are cut separately." \
+            > notes.md
+          # A rolling tag has to be moved, and `gh release create` will not
+          # clobber an existing one, so delete and recreate. --cleanup-tag keeps
+          # the git tag from drifting away from the release.
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest dist/* \
+            --title "megh @ ${sha}" \
+            --notes-file notes.md \
+            --prerelease \
+            --target "${GITHUB_SHA}"

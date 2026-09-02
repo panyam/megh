@@ -116,6 +116,54 @@ Stop or terminate the pod from the console. The network volume and its contents
 survive. Anything you cared about is either in git or on that volume. A rebuilt
 box hydrates from both.
 
+## 6. Using a phone as the control device
+
+The machine that spawns boxes needs a provider credential, and whatever holds it
+can terminate every box on the account. That is a good reason to keep it on
+hardware you physically hold rather than on rented compute. A phone is enough:
+megh is a static Go binary and Termux runs it fine.
+
+The split it buys you is that spawning is rare and privileged while working is
+constant and unprivileged, so they live on different machines. `megh up` refuses
+to run on a box for exactly this reason (see `CONSTRAINTS.md` C3).
+
+**Nothing is copied from your laptop.** Every credential here is re-mintable from
+its own console in a browser on the phone, and re-minting is better than copying
+because you then revoke the old one. That revocation is what makes "only the
+phone can spawn" true rather than "the phone can also spawn". Do not mail
+yourself an envvars file: plaintext at rest, permanent, and synced to every
+device you own.
+
+```sh
+pkg install openssh gh                 # Termux; no Go toolchain needed
+gh auth login                          # device flow, approve in the phone browser
+
+# Binary + config, straight from the rolling release. No repo clone needed.
+gh release download latest --repo panyam/megh -p 'megh-linux-arm64' -p 'megh.yaml'
+mv megh-linux-arm64 megh && chmod +x megh
+mkdir -p ~/.config/megh && mv megh.yaml ~/.config/megh/megh.yaml
+
+./megh profile create phone            # mints its own box key + GitHub key here
+./megh profile gh add personal --profile phone
+./megh profile show                    # print the pubkeys
+```
+
+Register the GitHub pubkey on your account, then fill in the secrets, which live
+at `~/.megh/profiles/phone/secrets.env` at mode 0600, outside any repo:
+
+| variable | where to mint it |
+|---|---|
+| `RUNPOD_API_KEY` | RunPod console > Settings > API Keys |
+| `MEGH_TAILSCALE_CLIENT_ID` / `_SECRET` | Tailscale console > Settings > Trust credentials, scoped to `tag:megh` |
+| `GH_MEGH_TOKEN` | GitHub PAT, `read:packages` (only needed for `megh registry ls`) |
+
+Then revoke the old ones wherever they used to live. `megh config` shows what is
+set without printing values.
+
+**Losing the phone does not lock you out.** The RunPod web console still
+terminates pods and mints a fresh API key, and `megh up` injects whatever pubkey
+you hand it, so a new control device is a re-mint rather than a recovery.
+
 ## What is not here yet
 
 - The mesh (Headscale/Tailscale) so you reach the box by name without RunPod's
