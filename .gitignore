@@ -29,3 +29,8 @@ HANDOFF_*.md
 
 # Playwright MCP scratch output (screenshots, console logs, snapshots).
 .playwright-mcp/
+
+# Real config lives in the private dotfiles repo (megh/megh.yaml) and is
+# installed to ~/.config/megh/megh.yaml. The tracked template is
+# megh.yaml.example, which holds no repo names or account identifiers.
+megh.yaml

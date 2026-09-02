@@ -119,7 +119,7 @@ func NewWithCreds(cr Creds, tailnet string) (*Client, error) {
 // Device is one node on the tailnet, trimmed to the fields megh reasons about.
 type Device struct {
 	ID       string   `json:"id"`
-	Name     string   `json:"name"`     // FQDN, e.g. devbox-1.taild311d3.ts.net
+	Name     string   `json:"name"`     // FQDN, e.g. devbox-1.tailXXXX.ts.net
 	Hostname string   `json:"hostname"` // the OS hostname it reported
 	OS       string   `json:"os"`
 	Tags     []string `json:"tags"`

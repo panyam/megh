@@ -26,7 +26,7 @@ your Mac, not in the image.
 flowchart TD
   create["megh profile create personal"] --> boxkey["box.key generated<br>(SSH into VMs)"]
   create --> secrets["secrets.env template"]
-  ghadd["megh profile gh add personal<br>megh profile gh add inferbook"] --> ghkeys["gh identity keys generated"]
+  ghadd["megh profile gh add personal<br>megh profile gh add work"] --> ghkeys["gh identity keys generated"]
   ghkeys --> pub["pubkeys printed"]
   pub --> github["add each pubkey to its<br>GitHub account (once)"]
   create --> use["megh profile use personal"]
