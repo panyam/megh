@@ -158,14 +158,16 @@ that names neither the scope nor the fix.
 ### 6.3 Binary and config
 
 ```sh
-gh release download latest --repo panyam/megh -p 'megh-linux-arm64' -p 'megh.yaml'
-mv megh-linux-arm64 megh && chmod +x megh
+gh release download latest --repo panyam/megh -p 'megh-android-arm64' -p 'megh.yaml'
+mv megh-android-arm64 megh && chmod +x megh
 mkdir -p ~/.config/megh && mv megh.yaml ~/.config/megh/megh.yaml
 mkdir -p ~/bin && mv megh ~/bin/
 ```
 
 `latest` is a rolling prerelease rebuilt on every push to main, so this is
-always current. `~/.config/megh/megh.yaml` is the second place megh looks (after
+always current. Take the **android** build, not linux/arm64: the arch is the
+same, but Go's static linux binary is `ET_EXEC` and Android's loader accepts only
+`ET_DYN`, so Termux refuses it with `unexpected e_type: 2`. `~/.config/megh/megh.yaml` is the second place megh looks (after
 walking up from the cwd), so it resolves from any directory. No repo clone is
 needed: the config rides along as a release asset, and it holds only settings and
 env-var names.
