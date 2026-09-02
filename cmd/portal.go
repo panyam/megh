@@ -96,6 +96,14 @@ func renderPortal(pods []runpod.Pod) string {
 // pushPortal force-pushes PORTAL.md to portal.branch of portal.repo via a throwaway
 // git repo (no persistent scratch state, no touching the user's working tree).
 func pushPortal(md string) error {
+	// Both the explicit `megh portal` and the up/down refresh come through here,
+	// so the check belongs at this choke point rather than in either caller.
+	if portalRepoIsPublic(cfg.Portal.Repo) {
+		return fmt.Errorf("refusing to publish: %s is PUBLIC.\n"+
+			"PORTAL.md lists every box by name with its tailnet URLs and is rewritten on\n"+
+			"every up and down, so publishing it there is a standing disclosure that\n"+
+			"re-creates itself. Point portal.repo at a private repo.", repoSlug(cfg.Portal.Repo))
+	}
 	repo := cfg.Portal.Repo
 	if repo == "" {
 		return fmt.Errorf("portal.repo not set")
@@ -152,6 +160,47 @@ func portalBookmarkURL() string {
 
 // publishPortalBestEffort refreshes the portal after up/down. It never fails the
 // caller; it just notes a problem on stderr. No-op unless portal.repo is set.
+// portalRepoIsPublic reports whether the portal target is a public GitHub repo.
+//
+// PORTAL.md lists every box by name with its full tailnet URLs, and it is
+// rewritten on every up and down. Pushing that to a public repo is a standing
+// disclosure that re-creates itself, which is exactly what happened when the
+// megh repo went public while portal.repo still named a branch of it: the file
+// was world-readable within seconds and nothing said so.
+//
+// Failure to determine visibility returns false. This guard exists to catch an
+// obvious mistake, not to be the thing standing between you and a leak, so it
+// must not block a legitimate push just because `gh` is missing or offline.
+func portalRepoIsPublic(repo string) bool {
+	slug := repoSlug(repo)
+	if slug == "" {
+		return false
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return false
+	}
+	out, err := exec.Command("gh", "repo", "view", slug, "--json", "visibility", "-q", ".visibility").Output()
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(string(out)), "public")
+}
+
+// repoSlug pulls owner/name out of the git URL forms megh.yaml uses.
+func repoSlug(url string) string {
+	u := strings.TrimSuffix(strings.TrimSpace(url), ".git")
+	if i := strings.LastIndex(u, ":"); i >= 0 {
+		u = u[i+1:]
+	} else if i := strings.Index(u, "github.com/"); i >= 0 {
+		u = u[i+len("github.com/"):]
+	}
+	parts := strings.Split(strings.Trim(u, "/"), "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-2] + "/" + parts[len(parts)-1]
+}
+
 func publishPortalBestEffort() {
 	if cfg.Portal.Repo == "" {
 		return
