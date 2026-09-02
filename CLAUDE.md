@@ -45,6 +45,7 @@ megh hydrate [--check]            # clone repos onto a box's volume (or report d
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
+megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 ```
 
@@ -142,9 +143,9 @@ Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
   delete ANY node on the tailnet including your laptop's, while a credential
   scoped to `tag:megh` can only touch megh boxes. That is the main argument for
   the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
-- Agent transcripts need NO secret. They go to the `sessions.repo` in
-  `megh.yaml`, pushed by the control machine with the profile's GitHub identity;
-  nothing for that repo lives on a box.
+- Agent transcripts need NO secret. `megh sessions collect` pulls them from a box
+  over the SSH megh already has and pushes them to `sessions.repo` with the
+  profile's GitHub identity, so nothing for that repo ever lives on a box.
 
 ## Architecture (one-liners; see DESIGN.md)
 
