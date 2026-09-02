@@ -58,9 +58,9 @@ func TestResolveTmuxSession(t *testing.T) {
 
 	t.Run("MEGH_TMUX is honoured", func(t *testing.T) {
 		clear(t)
-		t.Setenv("MEGH_TMUX", "agni")
-		if got := resolveTmuxSession(""); got != "agni" {
-			t.Errorf("got %q, want agni", got)
+		t.Setenv("MEGH_TMUX", "work")
+		if got := resolveTmuxSession(""); got != "work" {
+			t.Errorf("got %q, want work", got)
 		}
 	})
 
@@ -113,7 +113,7 @@ func TestValidTmuxSession(t *testing.T) {
 			t.Errorf("%q should be rejected", bad)
 		}
 	}
-	for _, ok := range []string{"main", "agni", "work-1", "feat_x"} {
+	for _, ok := range []string{"main", "dev", "work-1", "feat_x"} {
 		if err := validTmuxSession(ok); err != nil {
 			t.Errorf("%q should be accepted: %v", ok, err)
 		}
