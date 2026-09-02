@@ -8,6 +8,7 @@
 # download the private release assets, so it is not an extra prerequisite.
 #
 # Idempotent. Re-run it to upgrade; it never overwrites an existing megh.yaml.
+# MEGH_CONFIG_REPO / MEGH_CONFIG_PATH point the config fetch somewhere else.
 set -eu
 
 REPO="${MEGH_REPO:-panyam/megh}"
@@ -30,18 +31,21 @@ case "$arch" in
   x86_64|amd64)  arch=amd64 ;;
   *) die "unsupported architecture: $arch" ;;
 esac
-case "${MEGH_TARGET:-$os}" in
-  "$MEGH_TARGET") target="$MEGH_TARGET" ;;
-  Darwin) target="darwin-$arch" ;;
-  Linux)
-    if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" != "${PREFIX#*com.termux}" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
-      target="android-$arch"
-    else
-      target="linux-$arch"
-    fi
-    ;;
-  *) die "unsupported OS: $os" ;;
-esac
+if [ -n "${MEGH_TARGET:-}" ]; then
+  target="$MEGH_TARGET"
+else
+  case "$os" in
+    Darwin) target="darwin-$arch" ;;
+    Linux)
+      if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" != "${PREFIX#*com.termux}" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
+        target="android-$arch"
+      else
+        target="linux-$arch"
+      fi
+      ;;
+    *) die "unsupported OS: $os" ;;
+  esac
+fi
 
 # --- 2. Where does it go? ----------------------------------------------------
 if [ -n "${MEGH_INSTALL_DIR:-}" ]; then bindir="$MEGH_INSTALL_DIR"
@@ -70,7 +74,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 say "downloading $RELEASE ..."
 gh release download "$RELEASE" --repo "$REPO" --dir "$tmp" --clobber \
-  -p "megh-$target" -p "megh.yaml" -p "SHA256SUMS" \
+  -p "megh-$target" -p "megh.yaml.example" -p "SHA256SUMS" \
   || die "download failed (is $target published in the $RELEASE release?)"
 [ -f "$tmp/megh-$target" ] || die "the release has no asset megh-$target"
 
@@ -92,13 +96,26 @@ fi
 chmod +x "$tmp/megh-$target"
 mv "$tmp/megh-$target" "$bindir/megh"
 
+# Two sources on purpose. The binary comes from this repo's release; the real
+# megh.yaml comes from a private config repo, because that file names every repo
+# you work on and does not belong in a public one. If it is unreachable, the
+# template is installed instead, which is enough to edit into shape.
 cfg="$HOME/.config/megh/megh.yaml"
+CONFIG_REPO="${MEGH_CONFIG_REPO:-panyam/dotfiles}"
+CONFIG_PATH="${MEGH_CONFIG_PATH:-megh/megh.yaml}"
 if [ -f "$cfg" ]; then
   say "config:  $cfg already exists, left alone"
-elif [ -f "$tmp/megh.yaml" ]; then
+else
   mkdir -p "$(dirname "$cfg")"
-  cp "$tmp/megh.yaml" "$cfg"
-  say "config:  $cfg"
+  if gh api "repos/$CONFIG_REPO/contents/$CONFIG_PATH" \
+       -H "Accept: application/vnd.github.raw" > "$tmp/cfg" 2>/dev/null && [ -s "$tmp/cfg" ]; then
+    cp "$tmp/cfg" "$cfg"
+    say "config:  $cfg (from $CONFIG_REPO)"
+  elif [ -f "$tmp/megh.yaml.example" ]; then
+    cp "$tmp/megh.yaml.example" "$cfg"
+    say "config:  $cfg (TEMPLATE; $CONFIG_REPO/$CONFIG_PATH not reachable)"
+    say "         edit it, or drop your own over the top"
+  fi
 fi
 
 # --- 7. What now -------------------------------------------------------------

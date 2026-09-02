@@ -59,10 +59,17 @@ image), `make registry`.
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
 
-## Config (`megh.yaml`, checked in)
+## Config (`megh.yaml`, NOT checked in)
 
-Settings live in `megh.yaml` (auto-discovered walking up from cwd, then
-`~/.config/megh/megh.yaml`; override with `--config`/`$MEGH_CONFIG`). It holds
+The real `megh.yaml` is private and lives in the dotfiles repo at
+`megh/megh.yaml`, because it names every repo you work on. This repo tracks only
+`megh.yaml.example`. `install.sh` fetches the real one to
+`~/.config/megh/megh.yaml`; on a box it arrives via `files:` + `symlinks:`, and
+the image bakes the EXAMPLE to `/etc/megh/megh.yaml` as a last resort.
+
+Settings are auto-discovered walking up from cwd, then
+`~/.config/megh/megh.yaml`, then `/etc/megh/megh.yaml`; override with
+`--config`/`$MEGH_CONFIG`. It holds
 non-secret settings and **pointers** to secrets (env-var names), never secret
 values, so it is safe in the repo. `megh config` shows the resolved settings and
 which secrets are set (never values). `megh.yaml.example` + `secrets.env.example`
