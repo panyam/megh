@@ -136,6 +136,38 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p /root/.ssh /run/sshd
 chmod 700 /root/.ssh
+
+# A stable path for the forwarded SSH agent, so a long-lived tmux session can
+# still reach one.
+#
+# The problem: `ssh -A` creates a NEW socket per connection (/tmp/ssh-XXX/agent.N)
+# and removes it on disconnect. tmux captures whatever SSH_AUTH_SOCK held when it
+# was created, so the value it keeps is dead the moment you log out. Reattach
+# tomorrow, or open the same session in webterm, and git push fails with
+# "Permission denied (publickey)" even though the keys are fine.
+#
+# The fix is one level of indirection. Every login repoints ~/.ssh/agent.sock at
+# the live socket, and every shell exports that stable path instead, so a session
+# created weeks ago follows whichever connection is open NOW. tmux's global
+# environment is updated too, so new panes in an existing session pick it up.
+#
+# Deliberately NOT a persistent agent holding a key on the box: with no session
+# open there is no agent and nothing can push, which is the property that keeps
+# an unattended box unable to write to your repos.
+cat > /etc/profile.d/megh-ssh-agent.sh <<'AGENTRC'
+# megh: follow the current connection's forwarded agent (see entrypoint.sh).
+_megh_sock="${HOME}/.ssh/agent.sock"
+if [ -n "${SSH_AUTH_SOCK:-}" ] && [ "${SSH_AUTH_SOCK}" != "${_megh_sock}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
+  ln -sf "${SSH_AUTH_SOCK}" "${_megh_sock}"
+  command -v tmux >/dev/null 2>&1 && tmux set-environment -g SSH_AUTH_SOCK "${_megh_sock}" 2>/dev/null
+fi
+# -S not -L: it follows the link, so a stale one left by a closed session fails
+# the test. Exporting a dangling path would turn "no agent" into a confusing
+# "error connecting to agent" on every git command.
+[ -S "${_megh_sock}" ] && export SSH_AUTH_SOCK="${_megh_sock}"
+unset _megh_sock
+AGENTRC
+chmod 0644 /etc/profile.d/megh-ssh-agent.sh
 if [ -n "${PUBLIC_KEY:-}" ]; then
   echo "${PUBLIC_KEY}" >> /root/.ssh/authorized_keys
   chmod 600 /root/.ssh/authorized_keys
