@@ -10,8 +10,8 @@ func TestBareNamePrefersTheFirstLabel(t *testing.T) {
 		in   Device
 		want string
 	}{
-		{Device{Name: "devbox-2.taild311d3.ts.net"}, "devbox-2"},
-		{Device{Name: "vnclab.taild311d3.ts.net"}, "vnclab"},
+		{Device{Name: "devbox-2.example.ts.net"}, "devbox-2"},
+		{Device{Name: "vnclab.example.ts.net"}, "vnclab"},
 		{Device{Name: "", Hostname: "fallback.example.com"}, "fallback"},
 		{Device{Name: "nodots"}, "nodots"},
 	}

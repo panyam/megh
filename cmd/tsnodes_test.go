@@ -10,7 +10,7 @@ import (
 )
 
 func dev(name string, lastSeen time.Time, tags ...string) tsapi.Device {
-	return tsapi.Device{ID: "id-" + name, Name: name + ".taild311d3.ts.net", OS: "linux", LastSeen: lastSeen, Tags: tags}
+	return tsapi.Device{ID: "id-" + name, Name: name + ".example.ts.net", OS: "linux", LastSeen: lastSeen, Tags: tags}
 }
 
 func names(ds []tsapi.Device) []string {
