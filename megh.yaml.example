@@ -97,14 +97,7 @@ persist:
 # (/root, re-copied each connect); a /mnt/work/ dest persists on the volume.
 # SECURITY: never copy a file with RUNPOD_API_KEY — a box with it can manage your
 # OTHER boxes. Scope it. Versioned dotfiles belong in a repo (repos: + symlinks:).
-# # Mirror local directory trees onto the box (local_dir: box_dir), deletes
-# included, so reorganising them locally does not leave stale copies behind.
-# A /mnt/work/ destination survives rebuilds.
-sync:
-  ~/.claude/skills:   /mnt/work/state/claude/skills
-  ~/.claude/commands: /mnt/work/state/claude/commands
-
-files:
+# files:
 #   ~/.netrc: ~/.netrc
 
 # GitHub identity (profile gh key name) for repos that don't set `key`.

@@ -131,20 +131,13 @@ symlinks:
   ~/personal/helper_functions: repos/dotfiles/dotfiles/shared/helper_functions
   ~/personal/anchor_pr_files:  repos/dotfiles/dotfiles/shared/anchor_pr_files
   ~/personal/completions:      repos/dotfiles/dotfiles/shared/completions
+  # ~/.zshenv does `source ~/personal/envvars`, so the copy files: drops on the
+  # volume has to be reachable at that path. Without this the box loads no env
+  # at all, silently: the source line just finds nothing.
+  ~/personal/envvars:          state/personal/envvars
   ~/.claude/skills:            repos/dotfiles/dotfiles/shared/claude/skills
   ~/.claude/commands:          repos/dotfiles/dotfiles/shared/claude/commands
 
-# Mirror LOCAL directory trees onto the box (local_dir: box_dir). Unlike files:,
-# which only ever adds single files at 0600, sync: MIRRORS and propagates
-# deletes, so reorganising skills on the laptop removes the superseded ones from
-# the box instead of leaving both on offer. A /mnt/work/ destination lands on the
-# volume, so it survives rebuilds; ~/ is ephemeral. Runs on `megh ssh` and
-# `megh hydrate`. *.bak and .DS_Store are always excluded.
-sync: {}
-  # Skills and commands moved to the dotfiles repo (symlinks: above). Leaving
-  # them here would be actively harmful: rsync --delete would write into the git
-  # worktree and could remove tracked files. sync: remains for genuinely
-  # unversioned trees, of which there are currently none.
 
 # Copy local files onto a box over SSH (on `megh ssh`/`hydrate`), mode 0600. For
 # things that must NOT live in a repo or the image — machine rc files, and secret
