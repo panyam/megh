@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/panyam/megh/internal/profile"
 	"github.com/spf13/cobra"
@@ -110,6 +112,10 @@ var profileGHCmd = &cobra.Command{
 	Short: "Manage GitHub identity keys within a profile",
 }
 
+// ghRegister makes `profile gh add` upload the new pubkey to GitHub as well as
+// minting it, which is the fiddliest step of setting up a new device.
+var ghRegister bool
+
 var profileGHAddCmd = &cobra.Command{
 	Use:   "add <gh-name>",
 	Short: "Generate a GitHub identity key (add its pubkey to that GitHub account)",
@@ -124,8 +130,20 @@ var profileGHAddCmd = &cobra.Command{
 		}
 		pub, _ := os.ReadFile(p.GHPubKeyFile(args[0]))
 		fmt.Printf("added GitHub identity %q to profile %q\n\n", args[0], p.Name)
+
+		if ghRegister {
+			if err := registerGHKey(p.GHPubKeyFile(args[0]), p.Name+"/"+args[0]); err != nil {
+				fmt.Fprintf(os.Stderr, "megh: %v\n\n", err)
+			} else {
+				fmt.Printf("registered it on the GitHub account `gh` is logged in as.\n")
+				fmt.Printf("Reference it in megh.yaml repos:  - {url: ..., key: %s}\n", args[0])
+				return nil
+			}
+		}
 		fmt.Println("Add this public key to the corresponding GitHub account (once):")
 		fmt.Printf("\n  %s\n", string(pub))
+		fmt.Printf("  https://github.com/settings/ssh/new\n\n")
+		fmt.Printf("Or let megh do it:  megh profile gh add %s --register\n", args[0])
 		fmt.Printf("Then reference it in megh.yaml repos:  - {url: ..., key: %s}\n", args[0])
 		return nil
 	},
@@ -154,7 +172,48 @@ var profileGHListCmd = &cobra.Command{
 }
 
 func init() {
+	profileGHAddCmd.Flags().BoolVar(&ghRegister, "register", false,
+		"also upload the pubkey to the GitHub account `gh` is logged in as")
 	profileGHCmd.AddCommand(profileGHAddCmd, profileGHListCmd)
 	profileCmd.AddCommand(profileCreateCmd, profileUseCmd, profileListCmd, profileShowCmd, profileGHCmd)
 	rootCmd.AddCommand(profileCmd)
+}
+
+// registerGHKey uploads a public key to the GitHub account `gh` is logged in as.
+//
+// It shells out to `gh` rather than calling the API, deliberately. Adding a key
+// needs the admin:public_key scope, and megh's own GH_MEGH_TOKEN is scoped to
+// read:packages for image pulls; giving megh a token that can add SSH keys to
+// your account, purely for a once-per-device step, is a worse trade than using
+// the tool that already owns GitHub auth.
+//
+// This exists for the phone. Keys are never copied between machines, so a new
+// device mints its own and has to enrol it, and pasting a base64 blob into a
+// mobile browser is the most annoying step in the whole bootstrap.
+func registerGHKey(pubFile, title string) error {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return fmt.Errorf("--register needs the gh CLI on PATH")
+	}
+	c := exec.Command("gh", "ssh-key", "add", pubFile, "--title", "megh "+title)
+	out, err := c.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	msg := strings.TrimSpace(string(out))
+	if isGHScopeError(msg) {
+		return fmt.Errorf("gh lacks the admin:public_key scope; grant it with\n"+
+			"  gh auth refresh -h github.com -s admin:public_key\nthen retry (%s)", msg)
+	}
+	return fmt.Errorf("gh ssh-key add failed: %s", msg)
+}
+
+// isGHScopeError spots the one failure worth explaining. A gh login has no
+// admin:public_key scope by default, so this is what almost everyone hits first,
+// and gh reports it as a bare "HTTP 403: Resource not accessible" that says
+// nothing about which scope is missing or how to add it.
+func isGHScopeError(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "403") ||
+		strings.Contains(m, "scope") ||
+		strings.Contains(m, "not accessible")
 }

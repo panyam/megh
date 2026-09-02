@@ -140,3 +140,31 @@ func TestRefuseToSpawnFromABox(t *testing.T) {
 		t.Errorf("--i-am-the-control-plane should allow it: %v", err)
 	}
 }
+
+// The default gh login lacks admin:public_key, so this is the first thing
+// anyone enrolling a key from a new device will hit. gh's own message does not
+// name the scope, so misclassifying it means the user gets a bare 403.
+func TestIsGHScopeError(t *testing.T) {
+	// Observed verbatim from gh against a token without the scope.
+	real := "HTTP 403: Resource not accessible by personal access token (https://api.github.com/user/keys)"
+	if !isGHScopeError(real) {
+		t.Errorf("the real-world 403 must be recognised: %q", real)
+	}
+	for _, s := range []string{
+		"error: missing required scope 'admin:public_key'",
+		"HTTP 403",
+	} {
+		if !isGHScopeError(s) {
+			t.Errorf("should be recognised: %q", s)
+		}
+	}
+	for _, s := range []string{
+		"key is already in use",
+		"HTTP 422: Validation Failed",
+		"could not connect to github.com",
+	} {
+		if isGHScopeError(s) {
+			t.Errorf("should NOT be treated as a scope problem: %q", s)
+		}
+	}
+}
