@@ -142,11 +142,6 @@ argument it connects to the only box.`,
 		if err := pushFiles(d, d.keyFor(cfg.SSHKeyFile), cfg.Files); err != nil {
 			fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
 		}
-		// Mirror megh.yaml `sync:` dirs. Best effort like the copy above: a
-		// failed sync must not stop you getting onto the box.
-		if err := pushSync(d, d.keyFor(cfg.SSHKeyFile), cfg.Sync); err != nil {
-			fmt.Fprintf(os.Stderr, "megh: warning: sync failed: %v\n", err)
-		}
 
 		if sshNoTmux {
 			sshArgs := append(d.opts("-A"), d.userHost())
