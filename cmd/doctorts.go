@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/panyam/megh/internal/tsops"
 	"github.com/spf13/cobra"
 )
@@ -90,15 +90,16 @@ targets the only box; --local runs on the box itself.`,
 			return c.Run()
 		}
 
-		if tsProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", tsProvider)
+		prov, err := providers.For(tsProvider)
+		if err != nil {
+			return err
 		}
 		ctx := context.Background()
-		var pod *runpod.Pod
+		var pod *providers.Box
 		if len(args) == 2 {
-			pod, err = runpod.Find(ctx, args[1])
+			pod, err = providers.Find(ctx, prov, args[1])
 		} else {
-			pod, err = runpod.Sole(ctx)
+			pod, err = providers.Sole(ctx, prov)
 		}
 		if err != nil {
 			return err

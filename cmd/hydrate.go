@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -48,23 +48,16 @@ undeclared (with origin url to copy into megh.yaml).`,
 			return c.Run()
 		}
 
-		if hydrateProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", hydrateProvider)
-		}
-		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
-		if len(args) == 1 {
-			pod, err = runpod.Find(ctx, args[0])
-		} else {
-			pod, err = runpod.Sole(ctx)
-		}
+		prov, err := providers.For(hydrateProvider)
 		if err != nil {
 			return err
 		}
-		pod = awaitSSHReady(ctx, pod)
+		ctx := context.Background()
+		pod, err := providers.FindOrSole(ctx, prov, args)
+		if err != nil {
+			return err
+		}
+		pod = awaitSSHReady(ctx, prov, pod)
 		d := dialFor(pod)
 		if d.tailnet() {
 			fmt.Fprintf(os.Stderr, "megh: connecting to %q over the tailnet\n", pod.DisplayName())

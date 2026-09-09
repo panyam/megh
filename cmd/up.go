@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ var (
 	upFlavor    string
 	upExposeSSH bool
 	upFromBox   bool
-	upOpts      runpod.Options
+	upOpts      providers.Options
 )
 
 // resolve applies precedence flag > env > config > builtin for a string value.
@@ -84,6 +84,10 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
 		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "slim")
 
+		prov, err := providers.For(upProvider)
+		if err != nil {
+			return err
+		}
 		p := cfg.Provider(upProvider)
 		upOpts.DataCenter = resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", p.DefaultDC, "")
 		upOpts.VolumeID = resolve(cmd, "volume", upOpts.VolumeID, "MEGH_VOLUME_ID", p.DefaultVolume, "")
@@ -99,11 +103,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		// Name is a required positional arg. Enforce the megh- marker up front so
 		// the uniqueness check below and the Tailscale hostname both use the final
 		// name (runpod.Up applies the same prefix idempotently).
-		name := args[0]
-		if !strings.HasPrefix(name, runpod.NamePrefix) {
-			name = runpod.NamePrefix + name
-		}
-		upOpts.Name = name
+		upOpts.Name = providers.PrefixName(args[0])
 
 		if err := refuseToSpawnFromABox(); err != nil {
 			return err
@@ -133,37 +133,38 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 			upOpts.ExtraEnv["MEGH_SYMLINKS"] = strings.Join(pairs, ",")
 		}
 
-		switch upProvider {
-		case "runpod":
-			ctx := context.Background()
-			// Names double as the Tailscale hostname, so refuse a duplicate before
-			// launching rather than let two boxes fight over one tailnet name.
-			pods, err := runpod.List(ctx)
-			if err != nil {
-				return err
-			}
-			for _, p := range runpod.ManagedPods(pods) {
-				if p.Name == upOpts.Name {
-					return fmt.Errorf("a box named %q already exists (id %s); pick another name or `megh down %s` first",
-						upOpts.Name, p.ID, strings.TrimPrefix(upOpts.Name, runpod.NamePrefix))
-				}
-			}
-			// Mint this box its own Tailscale key, if configured. Best effort: a
-			// failure falls back to the shared static key rather than blocking a
-			// launch, because the tailnet is a convenience layer and public SSH is
-			// the path the control machine actually uses.
-			upOpts.TSAuthKey = mintBoxAuthKey(ctx, runpod.ShortName(upOpts.Name))
-
-			res, err := runpod.Up(ctx, upOpts)
-			if err != nil {
-				return err
-			}
-			fmt.Print(res.Summary())
-			publishPortalBestEffort()
-			return nil
-		default:
-			return fmt.Errorf("provider %q not implemented yet", upProvider)
+		ctx := context.Background()
+		// Names double as the Tailscale hostname, so refuse a duplicate before
+		// launching rather than let two boxes fight over one tailnet name.
+		boxes, err := prov.List(ctx)
+		if err != nil {
+			return err
 		}
+		for _, b := range providers.Managed(boxes) {
+			if b.Name == upOpts.Name {
+				return fmt.Errorf("a box named %q already exists (id %s); pick another name or `megh down %s` first",
+					upOpts.Name, b.ID, providers.ShortName(upOpts.Name))
+			}
+		}
+		// Mint this box its own Tailscale key, if configured. Best effort: a
+		// failure falls back to the shared static key rather than blocking a
+		// launch, because the tailnet is a convenience layer and public SSH is
+		// the path the control machine actually uses.
+		//
+		// Skipped entirely on a backend with no tailnet: a local box is reached
+		// over loopback, so a minted key would be spent on nothing and would put
+		// a node on the tailnet that never comes up.
+		if prov.Tailnet() {
+			upOpts.TSAuthKey = mintBoxAuthKey(ctx, providers.ShortName(upOpts.Name))
+		}
+
+		res, err := prov.Up(ctx, upOpts)
+		if err != nil {
+			return err
+		}
+		fmt.Print(res.Summary())
+		publishPortalBestEffort()
+		return nil
 	},
 }
 

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -96,24 +96,17 @@ the box's Tailscale MagicDNS name (requires this machine on the tailnet). With n
 argument it connects to the only box.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if sshProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", sshProvider)
+		prov, err := providers.For(sshProvider)
+		if err != nil {
+			return err
 		}
 		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
-		if len(args) == 1 {
-			pod, err = runpod.Find(ctx, args[0])
-		} else {
-			pod, err = runpod.Sole(ctx)
-		}
+		pod, err := providers.FindOrSole(ctx, prov, args)
 		if err != nil {
 			return err
 		}
 
-		pod = awaitSSHReady(ctx, pod)
+		pod = awaitSSHReady(ctx, prov, pod)
 		d := dialFor(pod)
 		if d.tailnet() {
 			fmt.Fprintf(os.Stderr, "megh: %q has no public SSH endpoint (still initializing, or tailnet-only). "+

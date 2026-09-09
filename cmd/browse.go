@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -83,8 +83,9 @@ print the URLs, and keep the tunnels open until Ctrl-C. No Tailscale needed.
 Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if browseProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", browseProvider)
+		prov, err := providers.For(browseProvider)
+		if err != nil {
+			return err
 		}
 		var wantPort int
 		var boxArg string
@@ -97,14 +98,11 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 		}
 
 		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
+		var pod *providers.Box
 		if boxArg != "" {
-			pod, err = runpod.Find(ctx, boxArg)
+			pod, err = providers.Find(ctx, prov, boxArg)
 		} else {
-			pod, err = runpod.Sole(ctx)
+			pod, err = providers.Sole(ctx, prov)
 		}
 		if err != nil {
 			return err

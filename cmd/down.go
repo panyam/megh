@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -33,19 +33,12 @@ run if you want cross-provider durability; the volume copy survives regardless.
 With no argument it terminates the only box; otherwise pass a name or id.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if downProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", downProvider)
+		prov, err := providers.For(downProvider)
+		if err != nil {
+			return err
 		}
 		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
-		if len(args) == 1 {
-			pod, err = runpod.Find(ctx, args[0])
-		} else {
-			pod, err = runpod.Sole(ctx)
-		}
+		pod, err := providers.FindOrSole(ctx, prov, args)
 		if err != nil {
 			return err
 		}
@@ -81,7 +74,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 			fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())
 		}
 
-		if err := runpod.Terminate(ctx, pod.ID); err != nil {
+		if err := prov.Terminate(ctx, pod.ID); err != nil {
 			return err
 		}
 		fmt.Printf("terminated %s (%s)\n", pod.DisplayName(), pod.ID)
@@ -89,7 +82,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// was already unreachable, which is how nodes go stale in the first place.
 		// Now that the box is definitely gone, remove its node from the control
 		// plane too. Best effort and silent when no API key is configured.
-		pruneNodesBestEffort(ctx, pod.DisplayName())
+		pruneNodesBestEffort(ctx, prov, pod.DisplayName())
 		publishPortalBestEffort()
 		return nil
 	},
