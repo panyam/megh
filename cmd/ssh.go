@@ -15,6 +15,7 @@ var (
 	sshNoTmux   bool
 	sshSession  string
 	sshCC       bool
+	sshNoCC     bool
 )
 
 // defaultTmuxSession is the session `megh ssh` attaches, and it matches the one
@@ -88,6 +89,47 @@ func tmuxAttachCmd(session string, controlMode bool) string {
 		"; else echo 'megh: tmux not found, plain shell' >&2; exec \"$SHELL\" -l; fi"
 }
 
+// resolveControlMode decides whether to attach in tmux control mode:
+// --cc / --no-cc, then $MEGH_SSH_CC, then off.
+//
+// Control mode is a property of the TERMINAL YOU ARE SITTING AT, not of the box
+// or the project, which is why it is an environment variable and deliberately
+// NOT a megh.yaml key. megh.yaml lives in a dotfiles repo and is installed on
+// every control device including the phone, so a setting there would follow you
+// onto Termux, which cannot render control mode at all.
+//
+// It is also why control mode is OFF by default rather than on. The two failure
+// directions are not symmetric. Forgetting --cc in iTerm2 costs you native tabs
+// and nothing else: tmux works normally. Getting control mode in a terminal that
+// does not speak it costs you the shell entirely — tmux reads stdin as CONTROL
+// COMMANDS, so typing `whoami` answers "parse error: unknown command", and `ls`
+// silently runs tmux's list-sessions instead of the shell's ls, which looks like
+// it half-works. A default has to fail in the graceful direction, so the machine
+// with the capable terminal opts in:
+//
+//	export MEGH_SSH_CC=1   # in the Mac's shell config, never in megh.yaml
+func resolveControlMode(cmd *cobra.Command) (bool, error) {
+	if cmd.Flags().Changed("cc") && cmd.Flags().Changed("no-cc") {
+		return false, fmt.Errorf("--cc and --no-cc are opposites; pass one")
+	}
+	if cmd.Flags().Changed("cc") {
+		return sshCC, nil
+	}
+	if cmd.Flags().Changed("no-cc") {
+		return !sshNoCC, nil
+	}
+	v := strings.TrimSpace(os.Getenv("MEGH_SSH_CC"))
+	switch strings.ToLower(v) {
+	case "", "0", "false", "no", "off":
+		return false, nil
+	case "1", "true", "yes", "on":
+		return true, nil
+	}
+	// A typo here would silently drop you back to a normal attach, and the whole
+	// point of the variable is that you stop thinking about it.
+	return false, fmt.Errorf("MEGH_SSH_CC=%q is not a boolean (use 1/true/yes/on or 0/false/no/off)", v)
+}
+
 var sshCmd = &cobra.Command{
 	Use:   "ssh [box-name-or-id]",
 	Short: "Open an interactive shell on a box (git-ready via forwarded keys)",
@@ -104,9 +146,13 @@ MEGH_TMUX=<name> (MEGH_TMUX_SESSION also works).
 
 --cc attaches in tmux CONTROL MODE, which iTerm2 renders as native tabs with
 native scrollback, find and copy. Same session either way, so a box can be in
-control mode on a laptop and a normal attach on a phone at the same time. It
-needs a terminal that speaks the protocol; in anything else you get the raw
-%begin/%output stream, which is unreadable rather than broken.
+control mode on a laptop and a normal attach on a phone at the same time.
+
+Set MEGH_SSH_CC=1 on a machine whose terminal speaks the protocol and it becomes
+that machine's default; --no-cc overrides it for one connection. Keep it in the
+shell config and out of megh.yaml, which is shared with devices (Termux) that
+cannot render control mode: there, tmux would read your keystrokes as tmux
+COMMANDS rather than shell input, so you would get no shell at all.
 
 For browser access to the box's web surfaces, use 'megh browse' (localhost
 tunnels) or Tailscale.
@@ -156,7 +202,11 @@ argument it connects to the only box.`,
 			fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
 		}
 
-		if sshNoTmux && sshCC {
+		controlMode, err := resolveControlMode(cmd)
+		if err != nil {
+			return err
+		}
+		if sshNoTmux && controlMode && cmd.Flags().Changed("cc") {
 			return fmt.Errorf("--cc and --no-tmux are opposites: --cc attaches tmux in control mode, --no-tmux attaches no tmux at all")
 		}
 		if sshNoTmux {
@@ -170,8 +220,8 @@ argument it connects to the only box.`,
 		if err := validTmuxSession(session); err != nil {
 			return err
 		}
-		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session, sshCC))
-		if sshCC {
+		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session, controlMode))
+		if controlMode {
 			fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q in control mode; close the window to detach)\n",
 				d.userHost(), session)
 		} else {
@@ -187,5 +237,6 @@ func init() {
 	sshCmd.Flags().BoolVar(&sshNoTmux, "no-tmux", false, "plain shell instead of attaching tmux")
 	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
 	sshCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
+	sshCmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "force a normal attach, overriding $MEGH_SSH_CC")
 	rootCmd.AddCommand(sshCmd)
 }
