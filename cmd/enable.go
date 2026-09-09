@@ -106,7 +106,7 @@ second arg). Use --local when running on the box itself.`,
 			return c.Run()
 		}
 
-		prov, err := providers.For(enableProvider)
+		prov, err := resolveProvider(cmd, enableProvider)
 		if err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ second arg). Use --local when running on the box itself.`,
 }
 
 func init() {
-	enableCmd.Flags().StringVar(&enableProvider, "provider", "runpod", "provider (runpod)")
+	enableCmd.Flags().StringVar(&enableProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	enableCmd.Flags().BoolVar(&enableLocal, "local", false, "run on the box itself instead of ssh-ing to one")
 	rootCmd.AddCommand(enableCmd)
 }

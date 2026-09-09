@@ -10,8 +10,10 @@
 # daemon for dev workflows. Hence INSTALL_DOCKER=0 here: a container does not
 # need a daemon inside it.
 #
-# RunPod CPU pods are x86_64, so this targets linux/amd64. A second arch is a CI
-# matrix entry, not an edit here.
+# Architecture comes from BuildKit's automatic TARGETARCH, whose values (amd64,
+# arm64) are exactly what provision.sh expects. CI still builds only
+# linux/amd64, because RunPod CPU pods are x86_64; `make image-local` builds for
+# the machine you are on, which is how the docker backend gets a native image.
 
 FROM ubuntu:24.04
 
@@ -25,8 +27,11 @@ ARG GO_VERSION=1.26.4
 ARG TTYD_VERSION=1.7.7
 ARG MEGH_SLIM=0
 
+# Set by BuildKit from the platform being built, so this file names no arch.
+ARG TARGETARCH
+
 COPY provision.sh /tmp/provision.sh
-RUN INSTALL_DOCKER=0 TARGET_ARCH=amd64 \
+RUN INSTALL_DOCKER=0 TARGET_ARCH="${TARGETARCH}" \
       GO_VERSION="${GO_VERSION}" TTYD_VERSION="${TTYD_VERSION}" MEGH_SLIM="${MEGH_SLIM}" \
       bash /tmp/provision.sh \
     && rm /tmp/provision.sh

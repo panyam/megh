@@ -41,6 +41,44 @@ providers:
     disk: 20                       # ephemeral container disk (capped by size)
     expose_ssh: true               # false = zero public ports, reach the box over the tailnet
 
+  # The LOCAL backend: a box is a container on this machine. Free, instant, and
+  # the work trees are host paths, so an agent in the box edits your real repos.
+  # `megh up --provider docker <name>`; list/ssh/down/enable/browse are unchanged.
+  #
+  # It is NOT a security sandbox. Anything mounted read-write can be deleted from
+  # inside. What it does isolate is the rest of the machine.
+  docker:
+    # Built by `make image-local` for this machine's architecture. The published
+    # images are linux/amd64 only, so on an arm64 laptop they would emulate.
+    image: megh-local:arm64
+    # The host directory bound at the box's work mount: docker's network volume.
+    # Tool logins persist here, separately from the host's own ~/.claude, so one
+    # `claude login` in the box survives rebuilds and never touches yours.
+    work_dir: ~/.megh/volumes/local
+    # Where `megh storage create|list|rm` puts local volumes.
+    volume_root: ~/.megh/volumes
+    # Bind mounts, host path -> box path. The box path follows the same
+    # convention as a `symlinks:` target: relative to the work mount unless
+    # absolute. Add ":ro" for read-only.
+    #
+    # Point these at the same targets `symlinks:` uses and one megh.yaml serves
+    # both backends: on a cloud box ~/projects resolves to a hydrated clone, and
+    # here it resolves to your actual tree. No `megh hydrate` needed.
+    #
+    # This map is the ONLY source of bind mounts (CONSTRAINTS.md C3). Nothing is
+    # inferred from the environment or the working directory, because a mount is
+    # a channel to a box exactly like pod env and `files:` are.
+    mounts:
+      ~/projects: repos/projects
+      ~/dotfiles: repos/dotfiles/dotfiles
+      # Do NOT mount a whole directory whose entries are absolute host symlinks
+      # (~/personal is one). They dangle in the box, and the entrypoint replaces
+      # a dangling symlink rather than skipping it: read-only that ln fails and
+      # kills PID 1 under set -euo pipefail, read-write it rewrites your host
+      # copy. Mount the specific files instead, and let `symlinks:` rebuild the
+      # rest against the dotfiles mount.
+      ~/personal/box-envvars: /root/personal/envvars:ro
+
 # Optional: private mesh for phone/tablet browser access. Leave the env value
 # unset for SSH-only (Mac reaches boxes via `megh ssh`).
 tailscale:

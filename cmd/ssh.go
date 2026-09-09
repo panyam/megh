@@ -96,7 +96,7 @@ the box's Tailscale MagicDNS name (requires this machine on the tailnet). With n
 argument it connects to the only box.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(sshProvider)
+		prov, err := resolveProvider(cmd, sshProvider)
 		if err != nil {
 			return err
 		}
@@ -155,7 +155,7 @@ argument it connects to the only box.`,
 }
 
 func init() {
-	sshCmd.Flags().StringVar(&sshProvider, "provider", "runpod", "provider (runpod)")
+	sshCmd.Flags().StringVar(&sshProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	sshCmd.Flags().BoolVar(&sshNoTmux, "no-tmux", false, "plain shell instead of attaching tmux")
 	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
 	rootCmd.AddCommand(sshCmd)

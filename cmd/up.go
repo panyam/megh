@@ -84,7 +84,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
 		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "slim")
 
-		prov, err := providers.For(upProvider)
+		prov, err := resolveProvider(cmd, upProvider)
 		if err != nil {
 			return err
 		}

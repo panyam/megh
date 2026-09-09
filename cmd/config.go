@@ -38,10 +38,32 @@ var configCmd = &cobra.Command{
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 		fmt.Fprintln(w, "  NAME\tDC\tVOLUME\tVCPU\tRAM\tDISK")
 		for _, n := range names {
+			// The local backend has none of these: a container shares the host's
+			// resources and there is one place to run. Printing it here would show
+			// a row of zeroes, which reads as a misconfiguration rather than as
+			// columns that do not apply. It gets its own block below.
+			if n == "docker" {
+				continue
+			}
 			p := cfg.Providers[n]
 			fmt.Fprintf(w, "  %s\t%s\t%s\t%d\t%d\t%d\n", n, p.DefaultDC, p.DefaultVolume, p.VCPU, p.RAM, p.Disk)
 		}
 		w.Flush()
+
+		if d, ok := cfg.Providers["docker"]; ok {
+			fmt.Println("\n  docker (local):")
+			fmt.Printf("    image:       %s\n", orUnset(d.Image))
+			fmt.Printf("    work_dir:    %s\n", orDefaulted(d.WorkDir, "~/.megh/volumes/local"))
+			fmt.Printf("    volume_root: %s\n", orDefaulted(d.VolumeRoot, "~/.megh/volumes"))
+			if len(d.Mounts) == 0 {
+				fmt.Println("    mounts:      none")
+			} else {
+				fmt.Printf("    mounts:      %d\n", len(d.Mounts))
+				for _, h := range sortedMountKeys(d.Mounts) {
+					fmt.Printf("      %s -> %s\n", h, d.Mounts[h])
+				}
+			}
+		}
 
 		// Secret presence only, never values. Names come from the config pointers.
 		fmt.Println("\nsecrets (env vars named by config; values never shown/stored):")
@@ -98,4 +120,27 @@ var configCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(configCmd)
+}
+
+func orUnset(v string) string {
+	if v == "" {
+		return "<unset: build one with `make image-local`>"
+	}
+	return v
+}
+
+func orDefaulted(v, def string) string {
+	if v == "" {
+		return def + "  (default)"
+	}
+	return v
+}
+
+func sortedMountKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -31,6 +31,7 @@ Run `megh` directly only after `source ~/personal/envvars`.
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
                                   # refuses to run ON a box (C3); --i-am-the-control-plane overrides
+                                  # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
@@ -59,6 +60,57 @@ image), `make registry`.
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
+
+## The local (docker) backend
+
+`megh up --provider docker <name>` runs a box as a container on this machine.
+`list`, `ssh`, `down`, `enable`, `browse`, `doctor`, `storage` and `sessions` all
+work against it unchanged, because a local box runs sshd and megh reaches it the
+same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` and
+`doctor ts` stay RunPod-only, and say so, because capacity probing and tailnet
+repair have no meaning locally.
+
+Four things differ, and each is deliberate.
+
+- **No tailnet, but still a tunnel.** `Provider.Tailnet()` is false, so `up` mints
+  no node key and `down` skips the logout and the node prune. Over loopback the
+  tailnet buys nothing, and a box that never joins leaves nothing behind.
+
+  The web surfaces still need `megh browse`, and **publishing them instead does
+  not work**. C4 makes every surface bind the box's own `127.0.0.1`, and a docker
+  publish forwards to the container's `eth0`, so a published `:7681` accepts the
+  connection on the host and has nothing to forward it to. Measured on a running
+  box: `sshd 0.0.0.0:22`, `ttyd 127.0.0.1:7681`. sshd is the only service that
+  binds the wildcard, which is exactly why 22 is the only publishable port. This
+  was tried, shipped a `up` summary full of URLs that returned nothing, and
+  reverted; `TestRunArgsPublishesOnlyLoopbackSSH` now pins it.
+- **The work trees are bind mounts, not clones.** `providers.docker.mounts:` maps
+  a host path to a box path using the SAME convention as a `symlinks:` target
+  (relative to the work mount unless absolute, `:ro` for read-only). Point a mount
+  at the target `symlinks:` already uses and one megh.yaml serves both backends:
+  `~/projects` resolves to a hydrated clone on a cloud box and to your actual tree
+  here. `megh hydrate` then has nothing to do for those repos.
+- **Mounts target the WORK MOUNT, never `/mnt/work`.** `/mnt/work` is a symlink
+  the entrypoint creates; bind mounts are applied before the entrypoint runs, so
+  pre-creating it as a real directory makes `ln -sfn "${WORK_MOUNT}" /mnt/work`
+  fail, and under `set -euo pipefail` that kills PID 1 and the box never boots.
+- **The image is built locally.** CI publishes `linux/amd64` only (RunPod CPU pods
+  are x86_64), so on an arm64 machine the published image emulates. `make
+  image-local` builds for this machine's arch from the same `provision.sh`, using
+  BuildKit's `TARGETARCH`; set `providers.docker.image` to the tag it prints.
+  Defaults to the slim flavor.
+
+**Never mount a directory whose entries are absolute host symlinks.** `~/personal`
+is one: `helper_functions`, `anchor_pr_files` and `completions` point into
+`/Users/.../dotfiles/shared`, which does not exist in a container. The entrypoint's
+skip test is `[ -e "$link" ] && [ ! -L "$link" ]`, so it does NOT skip a symlink,
+it replaces it. Read-only the `ln` fails and kills PID 1; read-write it succeeds
+and rewrites the HOST's copy to point at `/mnt/work`. Mount such a tree at a path
+nothing symlinks into (`/root/personal-mac`) and let `symlinks:` build the box's
+own `~/personal` from the dotfiles mount, exactly as on a cloud box.
+
+**A local box is not a security sandbox.** Anything mounted read-write can be
+deleted from inside it. What it isolates is the rest of the machine.
 
 ## The repo is public; history is not fully purged
 

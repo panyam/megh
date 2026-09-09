@@ -69,7 +69,7 @@ Files are mirrored, so a transcript deleted on the box is deleted in the repo.
 Credential-shaped files are excluded on the way out.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(sessionsProvider)
+		prov, err := resolveProvider(cmd, sessionsProvider)
 		if err != nil {
 			return err
 		}
@@ -260,7 +260,7 @@ func commitSessions(clone, box string, n int, noPush bool) error {
 
 func init() {
 	f := sessionsCollectCmd.Flags()
-	f.StringVar(&sessionsProvider, "provider", "runpod", "provider (runpod)")
+	f.StringVar(&sessionsProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	f.BoolVar(&sessionsDryRun, "dry-run", false, "stage the files locally and stop")
 	f.BoolVar(&sessionsNoPush, "no-push", false, "commit locally but do not push")
 	sessionsCmd.AddCommand(sessionsCollectCmd)

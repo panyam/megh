@@ -49,7 +49,7 @@ schema in its published OpenAPI document.
 This is where a pod may be PLACED, not where one is rentable right now. Only
 'megh regions probe' answers that, and only by trying.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(regionsProvider)
+		prov, err := resolveProvider(cmd, regionsProvider)
 		if err != nil {
 			return err
 		}
@@ -91,7 +91,7 @@ fraction of a cent.
 
 Probes run one region at a time so at most one probe pod exists at any moment.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(regionsProvider)
+		prov, err := resolveProvider(cmd, regionsProvider)
 		if err != nil {
 			return err
 		}
@@ -133,7 +133,7 @@ and print the 'megh up' line for it.
 The volume it creates is a billable resource that outlives the command, unlike
 the probe pods.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(regionsProvider)
+		prov, err := resolveProvider(cmd, regionsProvider)
 		if err != nil {
 			return err
 		}
@@ -272,7 +272,7 @@ func anyRentable(results []runpod.ProbeResult) bool {
 
 func init() {
 	for _, c := range []*cobra.Command{regionsListCmd, regionsProbeCmd, regionsPlaceCmd} {
-		c.Flags().StringVar(&regionsProvider, "provider", "runpod", "provider (runpod)")
+		c.Flags().StringVar(&regionsProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 		c.Flags().StringVar(&regionsDCs, "dc", "", "comma-separated data centers to consider (default: the US regions)")
 		c.Flags().BoolVar(&regionsAll, "all", false, "consider every region RunPod accepts, not just the US ones")
 	}
