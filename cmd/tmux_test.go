@@ -79,3 +79,52 @@ func TestRenderTmuxLsColumnsAlign(t *testing.T) {
 		t.Errorf("CLIENTS column misaligned between rows (%d vs %d):\n%s", a, b, got)
 	}
 }
+
+// tmux auto-names a session created without -s, so a box really can hold a
+// session called "3" sitting next to a WINDOWS column and window indices that
+// are also small numbers. The first version of this output rendered that as an
+// unreadable pile of digits, and a reader could not tell which number was a
+// session and which was a window. Every window line must say so in words.
+func TestRenderTmuxLsDisambiguatesANumericSessionName(t *testing.T) {
+	out := "S\t3\t1\tdetached\tWed Sep  9 18:58:34 2026\n" +
+		"S\tmain\t2\tattached\tWed Sep  9 18:55:21 2026\n" +
+		"W\t3\t1\tzsh\t*\tzsh\n" +
+		"W\tmain\t2\tzsh\t*\tzsh\n" +
+		"W\tmain\t3\tzsh\t \tzsh\n"
+	got := renderTmuxLs(out, "box1")
+	n := 0
+	for _, line := range strings.Split(got, "\n") {
+		if !strings.Contains(line, "└") {
+			continue
+		}
+		n++
+		if !strings.Contains(line, "window ") {
+			t.Errorf("window line does not say 'window': %q", line)
+		}
+	}
+	if n != 3 {
+		t.Errorf("want 3 window lines, got %d:\n%s", n, got)
+	}
+	// The session NAMED "3" must not be mistakable for the window numbered 3.
+	if !strings.Contains(got, "\n3        1  ") {
+		t.Errorf("the session named 3 should head its own row:\n%s", got)
+	}
+}
+
+// The footer used to say `--session <name>`, which left the reader to work out
+// that the SESSION column IS the name. That is exactly the inference that fails
+// when a session is called "3", so it names a real one instead.
+func TestRenderTmuxLsFooterNamesARealSession(t *testing.T) {
+	got := renderTmuxLs(probeOut, "box1")
+	if strings.Contains(got, "<name>") {
+		t.Error("footer still uses a placeholder instead of a real session name")
+	}
+	if !strings.Contains(got, "megh ssh box1 --session main") {
+		t.Errorf("footer should show a runnable command:\n%s", got)
+	}
+	// With no session called main, it should still name one that exists.
+	only := "S\tdesk\t1\tdetached\tnow\nW\tdesk\t1\tzsh\t*\tzsh\n"
+	if g := renderTmuxLs(only, "box1"); !strings.Contains(g, "--session desk") {
+		t.Errorf("footer should fall back to an existing session:\n%s", g)
+	}
+}
