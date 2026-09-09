@@ -93,7 +93,17 @@ func renderTmuxLs(out, box string) string {
 		case f[0] == "S" && len(f) >= 5:
 			sessions = append(sessions, session{f[1], f[2], f[3], f[4]})
 		case f[0] == "W" && len(f) >= 6:
-			windows[f[1]] = append(windows[f[1]], fmt.Sprintf("   %s%s: %s (%s)", f[4], f[2], f[3], f[5]))
+			// Spell out "window" rather than leaning on indentation. A session can
+			// be NAMED a number (tmux auto-names one created without -s, so you get
+			// a session called "3"), and then a bare indented "1:" next to a
+			// SESSION column reading "3" is unreadable: nothing on screen says
+			// which number is a session and which is a window.
+			focus := ""
+			if strings.TrimSpace(f[4]) != "" {
+				focus = "  *"
+			}
+			windows[f[1]] = append(windows[f[1]],
+				fmt.Sprintf("  └ window %s: %s (%s)%s", f[2], f[3], f[5], focus))
 		}
 	}
 	if len(sessions) == 0 {
@@ -115,8 +125,21 @@ func renderTmuxLs(out, box string) string {
 			b.WriteString(w + "\n")
 		}
 	}
-	fmt.Fprintf(&b, "\n* is the window a client last had focused. Attach with `megh ssh %s`,\n"+
-		"or a named one with `--session <name>`.\n", box)
+	// A concrete example beats a placeholder. `--session <name>` left the reader
+	// to work out that the SESSION column IS the name, which is exactly the step
+	// that fails when a session is called "3".
+	example := sessions[0].name
+	for _, s := range sessions {
+		if s.name == defaultTmuxSession {
+			example = s.name
+		}
+	}
+	fmt.Fprintf(&b, "\nAttach a session, then switch windows with ctrl-b <number>:\n"+
+		"  megh ssh %s --session %s\n", box, example)
+	if len(sessions) == 1 && example == defaultTmuxSession {
+		fmt.Fprintf(&b, "  megh ssh %s%s", box, "                 (same thing; main is the default)\n")
+	}
+	b.WriteString("* marks the window a client last had focused.\n")
 	return b.String()
 }
 
