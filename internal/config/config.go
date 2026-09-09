@@ -35,6 +35,30 @@ type Provider struct {
 	RAM           int    `yaml:"ram"`
 	Disk          int    `yaml:"disk"`
 	ExposeSSH     *bool  `yaml:"expose_ssh"` // expose public break-glass SSH; nil -> true
+
+	// The rest are docker-only and inert everywhere else. They live on the same
+	// struct so `providers:` keeps one shape in the file rather than growing a
+	// parallel top-level block for one backend.
+
+	// Image overrides the flavor-derived image. A local box runs an image built
+	// on this machine for its own architecture, which has no registry path.
+	Image string `yaml:"image"`
+	// WorkDir is the host directory bound at the box's work mount: docker's
+	// answer to a network volume. Default ~/.megh/volumes/local.
+	WorkDir string `yaml:"work_dir"`
+	// VolumeRoot is where `megh storage` creates and lists local volumes.
+	// Default ~/.megh/volumes.
+	VolumeRoot string `yaml:"volume_root"`
+	// Mounts are host path -> box path bind mounts, applied at container
+	// creation. The box path follows the same convention as a `symlinks:`
+	// target: relative to the work mount unless absolute. An optional ":ro"
+	// suffix makes the mount read-only.
+	//
+	// This is an allowlist and the only source of bind mounts (CONSTRAINTS.md
+	// C3): nothing is inferred from the ambient environment or the working
+	// directory, because a mount is a channel to a box exactly like pod env and
+	// `files:` are.
+	Mounts map[string]string `yaml:"mounts"`
 }
 
 // PublicSSH reports whether public break-glass SSH (22/tcp) is exposed. Default

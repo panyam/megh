@@ -41,9 +41,11 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 - **Two build artifacts from one source of truth. LOCKED.** The dev environment
   is declared once, in `env/<flavor>/provision.sh`, and emitted as two artifacts
   that both call that script at build time so they cannot drift:
-  - **Container image** (`Dockerfile`) for container-native providers (RunPod).
-    The platform runs it directly; there is no VM you manage. `INSTALL_DOCKER=0`
-    (a container needs no daemon inside it).
+  - **Container image** (`Dockerfile`) for container-native providers (RunPod, and
+    the local docker backend). The platform runs it directly; there is no VM you
+    manage. `INSTALL_DOCKER=0` (a container needs no daemon inside it). The file
+    names no architecture: BuildKit's `TARGETARCH` feeds provision.sh, so CI
+    publishes amd64 for RunPod and `make image-local` builds the host's arch.
   - **VM image** (`packer/`, later) for VM-native providers (Hetzner, and the
     AWS-AMI shape). The dev environment runs DIRECTLY on the VM, not in a
     container inside it, so the box has a real native Docker daemon for dev
@@ -90,6 +92,16 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   box that dies hard loses the delta since the last collection. That is a smaller
   window than it sounds, since collection runs on `megh down`, and it buys back a
   standing credential on every box.
+- **A local docker backend, and it deliberately skips the tailnet.** A box can be
+  a container on this machine rather than a rented pod. It earns its place twice:
+  the box contract (the entrypoint, the feature scripts, hydrate) becomes testable
+  without paying a provider, and a container with the real work trees bind-mounted
+  is the containerized-agent setup the cloud boxes only approximate. It joins no
+  tailnet, because over loopback the tailnet buys nothing and skipping it means no
+  key is minted and no node is left behind; `Provider.Tailnet()` is the switch, and
+  `up` and `down` both read it. The provider abstraction earned itself here: adding
+  it was a new package plus one line in the registration list, where before it
+  would have been fifteen edited call sites.
 - **megh is stateless; the provider is the source of truth.** No local state file
   or dotdir. `megh list` / `megh storage list` query the provider live. RunPod
   has no pod tags/labels, so megh-managed resources are identified by a `megh-`

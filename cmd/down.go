@@ -33,7 +33,7 @@ run if you want cross-provider durability; the volume copy survives regardless.
 With no argument it terminates the only box; otherwise pass a name or id.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(downProvider)
+		prov, err := resolveProvider(cmd, downProvider)
 		if err != nil {
 			return err
 		}
@@ -64,14 +64,21 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// the tailnet that name never resolves — ssh's ConnectTimeout does not
 		// cover resolution, so without this the terminate step never runs and the
 		// pod keeps billing.
-		d := dialFor(pod)
-		logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
-		lctx, cancel := context.WithTimeout(ctx, deregisterTimeout)
-		defer cancel()
-		if _, err := sshCaptureCtx(lctx, d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
-			fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.DisplayName())
-		} else {
-			fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())
+		//
+		// Skipped entirely on a backend with no tailnet. The box never joined one,
+		// so the logout is a guaranteed no-op that still costs an SSH round trip
+		// and, worse, printed "asked local1 to leave the tailnet" about a box that
+		// was never on it.
+		if prov.Tailnet() {
+			d := dialFor(pod)
+			logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
+			lctx, cancel := context.WithTimeout(ctx, deregisterTimeout)
+			defer cancel()
+			if _, err := sshCaptureCtx(lctx, d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
+				fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.DisplayName())
+			} else {
+				fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())
+			}
 		}
 
 		if err := prov.Terminate(ctx, pod.ID); err != nil {
@@ -82,14 +89,16 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// was already unreachable, which is how nodes go stale in the first place.
 		// Now that the box is definitely gone, remove its node from the control
 		// plane too. Best effort and silent when no API key is configured.
-		pruneNodesBestEffort(ctx, prov, pod.DisplayName())
+		if prov.Tailnet() {
+			pruneNodesBestEffort(ctx, prov, pod.DisplayName())
+		}
 		publishPortalBestEffort()
 		return nil
 	},
 }
 
 func init() {
-	downCmd.Flags().StringVar(&downProvider, "provider", "runpod", "provider (runpod)")
+	downCmd.Flags().StringVar(&downProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	downCmd.Flags().BoolVarP(&downYes, "yes", "y", false, "skip the confirmation prompt")
 	rootCmd.AddCommand(downCmd)
 }

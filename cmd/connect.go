@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/panyam/megh/internal/providers"
+	"github.com/spf13/cobra"
 )
 
 // awaitSSHReady polls for a box's public SSH endpoint when it isn't mapped yet
@@ -60,10 +61,31 @@ func (d dial) userHost() string { return "root@" + d.host }
 // options appended. The user@host and remote command are appended by the caller.
 func (d dial) opts(extra ...string) []string {
 	a := []string{"-o", "StrictHostKeyChecking=accept-new"}
+	if d.loopback() {
+		// A local box is 127.0.0.1 on a port docker allocates, and docker reuses
+		// ports freely, so a recreated box behind a recycled port trips a host-key
+		// MISMATCH and ssh refuses to connect until known_hosts is edited by hand.
+		//
+		// Not laziness: a loopback container's host key authenticates nothing that
+		// the mount namespace has not already decided. Pinning it would mean
+		// persisting /etc/ssh across rebuilds to defend a boundary that is not
+		// there.
+		a = []string{
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "LogLevel=ERROR",
+		}
+	}
 	if d.port != 0 {
 		a = append(a, "-p", strconv.Itoa(d.port))
 	}
 	return append(a, extra...)
+}
+
+// loopback reports whether the box is reached over the local interface, which
+// is true exactly for a container on this machine.
+func (d dial) loopback() bool {
+	return d.host == "127.0.0.1" || d.host == "localhost" || d.host == "::1"
 }
 
 // keyFor returns the box key to pass to runSSH for this dial (empty on the
@@ -73,4 +95,16 @@ func (d dial) keyFor(boxKey string) string {
 		return boxKey
 	}
 	return ""
+}
+
+// resolveProvider applies the SAME precedence to --provider that `up` applies:
+// flag > $MEGH_PROVIDER > megh.yaml default_provider > runpod.
+//
+// Only `up` used to do this; every other command hardcoded its flag default to
+// "runpod" and ignored the config. With one backend that was invisible. With
+// two it is a trap: `default_provider: docker` would launch a local box that
+// `megh ssh <name>` then could not find, reporting "no box matching" as though
+// the box did not exist rather than as though it had looked in the wrong place.
+func resolveProvider(cmd *cobra.Command, flagVal string) (providers.Provider, error) {
+	return providers.For(resolve(cmd, "provider", flagVal, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod"))
 }
