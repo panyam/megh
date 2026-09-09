@@ -93,9 +93,9 @@ func (*Provider) Tailnet() bool { return false }
 
 // Result is a launched local box.
 type Result struct {
-	ID   string
-	Name string
-	Port int
+	ID      string
+	Name    string
+	SSHPort int
 }
 
 // Summary is the connection info after `megh up`. It deliberately does not
@@ -109,8 +109,10 @@ Access:
   ssh       : megh ssh %[1]s
   surfaces  : megh browse %[1]s        (ttyd, webterm, code-server over an SSH tunnel)
 
-No tailnet: a local box is reached over loopback, so nothing was minted and no
-node was added. Only 22/tcp is published, and only on 127.0.0.1.
+No tailnet: a local box is reached over loopback, so no node key was minted and
+no node was added. The surfaces still need the tunnel: they bind the box's own
+loopback (C4), which a published port cannot reach. Only 22/tcp is published,
+and only on 127.0.0.1.
 `, r.Name, shortID(r.ID))
 }
 
@@ -160,7 +162,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	if err != nil {
 		return nil, err
 	}
-	return &Result{ID: id, Name: providers.ShortName(name), Port: box.SSHPort}, nil
+	return &Result{ID: id, Name: providers.ShortName(name), SSHPort: box.SSHPort}, nil
 }
 
 // runArgs builds the full `docker run` argv. Split out from Up so it can be
@@ -172,13 +174,26 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 		"--name", name,
 		"--hostname", providers.ShortName(name),
 		"--label", managedLabel + "=1",
-		// Only SSH is published, and only on loopback, so a box is never on the
-		// machine's network interfaces (CONSTRAINTS.md C4). Docker picks the host
-		// port; megh reads it back rather than tracking one, which keeps megh
+		// Everything is published on 127.0.0.1 ONLY, so a box is never on the
+		// machine's network interfaces (CONSTRAINTS.md C4). Docker picks each host
+		// port; megh reads them back rather than tracking any, which keeps megh
 		// stateless with the daemon as the source of truth.
 		"-p", "127.0.0.1::22",
 		"-v", work + ":" + workMount,
 	}
+
+	// The web surfaces are deliberately NOT published, and publishing them would
+	// not work anyway. Measured on a running box:
+	//
+	//   sshd   0.0.0.0:22
+	//   ttyd   127.0.0.1:7681
+	//
+	// C4 requires every box service to bind the box's loopback, and a docker
+	// publish forwards to the container's eth0, not to its loopback, so a
+	// published :7681 accepts the connection on the host and finds nothing to
+	// forward it to. sshd works only because it is the one service that binds
+	// 0.0.0.0. Reaching a surface is therefore an SSH tunnel here exactly as it
+	// is on a cloud box, which is what `megh browse` does.
 
 	mounts, err := ParseMounts(set.mounts, workMount)
 	if err != nil {
