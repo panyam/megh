@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/panyam/megh/internal/providers"
 )
 
 // The enum lives deep inside RunPod's OpenAPI document, so the shape of that
@@ -92,7 +94,7 @@ func TestBakedDataCentersAndProbePrefix(t *testing.T) {
 	if len(USDataCenters(bakedDataCenters)) == 0 {
 		t.Error("bakedDataCenters has no US region, so the default probe set is empty")
 	}
-	if got := ProbePrefix; len(got) <= len(NamePrefix) || got[:len(NamePrefix)] != NamePrefix {
-		t.Errorf("ProbePrefix = %q, must start with the megh- marker %q", got, NamePrefix)
+	if got := ProbePrefix; len(got) <= len(providers.NamePrefix) || got[:len(providers.NamePrefix)] != providers.NamePrefix {
+		t.Errorf("ProbePrefix = %q, must start with the megh- marker %q", got, providers.NamePrefix)
 	}
 }

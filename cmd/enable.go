@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/features"
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -106,15 +106,16 @@ second arg). Use --local when running on the box itself.`,
 			return c.Run()
 		}
 
-		if enableProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", enableProvider)
+		prov, err := providers.For(enableProvider)
+		if err != nil {
+			return err
 		}
 		ctx := context.Background()
-		var pod *runpod.Pod
+		var pod *providers.Box
 		if len(args) == 2 {
-			pod, err = runpod.Find(ctx, args[1])
+			pod, err = providers.Find(ctx, prov, args[1])
 		} else {
-			pod, err = runpod.Sole(ctx)
+			pod, err = providers.Sole(ctx, prov)
 		}
 		if err != nil {
 			return err

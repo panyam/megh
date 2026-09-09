@@ -7,7 +7,19 @@ import (
 	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/profile"
 	"github.com/spf13/cobra"
+
+	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/runpod"
 )
+
+// Backends are registered here, by name, in one visible list. Deliberately not
+// from each package's init(): a backend that registers itself is invisible at
+// the call site, and a binary that forgets the blank import composes an empty
+// registry and reports nothing wrong rather than failing. Adding a backend is
+// one line here and the compiler enforces the import.
+func init() {
+	providers.Register(runpod.New())
+}
 
 // cfg is the resolved configuration, loaded once in PersistentPreRunE and read
 // by subcommands. cfgFlag/profileFlag are the optional --config/--profile paths.

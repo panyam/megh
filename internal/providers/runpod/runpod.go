@@ -16,38 +16,17 @@ import (
 	"os/user"
 	"strings"
 	"time"
+
+	"github.com/panyam/megh/internal/providers"
 )
 
 const endpoint = "https://rest.runpod.io/v1/pods"
-
-// NamePrefix marks a pod/volume as megh-managed. RunPod has no pod tags/labels,
-// so the name is the only durable identifier the CLI can filter on without a
-// local state file. `megh up` enforces it; list/ssh filter to it by default.
-const NamePrefix = "megh-"
 
 // sshPort is the only thing ever exposed on RunPod's public proxy: SSH over raw
 // TCP as a key-auth break-glass path. The web surfaces (ttyd, noVNC) are never
 // public; they bind to localhost and are reached over Tailscale or an SSH
 // tunnel. When ExposeSSH is false, nothing is exposed (tailnet-only).
 const sshPort = "22/tcp"
-
-// Options configures a RunPod CPU pod launch.
-type Options struct {
-	Name       string
-	VCPU       int
-	RAMGiB     int
-	DiskGiB    int
-	Image      string
-	VolumeID   string
-	DataCenter string
-	PubKey     string
-	ExposeSSH  bool              // expose public 22/tcp break-glass SSH
-	ExtraEnv   map[string]string // copied into the pod env (e.g. box_envs)
-	// TSAuthKey is the Tailscale node key to boot with. Set when megh minted a
-	// key for this box specifically; empty falls back to the ambient
-	// TS_AUTHKEY, which is the shared static key.
-	TSAuthKey string
-}
 
 // Result is a successful launch. Name is the box's bare name — the Tailscale
 // hostname it comes up as (the megh- pod prefix is not part of the tailnet
@@ -61,7 +40,7 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // Up creates a CPU pod from a megh image, attaches the network volume, and
 // exposes the web shell / noVNC / SSH ports.
-func Up(ctx context.Context, o Options) (*Result, error) {
+func up(ctx context.Context, o providers.Options) (*Result, error) {
 	apiKey := os.Getenv("RUNPOD_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("RUNPOD_API_KEY is not set")
@@ -77,9 +56,9 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 	// center, so if it is set the DC must match it.
 	if o.Name == "" {
 		o.Name = defaultName()
-	} else if !strings.HasPrefix(o.Name, NamePrefix) {
+	} else {
 		// Enforce the marker so the box is discoverable as megh-managed.
-		o.Name = NamePrefix + o.Name
+		o.Name = providers.PrefixName(o.Name)
 	}
 
 	// Base megh env, then copy any extra (box_envs) over it.
@@ -88,7 +67,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 		"WORK_MOUNT":  "/workspace",
 		"ARCH_TAG":    "x86_64",
 		"TS_AUTHKEY":  cmp.Or(o.TSAuthKey, os.Getenv("TS_AUTHKEY")),
-		"TS_HOSTNAME": ShortName(o.Name),
+		"TS_HOSTNAME": providers.ShortName(o.Name),
 	}
 	for k, v := range o.ExtraEnv {
 		podEnv[k] = v
@@ -155,7 +134,7 @@ func Up(ctx context.Context, o Options) (*Result, error) {
 	if res.ID == "" {
 		return nil, fmt.Errorf("runpod: could not parse pod id from response: %s", string(body))
 	}
-	res.Name = ShortName(o.Name)
+	res.Name = providers.ShortName(o.Name)
 	return &res, nil
 }
 

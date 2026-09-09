@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/panyam/megh/internal/providers"
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/spf13/cobra"
 )
@@ -48,16 +49,20 @@ schema in its published OpenAPI document.
 This is where a pod may be PLACED, not where one is rentable right now. Only
 'megh regions probe' answers that, and only by trying.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if regionsProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", regionsProvider)
+		prov, err := providers.For(regionsProvider)
+		if err != nil {
+			return err
+		}
+		if err := requireRunPod(prov); err != nil {
+			return err
 		}
 		ctx := context.Background()
 		dcs := candidateDCs(ctx)
 
 		// Mark the regions where scratch already exists: a volume there means no
 		// new volume to create, which usually decides the placement on its own.
-		held := map[string][]runpod.Volume{}
-		if vols, err := runpod.Volumes(ctx); err == nil {
+		held := map[string][]providers.Volume{}
+		if vols, err := prov.Volumes(ctx); err == nil {
 			for _, v := range vols {
 				held[v.DataCenter] = append(held[v.DataCenter], v)
 			}
@@ -86,8 +91,12 @@ fraction of a cent.
 
 Probes run one region at a time so at most one probe pod exists at any moment.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if regionsProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", regionsProvider)
+		prov, err := providers.For(regionsProvider)
+		if err != nil {
+			return err
+		}
+		if err := requireRunPod(prov); err != nil {
+			return err
 		}
 		ctx := context.Background()
 		dcs := candidateDCs(ctx)
@@ -124,8 +133,12 @@ and print the 'megh up' line for it.
 The volume it creates is a billable resource that outlives the command, unlike
 the probe pods.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if regionsProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", regionsProvider)
+		prov, err := providers.For(regionsProvider)
+		if err != nil {
+			return err
+		}
+		if err := requireRunPod(prov); err != nil {
+			return err
 		}
 		if regionsVolName == "" {
 			return fmt.Errorf("--name is required (the volume name)")
@@ -163,7 +176,7 @@ the probe pods.`,
 		if winner == "" {
 			return fmt.Errorf("no candidate data center could rent %d vCPU / %d GB right now; nothing was created", opts.VCPU, opts.RAMGiB)
 		}
-		v, err := runpod.CreateVolume(ctx, regionsVolName, regionsVolSize, winner)
+		v, err := prov.CreateVolume(ctx, regionsVolName, regionsVolSize, winner)
 		if err != nil {
 			return fmt.Errorf("%s rents CPU but the volume could not be created there: %w", winner, err)
 		}
@@ -199,13 +212,13 @@ func candidateDCs(ctx context.Context) []string {
 
 // probeOptions resolves the box shape to probe from the same precedence chain
 // `megh up` uses, so a probe tests the box you would actually launch.
-func probeOptions(cmd *cobra.Command) (runpod.Options, error) {
+func probeOptions(cmd *cobra.Command) (providers.Options, error) {
 	p := cfg.Provider(regionsProvider)
 	image := resolve(cmd, "image", regionsImage, "MEGH_IMAGE", "", cfg.DefaultImage(cfg.DefaultFlavor))
 	if image == "" {
-		return runpod.Options{}, fmt.Errorf("no image resolved (set --image or $MEGH_IMAGE)")
+		return providers.Options{}, fmt.Errorf("no image resolved (set --image or $MEGH_IMAGE)")
 	}
-	return runpod.Options{
+	return providers.Options{
 		Image:   image,
 		VCPU:    resolveInt(cmd, "vcpu", regionsVCPU, p.VCPU, 2),
 		RAMGiB:  resolveInt(cmd, "ram", regionsRAM, p.RAM, 8),
@@ -216,7 +229,7 @@ func probeOptions(cmd *cobra.Command) (runpod.Options, error) {
 // probeAll walks the regions in order, one at a time. stopAtFirst returns as
 // soon as a region rents, which is what placement wants; the full sweep is for
 // seeing the whole picture.
-func probeAll(ctx context.Context, dcs []string, opts runpod.Options, stopAtFirst bool) []runpod.ProbeResult {
+func probeAll(ctx context.Context, dcs []string, opts providers.Options, stopAtFirst bool) []runpod.ProbeResult {
 	var out []runpod.ProbeResult
 	for _, dc := range dcs {
 		o := opts
@@ -277,4 +290,16 @@ func init() {
 
 	regionsCmd.AddCommand(regionsListCmd, regionsProbeCmd, regionsPlaceCmd)
 	rootCmd.AddCommand(regionsCmd)
+}
+
+// requireRunPod gates the commands that are genuinely RunPod-specific rather
+// than merely unimplemented elsewhere. `megh regions` rents a real pod to learn
+// whether a data center has capacity; a local docker box has one place to run
+// and no capacity to probe, so the answer is not "not yet", it is "the question
+// does not apply".
+func requireRunPod(p providers.Provider) error {
+	if p.Name() != "runpod" {
+		return fmt.Errorf("megh regions is RunPod-only: %s has no data centers to place in", p.Name())
+	}
+	return nil
 }
