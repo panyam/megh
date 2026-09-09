@@ -83,7 +83,7 @@ print the URLs, and keep the tunnels open until Ctrl-C. No Tailscale needed.
 Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(browseProvider)
+		prov, err := resolveProvider(cmd, browseProvider)
 		if err != nil {
 			return err
 		}
@@ -194,6 +194,6 @@ func sshCaptureCtx(ctx context.Context, keyFile string, d dial, remote string) (
 }
 
 func init() {
-	browseCmd.Flags().StringVar(&browseProvider, "provider", "runpod", "provider (runpod)")
+	browseCmd.Flags().StringVar(&browseProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	rootCmd.AddCommand(browseCmd)
 }

@@ -89,7 +89,7 @@ docker-build viability is still planned.)`,
 			c.Stdout, c.Stderr = os.Stdout, os.Stderr
 			return c.Run()
 		}
-		prov, err := providers.For(doctorProvider)
+		prov, err := resolveProvider(cmd, doctorProvider)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ docker-build viability is still planned.)`,
 }
 
 func init() {
-	doctorCmd.Flags().StringVar(&doctorProvider, "provider", "runpod", "provider (runpod)")
+	doctorCmd.Flags().StringVar(&doctorProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	doctorCmd.Flags().BoolVar(&doctorLocal, "local", false, "run on the box itself instead of ssh-ing to one")
 	rootCmd.AddCommand(doctorCmd)
 }

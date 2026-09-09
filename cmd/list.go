@@ -32,7 +32,7 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List megh dev boxes (use --all for every pod on the account)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(listProvider)
+		prov, err := resolveProvider(cmd, listProvider)
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listProvider, "provider", "runpod", "provider (runpod)")
+	listCmd.Flags().StringVar(&listProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	listCmd.Flags().BoolVar(&listAll, "all", false, "show every pod on the account, not just megh-managed")
 	rootCmd.AddCommand(listCmd)
 }

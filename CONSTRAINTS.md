@@ -73,12 +73,29 @@ megh has, not a property of any one command:
 - `files:` copies only what `megh.yaml` names, which is why the pattern is a
   scoped `~/personal/box-envvars` rather than the real `~/personal/envvars`.
 - `box_envs:` is an explicit opt-in list, never a wildcard.
+- **`providers.docker.mounts:` is the local backend's allowlist.** A bind mount is
+  a fourth channel to a box, and a wider one than the other three: it exposes a
+  live host path rather than a copied value. Every `-v` the docker backend passes
+  comes from that map or is the work mount itself. Nothing is inferred from the
+  ambient environment, the working directory, or what happens to exist next to a
+  mounted path.
 
-New code that ships environment, files, or scripts to a box passes an allowlist,
-never the caller's whole environment.
+New code that ships environment, files, scripts, or MOUNTS to a box passes an
+allowlist, never the caller's whole environment or filesystem.
 
-**Verify:** `grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in
-`meghEnv`. The other `os.Environ()` uses in `cmd/` are NOT violations: they set
+Two things the local backend makes concrete. `box-envvars` is the file that
+actually reaches a box, so its contents are the constraint, not its name: it held
+a live `RUNPOD_API_KEY` for months while its own header claimed it held no
+credentials, which is why the check below reads the file rather than trusting the
+comment. And mounting a whole directory is how a scoped copy quietly becomes an
+unscoped one, so a mount that would expose a secret is shadowed by a narrower
+mount over it rather than being allowed and documented.
+
+**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
+(the mount allowlist and the credential deny list, both red-checked), and
+`grep -nE '^[[:space:]]*export[[:space:]]+(RUNPOD|VAST|LAMBDA)_API_KEY=' ~/personal/box-envvars`
+must return NOTHING. Then `grep -n 'MEGH_' cmd/enable.go` must show the prefix
+filter in `meghEnv`. The other `os.Environ()` uses in `cmd/` are NOT violations: they set
 the environment of a LOCAL child process (the ssh client in `sshexec.go`, the
 local bash in `doctorts.go --local`), and megh never configures ssh `SendEnv`, so
 the calling shell's environment is not forwarded to a box. Confirm that with

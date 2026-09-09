@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/docker"
 	"github.com/panyam/megh/internal/providers/runpod"
 )
 
@@ -19,6 +20,9 @@ import (
 // one line here and the compiler enforces the import.
 func init() {
 	providers.Register(runpod.New())
+	// docker takes an accessor, not a value: cfg is not loaded until
+	// PersistentPreRunE, so a value captured here would be the empty default.
+	providers.Register(docker.New(func() config.Config { return cfg }))
 }
 
 // cfg is the resolved configuration, loaded once in PersistentPreRunE and read

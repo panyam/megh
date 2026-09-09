@@ -48,7 +48,7 @@ undeclared (with origin url to copy into megh.yaml).`,
 			return c.Run()
 		}
 
-		prov, err := providers.For(hydrateProvider)
+		prov, err := resolveProvider(cmd, hydrateProvider)
 		if err != nil {
 			return err
 		}
@@ -154,7 +154,7 @@ func checkScript(c config.Config) string {
 }
 
 func init() {
-	hydrateCmd.Flags().StringVar(&hydrateProvider, "provider", "runpod", "provider (runpod)")
+	hydrateCmd.Flags().StringVar(&hydrateProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	hydrateCmd.Flags().BoolVar(&hydrateCheck, "check", false, "report drift instead of applying")
 	hydrateCmd.Flags().BoolVar(&hydrateLocal, "local", false, "run on the box itself (clone repos locally, no jump box)")
 	rootCmd.AddCommand(hydrateCmd)

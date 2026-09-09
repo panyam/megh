@@ -133,7 +133,7 @@ it with --tag if you mint auth keys with a tag.
 A node for a box that is still running is never deleted.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(tsGCProvider)
+		prov, err := resolveProvider(cmd, tsGCProvider)
 		if err != nil {
 			return err
 		}
@@ -278,6 +278,6 @@ func init() {
 	f.BoolVar(&tsGCDryRun, "dry-run", false, "list what would be deleted and stop")
 	f.DurationVar(&tsGCStale, "stale-after", 15*time.Minute, "how long a node must have been offline to be swept (bare sweep only)")
 	f.StringVar(&tsGCTag, "tag", "", "only consider nodes carrying this tag (e.g. tag:megh)")
-	f.StringVar(&tsGCProvider, "provider", "runpod", "provider (runpod)")
+	f.StringVar(&tsGCProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	tsCmd.AddCommand(tsGCCmd)
 }

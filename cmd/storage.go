@@ -54,7 +54,7 @@ var storageCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a scratch volume in a data center",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(storageProvider)
+		prov, err := resolveProvider(cmd, storageProvider)
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ var storageRmCmd = &cobra.Command{
 	Short:   "Delete a scratch volume by id (must be detached from all boxes)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(storageProvider)
+		prov, err := resolveProvider(cmd, storageProvider)
 		if err != nil {
 			return err
 		}
@@ -90,12 +90,12 @@ var storageRmCmd = &cobra.Command{
 }
 
 func init() {
-	storageCreateCmd.Flags().StringVar(&storageProvider, "provider", "runpod", "provider (runpod)")
+	storageCreateCmd.Flags().StringVar(&storageProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	storageCreateCmd.Flags().StringVar(&storageName, "name", "megh-scratch", "volume name")
 	storageCreateCmd.Flags().IntVar(&storageSize, "size", 100, "size in GiB")
 	storageCreateCmd.Flags().StringVar(&storageDC, "dc", "", "data center id (required)")
 
-	storageRmCmd.Flags().StringVar(&storageProvider, "provider", "runpod", "provider (runpod)")
+	storageRmCmd.Flags().StringVar(&storageProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 
 	storageCmd.AddCommand(storageListCmd, storageCreateCmd, storageRmCmd)
 	rootCmd.AddCommand(storageCmd)
