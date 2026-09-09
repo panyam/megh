@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -36,11 +36,14 @@ it automatically when portal.repo is set.`,
 			return fmt.Errorf("set portal.repo in megh.yaml (a private repo to push PORTAL.md to)")
 		}
 		ctx := context.Background()
-		pods, err := runpod.List(ctx)
-		if err != nil {
-			return err
+		pods, errs := providers.ListAll(ctx)
+		if len(pods) == 0 && len(errs) > 0 {
+			return errs[0]
 		}
-		if err := pushPortal(renderPortal(runpod.ManagedPods(pods))); err != nil {
+		for _, e := range errs {
+			fmt.Fprintf(os.Stderr, "megh: portal: skipping a provider: %v\n", e)
+		}
+		if err := pushPortal(renderPortal(providers.Managed(pods))); err != nil {
 			return err
 		}
 		fmt.Printf("portal published. Bookmark: %s\n", portalBookmarkURL())
@@ -49,7 +52,7 @@ it automatically when portal.repo is set.`,
 }
 
 // renderPortal builds the PORTAL.md markdown for the given boxes.
-func renderPortal(pods []runpod.Pod) string {
+func renderPortal(pods []providers.Box) string {
 	scheme := cfg.Portal.Scheme
 	if scheme == "" {
 		scheme = "http"
@@ -205,12 +208,12 @@ func publishPortalBestEffort() {
 	if cfg.Portal.Repo == "" {
 		return
 	}
-	pods, err := runpod.List(context.Background())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "megh: portal refresh skipped: %v\n", err)
+	pods, errs := providers.ListAll(context.Background())
+	if len(pods) == 0 && len(errs) > 0 {
+		fmt.Fprintf(os.Stderr, "megh: portal refresh skipped: %v\n", errs[0])
 		return
 	}
-	if err := pushPortal(renderPortal(runpod.ManagedPods(pods))); err != nil {
+	if err := pushPortal(renderPortal(providers.Managed(pods))); err != nil {
 		fmt.Fprintf(os.Stderr, "megh: portal refresh failed: %v\n", err)
 		return
 	}

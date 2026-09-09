@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -32,15 +32,16 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List megh dev boxes (use --all for every pod on the account)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if listProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", listProvider)
+		prov, err := providers.For(listProvider)
+		if err != nil {
+			return err
 		}
-		pods, err := runpod.List(context.Background())
+		pods, err := prov.List(context.Background())
 		if err != nil {
 			return err
 		}
 		if !listAll {
-			pods = runpod.ManagedPods(pods)
+			pods = providers.Managed(pods)
 		}
 		if len(pods) == 0 {
 			fmt.Println("no boxes")

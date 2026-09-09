@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/panyam/megh/internal/providers"
 )
 
 const openapiEndpoint = "https://rest.runpod.io/v1/openapi.json"
@@ -15,7 +17,7 @@ const openapiEndpoint = "https://rest.runpod.io/v1/openapi.json"
 // ProbePrefix marks a pod created only to test capacity. It sits under
 // NamePrefix so a probe that outlives its process is still discoverable as
 // megh-managed (see CONSTRAINTS C1) and shows up in `megh list --all`.
-const ProbePrefix = NamePrefix + "probe-"
+const ProbePrefix = providers.NamePrefix + "probe-"
 
 // bakedDataCenters is the fallback list of data centers that accept a CPU pod,
 // read from the pods enum in RunPod's OpenAPI spec on 2026-08-20. DataCenters
@@ -122,7 +124,7 @@ func USDataCenters(dcs []string) []string {
 // placement. It does test the caller's exact vCPU/RAM/disk shape, since the
 // container disk cap scales with instance size and a shape can be refused on
 // disk alone.
-func Probe(ctx context.Context, o Options) ProbeResult {
+func Probe(ctx context.Context, o providers.Options) ProbeResult {
 	o.Name = probeName(o.DataCenter)
 	o.VolumeID = ""
 	o.ExposeSSH = false
@@ -134,8 +136,8 @@ func Probe(ctx context.Context, o Options) ProbeResult {
 	// base pod env, and an empty TS_AUTHKEY means "do not join".
 	o.ExtraEnv = map[string]string{"TS_AUTHKEY": ""}
 
-	name := ShortName(o.Name)
-	res, err := Up(ctx, o)
+	name := providers.ShortName(o.Name)
+	res, err := up(ctx, o)
 	if err != nil {
 		return ProbeResult{DC: o.DataCenter, Name: name, Err: err}
 	}

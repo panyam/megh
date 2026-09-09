@@ -13,7 +13,7 @@ import (
 
 	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/profile"
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -69,22 +69,15 @@ Files are mirrored, so a transcript deleted on the box is deleted in the repo.
 Credential-shaped files are excluded on the way out.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if sessionsProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", sessionsProvider)
+		prov, err := providers.For(sessionsProvider)
+		if err != nil {
+			return err
 		}
 		if cfg.Sessions.Repo == "" {
 			return fmt.Errorf("no sessions repo configured (set sessions.repo in megh.yaml)")
 		}
 		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
-		if len(args) == 1 {
-			pod, err = runpod.Find(ctx, args[0])
-		} else {
-			pod, err = runpod.Sole(ctx)
-		}
+		pod, err := providers.FindOrSole(ctx, prov, args)
 		if err != nil {
 			return err
 		}
