@@ -47,7 +47,7 @@ megh hydrate [--check]            # clone repos onto a box's volume (or report d
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
-megh tmux ls [name]               # what tmux sessions/windows a box has; READ-ONLY (ssh would create one)
+megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; READ-ONLY (ssh would create one)
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
