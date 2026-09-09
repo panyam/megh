@@ -61,6 +61,26 @@ type Provider struct {
 	Mounts map[string]string `yaml:"mounts"`
 }
 
+// controlPlaneSecrets are the env vars that can administer the tailnet: they
+// enumerate and DELETE every node on it, including machines megh never created.
+// A box must never receive one (CONSTRAINTS.md C5).
+//
+// The list lives here, in one place, for two reasons. Two callers need it (the
+// MEGH_-prefix forwarder in `megh enable`, and the docker backend's box env) and
+// a second copy could drift. And C5's Verify greps env/, internal/features/ and
+// internal/providers/ for these names, so a deny list that spells them inside a
+// backend reads as a violation when it is the opposite; keeping the names in a
+// package C5 already permits lets that grep stay honest.
+var controlPlaneSecrets = map[string]bool{
+	"MEGH_TAILSCALE_API_KEY":       true,
+	"MEGH_TAILSCALE_CLIENT_ID":     true,
+	"MEGH_TAILSCALE_CLIENT_SECRET": true,
+}
+
+// IsControlPlaneSecret reports whether an env var name is a tailnet
+// control-plane credential, which must never be sent to a box.
+func IsControlPlaneSecret(name string) bool { return controlPlaneSecrets[name] }
+
 // PublicSSH reports whether public break-glass SSH (22/tcp) is exposed. Default
 // true; set expose_ssh: false to run tailnet-only (zero public ports).
 func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }

@@ -25,7 +25,7 @@ megh.local.yaml
 
 # Session handoff notes (perishable, per-machine). Untracked so a `git add .`
 # does not sweep them into the repo.
-HANDOFF_*.md
+HANDOFF*.md
 
 # Playwright MCP scratch output (screenshots, console logs, snapshots).
 .playwright-mcp/

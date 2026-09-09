@@ -138,3 +138,15 @@ node auto-leaves the tailnet. A rebuilt box hydrates from git + the volume.
   ride Tailscale or an SSH tunnel.
 - Keep one always-secure path (SSH key auth by ip:port) independent of the
   convenience layer, so a mesh failure never locks you out.
+- A local container cannot serve the web surfaces on a published port. C4 makes
+  every surface bind the box's own `127.0.0.1`, and a docker publish forwards to
+  the container's `eth0`, so the host port accepts the connection and has nothing
+  to hand it to. `sshd` binding `0.0.0.0` is why 22 alone is publishable, and why
+  `megh browse` tunnels on every backend.
+- Never bind-mount a directory whose entries are absolute host symlinks. They
+  dangle in a container, and the entrypoint REPLACES a dangling symlink rather
+  than skipping it: read-only the `ln` fails and kills PID 1 under
+  `set -euo pipefail`, read-write it rewrites the host's copy.
+- A scoped secrets file is only scoped if you read it. `box-envvars` carried a
+  live `RUNPOD_API_KEY` for months under a header claiming it held no
+  credentials, and `files:` copied it to every box. Check contents, not intent.

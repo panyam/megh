@@ -4,6 +4,20 @@ Enforceable rules for megh. `/stack-audit` checks these as its highest-priority
 finding category. Push back before violating one; if a change genuinely needs to,
 update or remove the constraint deliberately rather than working around it.
 
+**A Verify that names a `go test -run` pattern can pass while proving nothing.**
+`go test -run` whose pattern matches no test prints `ok <pkg>  0.4s [no tests to
+run]` and exits 0, so a Verify still naming a test that was renamed or deleted
+reads as green. It has already happened here: an over-wide edit deleted three
+tests, the gate stayed green because deleted tests do not fail, and C3's Verify
+went on reporting `ok` for two tests that no longer existed. When running a
+Verify, read the output for `[no tests to run]`, not just the exit code.
+
+**A constraint's own grep can be tripped by the code that enforces it.** A deny
+list must spell the name it denies, and so must a test asserting the name never
+travels. Both read as violations to a naive `grep`. The fix is to make the grep
+precise (exclude `_test.go`, keep the names in one permitted package), never to
+drop the check. C5 carries a worked example.
+
 ## C1: The `megh-` prefix is an internal marker, never a user-facing name
 
 RunPod has no pod tags, so megh stores each pod with a `megh-` name prefix as the
@@ -142,14 +156,28 @@ reasoning applied to a credential that is not a provider key, so C3's letter
 does not cover it while its spirit plainly does.
 
 Concretely: never add it to `box_envs:`, never name it in `files:`, never put it
-in the pod env map in `internal/providers/runpod/runpod.go`, and never let a
-feature script read it. All three names begin with `MEGH_`, which is exactly the
-prefix `meghEnv` in `cmd/enable.go` forwards, so each must be listed in
-`meghEnvDeny`. Adding a fourth control-plane variable means adding it there too;
-the prefix rule makes leaking it the default, not the accident.
+in the pod env map in `internal/providers/runpod/runpod.go` or the container env
+in `internal/providers/docker/docker.go`, and never let a feature script read it.
+All three names begin with `MEGH_`, which is exactly the prefix `meghEnv` in
+`cmd/enable.go` forwards, so each must be denied. Adding a fourth control-plane
+variable means adding it to the list; the prefix rule makes leaking it the
+default, not the accident.
 
-**Verify:** `go test ./cmd/ -run TestMeghEnvNeverForwardsTheTailscaleAPIKey`,
-which fails if any of them survives `meghEnv`. Also
-`grep -rn 'MEGH_TAILSCALE' env/ internal/features/ internal/providers/` and
-`grep -rn 'TAILSCALE_API' internal/providers/` must both return nothing. The key
-may appear only in `internal/tsapi/`, `internal/config/`, `cmd/`, and the docs.
+**There is ONE deny list**, `config.IsControlPlaneSecret`, used by both
+`meghEnv` and the docker backend's box env. It started as a private map in
+`cmd/enable.go`; when the docker backend needed the same rule, copying it would
+have created two lists that could drift, and spelling the names inside
+`internal/providers/` would have tripped this constraint's own grep. It lives in
+`internal/config`, which is one of the packages named below and already knows
+these variables by name.
+
+**Verify:** `go test ./cmd/ -run TestMeghEnvNeverForwardsTheTailscaleAPIKey`
+(fails if any survives `meghEnv`) and
+`go test ./internal/providers/docker/ -run TestRunArgsNeverSendsATailscaleKey`
+(fails if any reaches a container's env). Then
+`grep -rn --include='*.go' MEGH_TAILSCALE env/ internal/features/ internal/providers/ | grep -v _test.go`
+and `grep -rn 'TAILSCALE_API' internal/providers/ | grep -v _test.go` must both
+return nothing. The key may appear only in `internal/tsapi/`, `internal/config/`,
+`cmd/`, the docs, and a TEST asserting it never travels: a deny-list test has to
+spell the name it denies, and excluding tests from the grep is what keeps that
+from reading as the violation it is the opposite of.
