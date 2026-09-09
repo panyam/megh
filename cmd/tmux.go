@@ -135,16 +135,53 @@ func renderTmuxLs(out, box string) string {
 		}
 	}
 	fmt.Fprintf(&b, "\nAttach a session, then switch windows with ctrl-b <number>:\n"+
-		"  megh ssh %s --session %s\n", box, example)
-	if len(sessions) == 1 && example == defaultTmuxSession {
-		fmt.Fprintf(&b, "  megh ssh %s%s", box, "                 (same thing; main is the default)\n")
-	}
+		"  megh tmux attach %s %s\n", example, box)
 	b.WriteString("* marks the window a client last had focused.\n")
 	return b.String()
 }
 
+// tmuxAttachSubCmd is `megh ssh --session <name>` with the session named
+// positionally, which is how you say it out loud. It shares connectToBox with
+// `megh ssh` rather than reimplementing the key forwarding and file push.
+//
+// The session is the FIRST argument and the box the optional second, which
+// inverts `megh tmux ls [box]`. That is deliberate: attach's subject is the
+// session, and the box is nearly always the only one you have.
+var tmuxAttachSubCmd = &cobra.Command{
+	Use:     "attach <session> [box-name-or-id]",
+	Aliases: []string{"a"},
+	Short:   "Attach a named tmux session on a box",
+	Long: `Attach the named tmux session, creating it if it does not exist.
+
+There is no separate "create": tmux attaches-or-creates, so a name you have
+never used starts a fresh session and a name from 'megh tmux ls' returns you to
+what is running in it. Identical to 'megh ssh --session <name>'.
+
+You attach a SESSION, not a window. A session holds N windows (which iTerm2
+shows as tabs in control mode) and each window holds panes; once attached,
+switch windows with ctrl-b <number>.`,
+	Args: cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		prov, err := resolveProvider(cmd, tmuxProvider)
+		if err != nil {
+			return err
+		}
+		controlMode, err := resolveControlMode(cmd)
+		if err != nil {
+			return err
+		}
+		return connectToBox(context.Background(), prov, args[1:], connectOpts{
+			session:     args[0],
+			controlMode: controlMode,
+		})
+	},
+}
+
 func init() {
 	tmuxLsCmd.Flags().StringVar(&tmuxProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	tmuxCmd.AddCommand(tmuxLsCmd)
+	tmuxAttachSubCmd.Flags().StringVar(&tmuxProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	tmuxAttachSubCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
+	tmuxAttachSubCmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "force a normal attach, overriding $MEGH_SSH_CC")
+	tmuxCmd.AddCommand(tmuxLsCmd, tmuxAttachSubCmd)
 	rootCmd.AddCommand(tmuxCmd)
 }
