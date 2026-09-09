@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -89,23 +89,16 @@ docker-build viability is still planned.)`,
 			c.Stdout, c.Stderr = os.Stdout, os.Stderr
 			return c.Run()
 		}
-		if doctorProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", doctorProvider)
-		}
-		ctx := context.Background()
-		var (
-			pod *runpod.Pod
-			err error
-		)
-		if len(args) == 1 {
-			pod, err = runpod.Find(ctx, args[0])
-		} else {
-			pod, err = runpod.Sole(ctx)
-		}
+		prov, err := providers.For(doctorProvider)
 		if err != nil {
 			return err
 		}
-		pod = awaitSSHReady(ctx, pod)
+		ctx := context.Background()
+		pod, err := providers.FindOrSole(ctx, prov, args)
+		if err != nil {
+			return err
+		}
+		pod = awaitSSHReady(ctx, prov, pod)
 		d := dialFor(pod)
 		sshArgs := append(d.opts(), d.userHost(), "bash -s")
 		fmt.Fprintf(os.Stderr, "megh: probing %s\n", pod.DisplayName())

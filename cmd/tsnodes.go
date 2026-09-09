@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 	"github.com/panyam/megh/internal/tsapi"
 	"github.com/spf13/cobra"
 )
@@ -51,13 +51,13 @@ func tsClient() (*tsapi.Client, error) {
 // liveBoxNames is the set of box names that currently exist at the provider. It
 // is the guard on every delete: a node whose box is still running is never
 // debris, whatever its name looks like.
-func liveBoxNames(ctx context.Context) (map[string]bool, error) {
-	pods, err := runpod.List(ctx)
+func liveBoxNames(ctx context.Context, prov providers.Provider) (map[string]bool, error) {
+	pods, err := prov.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	live := map[string]bool{}
-	for _, p := range runpod.ManagedPods(pods) {
+	for _, p := range providers.Managed(pods) {
 		live[p.DisplayName()] = true
 	}
 	return live, nil
@@ -92,12 +92,12 @@ func pruneNodesFor(ctx context.Context, c *tsapi.Client, box string, live map[st
 // pruneNodesBestEffort is the `megh down` path. Cleaning the tailnet must never
 // turn a successful termination into a failed command, so every problem here is
 // a note rather than an error, and no key configured at all is silent.
-func pruneNodesBestEffort(ctx context.Context, box string) {
+func pruneNodesBestEffort(ctx context.Context, prov providers.Provider, box string) {
 	c, err := tsClient()
 	if err != nil {
 		return // no API key configured; the SSH logout above was the only path
 	}
-	live, err := liveBoxNames(ctx)
+	live, err := liveBoxNames(ctx, prov)
 	if err != nil {
 		live = map[string]bool{} // provider unreachable: fall back to name matching alone
 	}
@@ -133,15 +133,16 @@ it with --tag if you mint auth keys with a tag.
 A node for a box that is still running is never deleted.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if tsGCProvider != "runpod" {
-			return fmt.Errorf("provider %q not implemented yet", tsGCProvider)
+		prov, err := providers.For(tsGCProvider)
+		if err != nil {
+			return err
 		}
 		ctx := context.Background()
 		c, err := tsClient()
 		if err != nil {
 			return err
 		}
-		live, err := liveBoxNames(ctx)
+		live, err := liveBoxNames(ctx, prov)
 		if err != nil {
 			return fmt.Errorf("could not list boxes to check against: %w", err)
 		}

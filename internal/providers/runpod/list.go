@@ -7,37 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
+
+	"github.com/panyam/megh/internal/providers"
 )
 
-// Pod is a summarized provisioned pod, enough for `megh list` and `megh ssh`.
-type Pod struct {
-	ID         string
-	Name       string
-	Status     string
-	DataCenter string
-	CostPerHr  float64
-	PublicIP   string
-	SSHPort    int    // public port mapped to container port 22 (0 until initialized)
-	Image      string // imageName the pod was created from
-}
-
-// SSHReady reports whether the pod has a resolvable public SSH endpoint yet.
-func (p Pod) SSHReady() bool { return p.PublicIP != "" && p.SSHPort != 0 }
-
-// ShortName is a pod's display and tailnet name: the RunPod pod name minus the
-// megh- discovery prefix. The prefix stays on the RunPod pod (the only durable
-// marker megh has to filter its own boxes), but the user never types it or sees
-// it, and it is not the Tailscale hostname. Foreign pods (shown under
-// `list --all`) have no prefix, so this passes them through unchanged.
-func ShortName(name string) string { return strings.TrimPrefix(name, NamePrefix) }
-
-// DisplayName is ShortName of this pod: what the user typed at `up`, its
-// Tailscale MagicDNS hostname, and how megh prints it.
-func (p Pod) DisplayName() string { return ShortName(p.Name) }
-
 // List returns all provisioned pods on the account.
-func List(ctx context.Context) ([]Pod, error) {
+func List(ctx context.Context) ([]providers.Box, error) {
 	apiKey := os.Getenv("RUNPOD_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("RUNPOD_API_KEY is not set")
@@ -71,9 +46,9 @@ func List(ctx context.Context) ([]Pod, error) {
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, fmt.Errorf("runpod: parse pods list: %w", err)
 	}
-	pods := make([]Pod, 0, len(raw))
+	pods := make([]providers.Box, 0, len(raw))
 	for _, p := range raw {
-		pods = append(pods, Pod{
+		pods = append(pods, providers.Box{
 			ID:         p.ID,
 			Name:       p.Name,
 			Status:     p.DesiredStatus,
@@ -85,49 +60,6 @@ func List(ctx context.Context) ([]Pod, error) {
 		})
 	}
 	return pods, nil
-}
-
-// ManagedPods keeps only megh-managed pods (name-prefixed). RunPod has no pod
-// labels, so the name prefix is how megh tells its boxes apart from anything
-// else on the same account.
-func ManagedPods(pods []Pod) []Pod {
-	out := make([]Pod, 0, len(pods))
-	for _, p := range pods {
-		if strings.HasPrefix(p.Name, NamePrefix) {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// Find resolves a megh-managed pod by exact id or name. The name may be given
-// with or without the megh- prefix (the bare name is what the user typed), so
-// `megh down tsdiag` and `megh down megh-tsdiag` both resolve. Errors on no
-// match or ambiguity.
-func Find(ctx context.Context, idOrName string) (*Pod, error) {
-	all, err := List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	pods := ManagedPods(all)
-	var matches []Pod
-	for _, p := range pods {
-		if p.ID == idOrName || p.Name == idOrName || p.DisplayName() == idOrName {
-			matches = append(matches, p)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf("no box matching %q (try `megh list`)", idOrName)
-	case 1:
-		return &matches[0], nil
-	default:
-		ids := make([]string, len(matches))
-		for i, m := range matches {
-			ids[i] = m.ID
-		}
-		return nil, fmt.Errorf("%q is ambiguous across %s; pass an id", idOrName, strings.Join(ids, ", "))
-	}
 }
 
 // Terminate deletes a pod by id. The attached network volume and its contents
@@ -152,21 +84,4 @@ func Terminate(ctx context.Context, id string) error {
 		return fmt.Errorf("runpod: HTTP %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
-}
-
-// Sole returns the only megh-managed pod when exactly one exists.
-func Sole(ctx context.Context) (*Pod, error) {
-	all, err := List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	pods := ManagedPods(all)
-	switch len(pods) {
-	case 0:
-		return nil, fmt.Errorf("no boxes (run `megh up` first)")
-	case 1:
-		return &pods[0], nil
-	default:
-		return nil, fmt.Errorf("%d boxes; name one: `megh ssh <name>`", len(pods))
-	}
 }

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers"
 )
 
 // awaitSSHReady polls for a box's public SSH endpoint when it isn't mapped yet
@@ -16,14 +16,14 @@ import (
 // useless from a control machine that isn't on the tailnet. Returns the refreshed
 // pod; gives up after ~30s (a genuinely tailnet-only box never gets a port), and
 // the caller then falls back to the tailnet with a clear message.
-func awaitSSHReady(ctx context.Context, pod *runpod.Pod) *runpod.Pod {
+func awaitSSHReady(ctx context.Context, prov providers.Provider, pod *providers.Box) *providers.Box {
 	if pod.SSHReady() {
 		return pod
 	}
 	fmt.Fprintf(os.Stderr, "megh: %s has no public SSH endpoint yet; waiting…\n", pod.DisplayName())
 	for i := 0; i < 10; i++ {
 		time.Sleep(3 * time.Second)
-		if p, err := runpod.Find(ctx, pod.ID); err == nil && p.SSHReady() {
+		if p, err := providers.Find(ctx, prov, pod.ID); err == nil && p.SSHReady() {
 			return p
 		}
 	}
@@ -43,7 +43,7 @@ type dial struct {
 	boxKey bool // authenticate with the profile box key
 }
 
-func dialFor(pod *runpod.Pod) dial {
+func dialFor(pod *providers.Box) dial {
 	if pod.SSHReady() {
 		return dial{host: pod.PublicIP, port: pod.SSHPort, boxKey: true}
 	}

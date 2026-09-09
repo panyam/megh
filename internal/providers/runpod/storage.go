@@ -8,18 +8,27 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/panyam/megh/internal/providers"
 )
 
 const volumesEndpoint = "https://rest.runpod.io/v1/networkvolumes"
 
-// Volume is a RunPod network volume: the per-provider, per-data-center scratch
-// store that megh boxes mount at /mnt/work. Multiple pods in the same data
-// center can mount one volume simultaneously.
-type Volume struct {
+// wireVolume is a RunPod network volume as the API returns it: the
+// per-provider, per-data-center scratch store megh boxes mount at /mnt/work.
+// Multiple pods in the same data center can mount one simultaneously.
+//
+// It stays private and converts to providers.Volume, so RunPod's field names
+// never become the shape every other backend has to return.
+type wireVolume struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	DataCenter string `json:"dataCenterId"`
 	Size       int    `json:"size"`
+}
+
+func (w wireVolume) box() providers.Volume {
+	return providers.Volume{Provider: "runpod", ID: w.ID, Name: w.Name, DataCenter: w.DataCenter, Size: w.Size}
 }
 
 func authKey() (string, error) {
@@ -31,7 +40,7 @@ func authKey() (string, error) {
 }
 
 // Volumes lists all network volumes on the account.
-func Volumes(ctx context.Context) ([]Volume, error) {
+func Volumes(ctx context.Context) ([]providers.Volume, error) {
 	key, err := authKey()
 	if err != nil {
 		return nil, err
@@ -47,15 +56,19 @@ func Volumes(ctx context.Context) ([]Volume, error) {
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("runpod: HTTP %d: %s", resp.StatusCode, string(body))
 	}
-	var vols []Volume
+	var vols []wireVolume
 	if err := json.Unmarshal(body, &vols); err != nil {
 		return nil, fmt.Errorf("runpod: parse volumes: %w", err)
 	}
-	return vols, nil
+	out := make([]providers.Volume, 0, len(vols))
+	for _, v := range vols {
+		out = append(out, v.box())
+	}
+	return out, nil
 }
 
 // CreateVolume creates a network volume in a data center.
-func CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*Volume, error) {
+func CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*providers.Volume, error) {
 	key, err := authKey()
 	if err != nil {
 		return nil, err
@@ -77,11 +90,12 @@ func CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*Vo
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("runpod: HTTP %d: %s", resp.StatusCode, string(body))
 	}
-	var v Volume
+	var v wireVolume
 	if err := json.Unmarshal(body, &v); err != nil {
 		return nil, fmt.Errorf("runpod: parse created volume: %w", err)
 	}
-	return &v, nil
+	out := v.box()
+	return &out, nil
 }
 
 // DeleteVolume removes a network volume by id. It errors if a pod still has it
