@@ -8,6 +8,26 @@ The image is the reusable piece. The launch is scripted, but for the very first
 box the RunPod console path is more reliable while we confirm the API against
 your account. Both are below.
 
+## Before any of this: a box on your own machine
+
+If you only want to see what a box IS, the local backend gets you one in a couple
+of minutes with no account, no key, and no bill:
+
+```sh
+make image-local                       # builds for this machine's arch
+megh up   --provider docker local1
+megh ssh  --provider docker local1     # tmux 'main', claude and codex already installed
+megh down --provider docker local1
+```
+
+It runs the same image and the same entrypoint as a rented box, so everything you
+learn about persist, symlinks, `megh enable` and `megh browse` transfers. Set
+`providers.docker.image` to the tag `make image-local` prints, and declare what to
+bind-mount under `providers.docker.mounts`; `megh.yaml.example` has the shape.
+
+The rest of this page is the rented path, which is what you want once you need
+the box to outlive your laptop being closed.
+
 ## 0. One-time prerequisites
 
 1. A RunPod account and an API key (Settings > API Keys). Export it:

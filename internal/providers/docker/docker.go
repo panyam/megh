@@ -36,6 +36,10 @@ import (
 // `docker ps`.
 const managedLabel = "megh.managed"
 
+// tsAuthKeyEnv is the node auth key the entrypoint keys its tailscale bring-up
+// off. Named rather than inlined so the exclusion below reads as a decision.
+const tsAuthKeyEnv = "TS_AUTHKEY"
+
 // workMount is where the box's scratch lives inside the container. It matches
 // what RunPod mounts a network volume at, so the entrypoint's WORK_MOUNT
 // handling is identical on both backends.
@@ -212,8 +216,13 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 		"ARCH_TAG":   archTag(),
 	}
 	for k, v := range o.ExtraEnv {
-		if k == "TS_AUTHKEY" || strings.HasPrefix(k, "MEGH_TAILSCALE") {
-			continue // C5: a control-plane credential never reaches a box
+		// Two different reasons, both deliberate. A control-plane credential must
+		// never reach ANY box on ANY backend (C5). A node auth key is legitimate
+		// on a cloud box and pointless here, and worse than pointless: the
+		// entrypoint branches on the variable being SET, so passing it even empty
+		// would take the tailscale bring-up path with nothing to authenticate.
+		if config.IsControlPlaneSecret(k) || k == tsAuthKeyEnv {
+			continue
 		}
 		env[k] = v
 	}

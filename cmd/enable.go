@@ -12,6 +12,8 @@ import (
 	"github.com/panyam/megh/internal/features"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
+
+	"github.com/panyam/megh/internal/config"
 )
 
 var (
@@ -22,18 +24,10 @@ var (
 // featureName restricts what can be run to a simple slug.
 var featureName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// meghEnvDeny lists MEGH_-prefixed vars that must NOT reach a box despite
-// matching the prefix. The prefix is an allowlist for a feature's own knobs, and
-// a credential that happens to be named MEGH_* is not one of those.
-//
-// MEGH_TAILSCALE_API_KEY can delete every node on the tailnet, including
-// machines megh never created, so it is strictly worse in a box's hands than the
-// provider key C3 already excludes. See CONSTRAINTS.md C5.
-var meghEnvDeny = map[string]bool{
-	"MEGH_TAILSCALE_API_KEY":       true,
-	"MEGH_TAILSCALE_CLIENT_ID":     true,
-	"MEGH_TAILSCALE_CLIENT_SECRET": true,
-}
+// The MEGH_ prefix is an allowlist for a feature's own knobs, and a credential
+// that happens to be named MEGH_* is not one of those. The deny list is
+// config.IsControlPlaneSecret, shared with the docker backend so the two cannot
+// drift. See CONSTRAINTS.md C5.
 
 // meghEnv renders the caller's MEGH_* environment as shell `export` lines to
 // prepend to a feature script. RUNPOD_API_KEY and friends are deliberately NOT
@@ -45,7 +39,7 @@ func meghEnv() []byte {
 		if i < 0 || !strings.HasPrefix(kv, "MEGH_") {
 			continue
 		}
-		if meghEnvDeny[kv[:i]] {
+		if config.IsControlPlaneSecret(kv[:i]) {
 			continue
 		}
 		k, v := kv[:i], kv[i+1:]

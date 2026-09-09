@@ -142,7 +142,15 @@ the image bakes the EXAMPLE to `/etc/megh/megh.yaml` as a last resort.
 
 Settings are auto-discovered walking up from cwd, then
 `~/.config/megh/megh.yaml`, then `/etc/megh/megh.yaml`; override with
-`--config`/`$MEGH_CONFIG`. It holds
+`--config`/`$MEGH_CONFIG`.
+
+**In practice that means THREE copies exist on a dev machine and nothing syncs
+them**: the canonical `~/dotfiles/megh/megh.yaml`, the `~/.config/megh/megh.yaml`
+that `install.sh` writes, and a repo-local `megh.yaml` that wins over both while
+you are working inside the checkout. Edit the canonical one and copy it to the
+other two, or you will change a setting, run megh from the repo, and watch it
+have no effect. `megh config` prints the `source:` it actually read, which is the
+fastest way to tell which copy you are looking at. It holds
 non-secret settings and **pointers** to secrets (env-var names), never secret
 values, so it is safe in the repo. `megh config` shows the resolved settings and
 which secrets are set (never values). `megh.yaml.example` + `secrets.env.example`

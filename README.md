@@ -14,12 +14,14 @@ box costs minutes, not work.
 - **Dev environment** is declared once (`env/base/provision.sh`) and built into
   two flavors, `base` (full, Playwright and code-server baked) and `slim` (lean
   and fast to pull), never a hand-mutated snapshot.
-- **Compute** is one backend per provider behind the `megh` CLI. RunPod is the
-  only backend today; Hetzner is next. megh keeps no local state, so the
-  provider is the source of truth and boxes are found by a `megh-` name prefix.
+- **Compute** is one backend per provider behind the `megh` CLI: RunPod for
+  rented boxes, `docker` for a box that is a container on your own machine, and
+  Hetzner next. megh keeps no local state, so the provider is the source of truth
+  and boxes are found by a `megh-` name prefix.
 - **Scratch** is a per-provider network volume mounted at `/mnt/work`, pinned to
   a datacenter and shareable by boxes in it. Per-provider by design; it does not
-  migrate.
+  migrate. On the local backend it is a host directory, so the same layout is a
+  path you can open in an editor.
 - **Canonical state** is git: your code in its own repos, agent transcripts
   pushed to a `megh-sessions` repo by a timer on the box. That is the only layer
   that crosses providers.
@@ -33,12 +35,35 @@ Boxes ship a web shell (ttyd plus tmux) and a browser-based terminal. A headed
 browser display (noVNC), Playwright, code-server, an observability stack,
 postgres, and redis are added per box with `megh enable`.
 
+## A box on your own machine
+
+```sh
+make image-local                       # build the dev-env image for this machine's arch
+megh up --provider docker local1
+megh ssh --provider docker local1
+```
+
+Same image, same entrypoint, same commands. What differs is that the work trees
+are **bind-mounted from the host rather than cloned**, so an agent in the box
+edits your actual repos and there is nothing to hydrate; and that it joins no
+tailnet, because over loopback there is nothing a tailnet would add. Its tool
+logins live on the work dir, separately from the host's own `~/.claude`, so one
+`claude login` survives rebuilds without touching yours.
+
+It is not a security sandbox. Anything mounted read-write can be deleted from
+inside it. What it isolates is the rest of the machine.
+
+Mounts are declared in `providers.docker.mounts` and are the only bind mounts
+megh passes. `megh.yaml.example` documents the shape, including the one mount
+that will not work: a directory whose entries are absolute host symlinks.
+
 ## Commands
 
 `megh up` / `list` / `ssh` / `browse` / `down` are the daily loop. Beyond those:
 `enable` adds a feature to a box, `doctor` probes health and repairs Tailscale,
 `storage` manages volumes, `regions` finds a datacenter that will actually rent
-the box you want, `hydrate` clones repos onto a volume, `profile` holds
+the box you want (RunPod only; a local box has one place to run), `hydrate`
+clones repos onto a volume, `profile` holds
 per-context SSH and GitHub identities, and `portal` publishes a bookmarkable
 index of boxes and URLs. `megh config` shows resolved settings and which secrets
 are set, never their values.

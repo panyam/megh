@@ -3,6 +3,7 @@ package docker
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +79,83 @@ func TestRunArgsPublishesOnlyLoopbackSSH(t *testing.T) {
 	}
 	if published != 1 {
 		t.Errorf("published %d ports, want exactly 1", published)
+	}
+}
+
+// CONSTRAINTS C5, and the entrypoint's contract. The entrypoint brings tailscale
+// up only when TS_AUTHKEY is SET, so a local box skips it by the variable being
+// absent rather than empty: an empty value is still "set" to the shell and would
+// take the bring-up branch with no key. The control-plane credentials are a
+// separate matter and must never reach any box on any backend.
+func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
+	args := argvOf(t, settings{}, providers.Options{
+		Name:      "local1",
+		TSAuthKey: "tskey-auth-SHOULD-NOT-TRAVEL",
+		ExtraEnv: map[string]string{
+			"TS_AUTHKEY":                   "tskey-auth-SHOULD-NOT-TRAVEL",
+			"MEGH_TAILSCALE_CLIENT_ID":     "id-SHOULD-NOT-TRAVEL",
+			"MEGH_TAILSCALE_CLIENT_SECRET": "secret-SHOULD-NOT-TRAVEL",
+			"MEGH_TAILSCALE_API_KEY":       "key-SHOULD-NOT-TRAVEL",
+			"GH_PERSONAL_TOKEN":            "legitimate",
+		},
+	})
+	got := joined(args)
+	for _, banned := range []string{
+		"TS_AUTHKEY", "MEGH_TAILSCALE_CLIENT_ID", "MEGH_TAILSCALE_CLIENT_SECRET",
+		"MEGH_TAILSCALE_API_KEY", "SHOULD-NOT-TRAVEL",
+	} {
+		if strings.Contains(got, banned) {
+			t.Errorf("argv carries %q; a tailnet credential must never reach a box", banned)
+		}
+	}
+	if !hasPair(args, "-e", "GH_PERSONAL_TOKEN=legitimate") {
+		t.Error("the deny list ate a legitimate box_env")
+	}
+}
+
+// CONSTRAINTS C3, extended to mounts: a bind mount is a channel to a box just
+// like pod env and files:, and a wider one, because it exposes a live host path
+// rather than a copied value. Every -v must trace to the config allowlist or be
+// the work mount itself; nothing may be inferred from the ambient environment.
+func TestRunArgsMountsOnlyWhatConfigAllows(t *testing.T) {
+	set := settings{mounts: map[string]string{
+		"/host/projects": "repos/projects",
+		"/host/secrets":  "/root/personal/envvars:ro",
+	}}
+	args := argvOf(t, set, providers.Options{Name: "local1"})
+
+	var vols []string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-v" {
+			vols = append(vols, args[i+1])
+		}
+	}
+	want := []string{
+		"/host/work:/workspace",
+		"/host/secrets:/root/personal/envvars:ro",
+		"/host/projects:/workspace/repos/projects",
+	}
+	if len(vols) != len(want) {
+		t.Fatalf("got %d mounts %v, want %d %v", len(vols), vols, len(want), want)
+	}
+	for _, w := range want {
+		if !slices.Contains(vols, w) {
+			t.Errorf("missing mount %q; got %v", w, vols)
+		}
+	}
+}
+
+// A relative target resolves against the WORK MOUNT, never /mnt/work. Bind
+// mounts are applied before the entrypoint runs, so pre-creating /mnt/work as a
+// real directory breaks its `ln -sfn "${WORK_MOUNT}" /mnt/work` and, under
+// set -euo pipefail, kills PID 1 so the box never boots.
+func TestMountsNeverTargetTheMntWorkSymlink(t *testing.T) {
+	set := settings{mounts: map[string]string{"/host/projects": "repos/projects"}}
+	args := argvOf(t, set, providers.Options{Name: "local1"})
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-v" && strings.Contains(args[i+1], ":/mnt/work") {
+			t.Errorf("mount %q targets /mnt/work, which the entrypoint creates as a symlink", args[i+1])
+		}
 	}
 }
 
