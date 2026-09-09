@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // The remote command must attach an existing session rather than start a second
@@ -197,5 +199,48 @@ func TestTmuxAttachQuotesTheSessionNameInControlMode(t *testing.T) {
 	got := tmuxAttachCmd("a'b; rm -rf /", true)
 	if !strings.Contains(got, `'a'\''b; rm -rf /'`) {
 		t.Errorf("session name is not safely quoted: %s", got)
+	}
+}
+
+// Control mode is a property of the terminal you are sitting at, so it is a
+// per-machine env var with a per-connection override. The precedence is
+// --cc/--no-cc, then $MEGH_SSH_CC, then off.
+func TestResolveControlMode(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     string
+		args    []string
+		want    bool
+		wantErr bool
+	}{
+		{name: "off by default"},
+		{name: "env on", env: "1", want: true},
+		{name: "env on, spelled", env: "true", want: true},
+		{name: "env on, cased", env: "YES", want: true},
+		{name: "env off", env: "0"},
+		{name: "flag beats unset env", args: []string{"--cc"}, want: true},
+		{name: "flag beats env off", env: "0", args: []string{"--cc"}, want: true},
+		{name: "no-cc beats env on", env: "1", args: []string{"--no-cc"}},
+		{name: "both flags is an error", args: []string{"--cc", "--no-cc"}, wantErr: true},
+		{name: "a typo is an error, not a silent off", env: "ture", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MEGH_SSH_CC", tc.env)
+			sshCC, sshNoCC = false, false
+			cmd := &cobra.Command{Use: "ssh", RunE: func(*cobra.Command, []string) error { return nil }}
+			cmd.Flags().BoolVar(&sshCC, "cc", false, "")
+			cmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "")
+			if err := cmd.Flags().Parse(tc.args); err != nil {
+				t.Fatalf("parse %v: %v", tc.args, err)
+			}
+			got, err := resolveControlMode(cmd)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if err == nil && got != tc.want {
+				t.Errorf("control mode = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
