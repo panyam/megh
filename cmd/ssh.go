@@ -166,42 +166,6 @@ argument it connects to the only box.`,
 		if err != nil {
 			return err
 		}
-		ctx := context.Background()
-		pod, err := providers.FindOrSole(ctx, prov, args)
-		if err != nil {
-			return err
-		}
-
-		pod = awaitSSHReady(ctx, prov, pod)
-		d := dialFor(pod)
-		if d.tailnet() {
-			fmt.Fprintf(os.Stderr, "megh: %q has no public SSH endpoint (still initializing, or tailnet-only). "+
-				"Trying its tailnet name — this needs THIS machine on the tailnet; otherwise wait and retry `megh ssh`.\n",
-				pod.DisplayName())
-		}
-
-		// Set up per-identity GitHub Host aliases on the box, and forward the
-		// profile's GH keys so git works in the shell.
-		var fwdKeys []string
-		if activeProfile != nil {
-			fwdKeys = activeProfile.GHKeyFiles()
-			setup, serr := ghSetupScript(activeProfile)
-			if serr != nil {
-				return serr
-			}
-			if setup != "" {
-				setupArgs := append(d.opts(), d.userHost(), "bash -s")
-				if err := runSSH(d.keyFor(cfg.SSHKeyFile), nil, setupArgs, strings.NewReader(setup)); err != nil {
-					fmt.Fprintf(os.Stderr, "megh: warning: gh key setup failed: %v\n", err)
-				}
-			}
-		}
-
-		// Copy any megh.yaml `files:` (secrets/rc files not in a repo) onto the box.
-		if err := pushFiles(d, d.keyFor(cfg.SSHKeyFile), cfg.Files); err != nil {
-			fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
-		}
-
 		controlMode, err := resolveControlMode(cmd)
 		if err != nil {
 			return err
@@ -209,27 +173,81 @@ argument it connects to the only box.`,
 		if sshNoTmux && controlMode && cmd.Flags().Changed("cc") {
 			return fmt.Errorf("--cc and --no-tmux are opposites: --cc attaches tmux in control mode, --no-tmux attaches no tmux at all")
 		}
-		if sshNoTmux {
-			sshArgs := append(d.opts("-A"), d.userHost())
-			fmt.Fprintf(os.Stderr, "megh: ssh %s (plain shell; browser access: megh browse)\n", d.userHost())
-			return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
-		}
-		// -t forces a TTY: without it a remote command gets none and tmux refuses
-		// to start.
-		session := resolveTmuxSession(sshSession)
-		if err := validTmuxSession(session); err != nil {
-			return err
-		}
-		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session, controlMode))
-		if controlMode {
-			fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q in control mode; close the window to detach)\n",
-				d.userHost(), session)
-		} else {
-			fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
-				d.userHost(), session)
-		}
-		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
+		return connectToBox(context.Background(), prov, args, connectOpts{
+			session:     resolveTmuxSession(sshSession),
+			controlMode: controlMode,
+			noTmux:      sshNoTmux,
+		})
 	},
+}
+
+// connectOpts is what a connect needs once the flags are resolved. It exists so
+// `megh ssh` and `megh tmux attach` share one implementation: the second is the
+// first with the session named positionally, and duplicating fifty lines of key
+// forwarding and file pushing to say that would guarantee they drift.
+type connectOpts struct {
+	session     string
+	controlMode bool
+	noTmux      bool
+}
+
+// connectToBox resolves the box, sets up git identity forwarding, pushes the
+// megh.yaml `files:`, and execs ssh.
+func connectToBox(ctx context.Context, prov providers.Provider, args []string, o connectOpts) error {
+	pod, err := providers.FindOrSole(ctx, prov, args)
+	if err != nil {
+		return err
+	}
+
+	pod = awaitSSHReady(ctx, prov, pod)
+	d := dialFor(pod)
+	if d.tailnet() {
+		fmt.Fprintf(os.Stderr, "megh: %q has no public SSH endpoint (still initializing, or tailnet-only). "+
+			"Trying its tailnet name — this needs THIS machine on the tailnet; otherwise wait and retry `megh ssh`.\n",
+			pod.DisplayName())
+	}
+
+	// Set up per-identity GitHub Host aliases on the box, and forward the
+	// profile's GH keys so git works in the shell.
+	var fwdKeys []string
+	if activeProfile != nil {
+		fwdKeys = activeProfile.GHKeyFiles()
+		setup, serr := ghSetupScript(activeProfile)
+		if serr != nil {
+			return serr
+		}
+		if setup != "" {
+			setupArgs := append(d.opts(), d.userHost(), "bash -s")
+			if err := runSSH(d.keyFor(cfg.SSHKeyFile), nil, setupArgs, strings.NewReader(setup)); err != nil {
+				fmt.Fprintf(os.Stderr, "megh: warning: gh key setup failed: %v\n", err)
+			}
+		}
+	}
+
+	// Copy any megh.yaml `files:` (secrets/rc files not in a repo) onto the box.
+	if err := pushFiles(d, d.keyFor(cfg.SSHKeyFile), cfg.Files); err != nil {
+		fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
+	}
+
+	if o.noTmux {
+		sshArgs := append(d.opts("-A"), d.userHost())
+		fmt.Fprintf(os.Stderr, "megh: ssh %s (plain shell; browser access: megh browse)\n", d.userHost())
+		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
+	}
+	if err := validTmuxSession(o.session); err != nil {
+		return err
+	}
+	// -t forces a TTY: without it a remote command gets none and tmux refuses
+	// to start.
+	sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(o.session, o.controlMode))
+	if o.controlMode {
+		fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q in control mode; close the window to detach)\n",
+			d.userHost(), o.session)
+	} else {
+		fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
+			d.userHost(), o.session)
+	}
+	return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
 }
 
 func init() {
