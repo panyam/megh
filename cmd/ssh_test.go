@@ -9,7 +9,7 @@ import (
 // The remote command must attach an existing session rather than start a second
 // one, or the desktop and the phone end up in different places.
 func TestTmuxAttachReusesTheSession(t *testing.T) {
-	got := tmuxAttachCmd("main")
+	got := tmuxAttachCmd("main", false)
 	if !strings.Contains(got, "tmux new -A -s 'main'") {
 		t.Errorf("want `tmux new -A -s` (attach-or-create), got: %s", got)
 	}
@@ -20,7 +20,7 @@ func TestTmuxAttachReusesTheSession(t *testing.T) {
 
 // Missing tmux must not cost you a shell.
 func TestTmuxAttachFallsBackToALoginShell(t *testing.T) {
-	got := tmuxAttachCmd("main")
+	got := tmuxAttachCmd("main", false)
 	if !strings.Contains(got, "command -v tmux") {
 		t.Error("should check for tmux before exec'ing it")
 	}
@@ -31,7 +31,7 @@ func TestTmuxAttachFallsBackToALoginShell(t *testing.T) {
 
 // Session names reach a remote shell, so they are quoted.
 func TestTmuxAttachSessionNameIsQuoted(t *testing.T) {
-	got := tmuxAttachCmd("we ird'; touch /tmp/pwned; #")
+	got := tmuxAttachCmd("we ird'; touch /tmp/pwned; #", false)
 	if strings.Contains(got, "touch /tmp/pwned") && !strings.Contains(got, `'\''`) {
 		t.Errorf("session name must be shell-quoted, got: %s", got)
 	}
@@ -166,5 +166,36 @@ func TestIsGHScopeError(t *testing.T) {
 		if isGHScopeError(s) {
 			t.Errorf("should NOT be treated as a scope problem: %q", s)
 		}
+	}
+}
+
+// Control mode is the SAME session reached differently: -CC is added and nothing
+// else changes. That is what lets a laptop attach in control mode while a phone
+// is attached normally, which is the arrangement `megh ssh --cc` is for.
+func TestTmuxAttachControlModeAddsOnlyTheFlag(t *testing.T) {
+	cc, plain := tmuxAttachCmd("desk", true), tmuxAttachCmd("desk", false)
+	if !strings.Contains(cc, "tmux -CC new -A -s 'desk'") {
+		t.Errorf("control-mode command = %q, want `tmux -CC new -A -s 'desk'`", cc)
+	}
+	if strings.Replace(cc, "-CC ", "", 1) != plain {
+		t.Errorf("control mode changed more than the flag:\n cc:    %s\n plain: %s", cc, plain)
+	}
+}
+
+// Control mode must stay opt-in. A raw %begin/%output stream in a terminal that
+// does not speak the protocol is unreadable, and it would be the default for
+// every phone and every ttyd client.
+func TestTmuxAttachIsNotControlModeByDefault(t *testing.T) {
+	if strings.Contains(tmuxAttachCmd("main", false), "-CC") {
+		t.Error("a plain attach must carry no -CC")
+	}
+}
+
+// Quoting still applies in control mode; the flag must not open a second path
+// into the remote command.
+func TestTmuxAttachQuotesTheSessionNameInControlMode(t *testing.T) {
+	got := tmuxAttachCmd("a'b; rm -rf /", true)
+	if !strings.Contains(got, `'a'\''b; rm -rf /'`) {
+		t.Errorf("session name is not safely quoted: %s", got)
 	}
 }
