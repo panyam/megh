@@ -461,7 +461,7 @@ rest of the list:
   GitHub credential on a VM. The control machine collects instead.
 
 Gotcha found in that pass: `megh hydrate --local` run from inside
-`/mnt/work/repos/megh` picks up THAT checkout's `megh.yaml` by upward discovery,
+`/mnt/work/repos/newstack/megh` picks up THAT checkout's `megh.yaml` by upward discovery,
 not the baked `/etc/megh/megh.yaml`. A stale on-volume checkout therefore reports
 drift that does not exist. Run it from `/` or pass `--config /etc/megh/megh.yaml`.
 
