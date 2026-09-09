@@ -119,12 +119,46 @@ func TestRenderTmuxLsFooterNamesARealSession(t *testing.T) {
 	if strings.Contains(got, "<name>") {
 		t.Error("footer still uses a placeholder instead of a real session name")
 	}
-	if !strings.Contains(got, "megh ssh box1 --session main") {
+	if !strings.Contains(got, "megh tmux attach main box1") {
 		t.Errorf("footer should show a runnable command:\n%s", got)
 	}
 	// With no session called main, it should still name one that exists.
 	only := "S\tdesk\t1\tdetached\tnow\nW\tdesk\t1\tzsh\t*\tzsh\n"
-	if g := renderTmuxLs(only, "box1"); !strings.Contains(g, "--session desk") {
+	if g := renderTmuxLs(only, "box1"); !strings.Contains(g, "attach desk box1") {
 		t.Errorf("footer should fall back to an existing session:\n%s", g)
+	}
+}
+
+// `megh tmux attach` must be `megh ssh --session <name>` and not a second
+// implementation of it. Both go through connectToBox, so this asserts the
+// wiring: the subcommand exists, takes the session positionally, and carries the
+// control-mode flags so MEGH_SSH_CC and --no-cc work there too.
+func TestTmuxAttachIsWiredLikeSSH(t *testing.T) {
+	if tmuxAttachSubCmd.Args == nil {
+		t.Fatal("attach should constrain its args")
+	}
+	if err := tmuxAttachSubCmd.Args(tmuxAttachSubCmd, []string{}); err == nil {
+		t.Error("attach with no session name should be rejected")
+	}
+	if err := tmuxAttachSubCmd.Args(tmuxAttachSubCmd, []string{"main", "box1"}); err != nil {
+		t.Errorf("attach <session> <box> should be accepted: %v", err)
+	}
+	if err := tmuxAttachSubCmd.Args(tmuxAttachSubCmd, []string{"a", "b", "c"}); err == nil {
+		t.Error("attach takes at most a session and a box")
+	}
+	for _, f := range []string{"cc", "no-cc", "provider"} {
+		if tmuxAttachSubCmd.Flags().Lookup(f) == nil {
+			t.Errorf("attach is missing --%s, so it would not behave like megh ssh", f)
+		}
+	}
+}
+
+// The ls footer should name the verb that attaches, not the longhand. It used to
+// print `megh ssh <box> --session <name>`, which is the same thing said less
+// directly now that attach exists.
+func TestRenderTmuxLsFooterUsesTheAttachVerb(t *testing.T) {
+	got := renderTmuxLs(probeOut, "box1")
+	if !strings.Contains(got, "megh tmux attach main box1") {
+		t.Errorf("footer should suggest the attach verb:\n%s", got)
 	}
 }
