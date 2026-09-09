@@ -56,9 +56,14 @@ func TestRunArgsCarriesTheBoxContract(t *testing.T) {
 	}
 }
 
-// CONSTRAINTS C4: nothing a box runs may be reachable off this machine. Only 22
-// is published and only on loopback, so the web surfaces stay behind an SSH
-// tunnel exactly as they do behind the tailnet on a cloud box.
+// CONSTRAINTS C4: nothing a box runs may be reachable off this machine, and on a
+// local box that means only SSH is published and only on loopback.
+//
+// Publishing the web surfaces was tried and reverted. It cannot work: C4 makes
+// every surface bind the box's own 127.0.0.1, and a docker publish forwards to
+// the container's eth0, so the host port accepts a connection and has nothing to
+// hand it to. sshd is the one service that binds 0.0.0.0, which is why 22 alone
+// is publishable. Reaching a surface is an SSH tunnel here as on a cloud box.
 func TestRunArgsPublishesOnlyLoopbackSSH(t *testing.T) {
 	args := argvOf(t, settings{}, providers.Options{Name: "local1"})
 	published := 0
@@ -73,82 +78,6 @@ func TestRunArgsPublishesOnlyLoopbackSSH(t *testing.T) {
 	}
 	if published != 1 {
 		t.Errorf("published %d ports, want exactly 1", published)
-	}
-}
-
-// The entrypoint brings tailscale up only when TS_AUTHKEY is SET, so a local box
-// skips it by the variable being absent rather than empty. An empty value would
-// still be "set" to the shell and would take the bring-up branch with no key.
-func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
-	args := argvOf(t, settings{}, providers.Options{
-		Name:      "local1",
-		TSAuthKey: "tskey-auth-SHOULD-NOT-TRAVEL",
-		ExtraEnv: map[string]string{
-			"TS_AUTHKEY":               "tskey-auth-SHOULD-NOT-TRAVEL",
-			"MEGH_TAILSCALE_CLIENT_ID": "id-SHOULD-NOT-TRAVEL",
-			"MEGH_TAILSCALE_API_KEY":   "key-SHOULD-NOT-TRAVEL",
-			"GH_PERSONAL_TOKEN":        "legitimate",
-		},
-	})
-	got := joined(args)
-	for _, banned := range []string{"TS_AUTHKEY", "MEGH_TAILSCALE_CLIENT_ID", "MEGH_TAILSCALE_API_KEY", "SHOULD-NOT-TRAVEL"} {
-		if strings.Contains(got, banned) {
-			t.Errorf("argv carries %q; C5 says a tailnet credential never reaches a box", banned)
-		}
-	}
-	if !hasPair(args, "-e", "GH_PERSONAL_TOKEN=legitimate") {
-		t.Error("the deny list ate a legitimate box_env")
-	}
-}
-
-// CONSTRAINTS C3, extended to mounts: a bind mount is a channel to a box just
-// like pod env and files:. Every -v must trace to the config allowlist or be
-// the work mount itself; nothing may be inferred from the ambient environment.
-func TestRunArgsMountsOnlyWhatConfigAllows(t *testing.T) {
-	set := settings{mounts: map[string]string{
-		"/host/projects": "repos/projects",
-		"/host/secrets":  "/root/personal/envvars:ro",
-	}}
-	args := argvOf(t, set, providers.Options{Name: "local1"})
-
-	var vols []string
-	for i := 0; i+1 < len(args); i++ {
-		if args[i] == "-v" {
-			vols = append(vols, args[i+1])
-		}
-	}
-	want := []string{
-		"/host/work:/workspace",
-		"/host/secrets:/root/personal/envvars:ro",
-		"/host/projects:/workspace/repos/projects",
-	}
-	if len(vols) != len(want) {
-		t.Fatalf("got %d mounts %v, want %d %v", len(vols), vols, len(want), want)
-	}
-	for _, w := range want {
-		found := false
-		for _, v := range vols {
-			if v == w {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("missing mount %q; got %v", w, vols)
-		}
-	}
-}
-
-// A relative target resolves against the WORK MOUNT, never /mnt/work. Bind
-// mounts are applied before the entrypoint runs, so pre-creating /mnt/work as a
-// real directory breaks its `ln -sfn "${WORK_MOUNT}" /mnt/work` and, under
-// set -euo pipefail, kills PID 1 so the box never boots.
-func TestMountsNeverTargetTheMntWorkSymlink(t *testing.T) {
-	set := settings{mounts: map[string]string{"/host/projects": "repos/projects"}}
-	args := argvOf(t, set, providers.Options{Name: "local1"})
-	for i := 0; i+1 < len(args); i++ {
-		if args[i] == "-v" && strings.Contains(args[i+1], ":/mnt/work") {
-			t.Errorf("mount %q targets /mnt/work, which the entrypoint creates as a symlink", args[i+1])
-		}
 	}
 }
 

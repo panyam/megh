@@ -72,11 +72,18 @@ repair have no meaning locally.
 
 Four things differ, and each is deliberate.
 
-- **No tailnet.** `Provider.Tailnet()` is false, so `up` mints no node key and
-  `down` skips the logout and the node prune. Over loopback the tailnet buys
-  nothing, and a box that never joins leaves nothing behind. The web surfaces are
-  therefore reachable only through `megh browse`'s SSH tunnel, which is what the
-  local `up` summary prints instead of tailnet URLs.
+- **No tailnet, but still a tunnel.** `Provider.Tailnet()` is false, so `up` mints
+  no node key and `down` skips the logout and the node prune. Over loopback the
+  tailnet buys nothing, and a box that never joins leaves nothing behind.
+
+  The web surfaces still need `megh browse`, and **publishing them instead does
+  not work**. C4 makes every surface bind the box's own `127.0.0.1`, and a docker
+  publish forwards to the container's `eth0`, so a published `:7681` accepts the
+  connection on the host and has nothing to forward it to. Measured on a running
+  box: `sshd 0.0.0.0:22`, `ttyd 127.0.0.1:7681`. sshd is the only service that
+  binds the wildcard, which is exactly why 22 is the only publishable port. This
+  was tried, shipped a `up` summary full of URLs that returned nothing, and
+  reverted; `TestRunArgsPublishesOnlyLoopbackSSH` now pins it.
 - **The work trees are bind mounts, not clones.** `providers.docker.mounts:` maps
   a host path to a box path using the SAME convention as a `symlinks:` target
   (relative to the work mount unless absolute, `:ro` for read-only). Point a mount
