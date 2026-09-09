@@ -47,6 +47,7 @@ megh hydrate [--check]            # clone repos onto a box's volume (or report d
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
+megh tmux ls [name]               # what tmux sessions/windows a box has; READ-ONLY (ssh would create one)
 megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 ```
@@ -61,6 +62,13 @@ image), `make registry`.
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
+
+**"Session" means two different things in this CLI.** `megh sessions collect`
+is AGENT TRANSCRIPT history (Claude/Codex JSONL, pushed to the sessions repo);
+`megh tmux ls` is TMUX sessions on a box. They are unrelated, which is why the
+tmux one is not a subcommand of `sessions`. `megh tmux ls` exists because
+`megh ssh` runs `tmux new -A`, so it cannot report what is running without
+possibly creating it: there was no read-only way to look.
 
 **Control mode is a per-MACHINE setting and must never go in `megh.yaml`.**
 `megh ssh --cc` attaches tmux in control mode, which iTerm2 renders as native
