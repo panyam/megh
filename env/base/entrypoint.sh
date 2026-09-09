@@ -176,10 +176,14 @@ chmod 0644 /etc/profile.d/megh-ssh-agent.sh
 #   - 50k scrollback: the default 2000 loses the start of any real build log.
 #   - session name in the status bar: you attach from several places, so knowing
 #     WHICH session you are looking at matters.
+#   - pane-base-index 1 to match base-index: without it windows count from 1 and
+#     the panes inside them count from 0, so `megh tmux ls` and ctrl-b q print
+#     two different numbering schemes on adjacent lines.
 cat > /etc/tmux.conf <<'TMUXCONF'
 set -g mouse on
 set -g history-limit 50000
 set -g base-index 1
+set -g pane-base-index 1
 set -g escape-time 10
 set -g status-left '[#S] '
 set -g status-left-length 30

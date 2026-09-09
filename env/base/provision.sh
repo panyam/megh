@@ -110,10 +110,43 @@ apt-get install -y --no-install-recommends nodejs
 rm -rf /var/lib/apt/lists/*
 
 # --- Go --------------------------------------------------------------------
+# The tarball unpacks to /usr/local/go, which is on nobody's default PATH, and
+# the two places that add it are both routinely lost:
+#   - the Dockerfile's ENV never reaches an SSH session, because sshd builds a
+#     fresh environment instead of inheriting the container's;
+#   - /etc/profile.d/megh-path.sh is read by LOGIN shells only, so a `megh ssh
+#     <box> <cmd>` or any script does not see it, and a dotfiles ~/.zshrc
+#     arriving via mounts:/symlinks: typically SETS PATH rather than appending,
+#     replacing whatever we put there with the Mac's list.
+# The symlinks are what make `go` work regardless, since /usr/local/bin is in
+# every one of those PATHs. Without them the box looks like it has no Go and the
+# next move is `apt install golang-go`, which installs an OLDER toolchain beside
+# this one.
 curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGET_ARCH}.tar.gz" -o /tmp/go.tgz
 rm -rf /usr/local/go
 tar -C /usr/local -xzf /tmp/go.tgz
 rm /tmp/go.tgz
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+# --- Go dev tooling (both flavors) -----------------------------------------
+# A compiler alone is not a dev environment: gopls is what code-server's Go
+# extension, nvim and the coding agents all drive, and installing it on first
+# use costs a compile on a box you may throw away tomorrow.
+#
+# GOBIN puts them in /usr/local/bin rather than the default /root/go/bin for the
+# PATH reason above; /root/go/bin stays the user's own `go install` slot. The
+# caches are cleaned afterwards because the module downloads and build objects
+# are several hundred MB of layer that no box ever reads again.
+for tool in \
+  golang.org/x/tools/gopls@latest \
+  golang.org/x/tools/cmd/goimports@latest \
+  github.com/go-delve/delve/cmd/dlv@latest \
+  honnef.co/go/tools/cmd/staticcheck@latest
+do
+  GOBIN=/usr/local/bin /usr/local/go/bin/go install -ldflags="-s -w" "$tool"
+done
+/usr/local/go/bin/go clean -cache -modcache
 
 # --- ttyd (arch-specific static binary) ------------------------------------
 case "${TARGET_ARCH}" in
@@ -158,3 +191,4 @@ if [ "${MEGH_SLIM}" != "1" ]; then
 fi
 
 echo "provision: dev environment ready (arch=${TARGET_ARCH}, docker=${INSTALL_DOCKER}, slim=${MEGH_SLIM})"
+echo "provision: $(/usr/local/bin/go version), plus gopls goimports dlv staticcheck in /usr/local/bin"

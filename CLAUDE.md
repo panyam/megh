@@ -47,7 +47,7 @@ megh hydrate [--check]            # clone repos onto a box's volume (or report d
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
-megh tmux ls [name]               # what tmux sessions/windows a box has; READ-ONLY (ssh would create one)
+megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; READ-ONLY (ssh would create one)
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
@@ -346,6 +346,25 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   session `main`, sshd sends keepalives so a dropped mobile link is noticed in
   ~3 min, and `/etc/tmux.conf` turns the mouse on so a touchscreen can scroll.
   mosh WOULD work on the Hetzner VM backend, which has a real TUN and real UDP.
+- **A dev box's PATH is not yours to set: the mounted `~/.zshrc` wins.** Go
+  unpacks to `/usr/local/go/bin`, and all three routes that add it leak — the
+  Dockerfile `ENV` never reaches an SSH session (sshd builds a fresh environment
+  rather than inheriting the container's), `/etc/profile.d/megh-path.sh` is read
+  by LOGIN shells only, and a dotfiles `~/.zshrc` arriving via `mounts:` /
+  `symlinks:` SETS `PATH` rather than appending, replacing all of it with the
+  Mac's list (`/Users/<you>/.lmstudio/bin` on a Linux box is the tell). So
+  `provision.sh` symlinks `go`/`gofmt` into `/usr/local/bin` and installs gopls,
+  goimports, dlv and staticcheck there with `GOBIN`, since `/usr/local/bin` is in
+  every one of those PATHs. Anything else installed outside `/usr/local/bin`
+  needs the same treatment or it is invisible. The failure mode is quiet: the box
+  looks Go-less, and `apt install golang-go` then puts an OLDER toolchain at
+  `/usr/bin/go` beside the real one.
+- **`make install` on a box can be shadowed by the BAKED `megh`.** The image
+  carries `/usr/local/bin/megh` and `go install` writes `/root/go/bin/megh`, so a
+  fresh build reports `unknown command` for anything added since the image was
+  built. Two causes, both cheap: the shell cached the old path (zsh `rehash`, or
+  `hash -r`), or `/usr/local/bin` precedes `/root/go/bin` in `PATH`. `which -a
+  megh` shows both and settles it.
 - **RunPod's public proxy is open and unauthenticated.** Never expose ttyd/noVNC
   there. They bind to `127.0.0.1`; reach via `megh ssh` (tunnels) or Tailscale.
   Only `22/tcp` is public (key auth).
