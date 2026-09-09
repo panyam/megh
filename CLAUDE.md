@@ -34,6 +34,7 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
                                   # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
+                                  # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
 megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
@@ -60,6 +61,16 @@ image), `make registry`.
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
+
+**Control mode is a per-MACHINE setting and must never go in `megh.yaml`.**
+`megh ssh --cc` attaches tmux in control mode, which iTerm2 renders as native
+tabs; `MEGH_SSH_CC=1` makes it that machine's default. It belongs in the shell
+config because it describes the terminal you are sitting at, and `megh.yaml` is
+installed on every control device including the phone. In a terminal that does
+not speak the protocol you do not get an ugly shell, you get NO shell: tmux reads
+stdin as control COMMANDS, so `whoami` answers `parse error: unknown command` and
+`ls` silently runs tmux's list-sessions. That asymmetry is why the default is off
+rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 
 ## The local (docker) backend
 
