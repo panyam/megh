@@ -90,7 +90,7 @@ targets the only box; --local runs on the box itself.`,
 			return c.Run()
 		}
 
-		prov, err := providers.For(tsProvider)
+		prov, err := resolveProvider(cmd, tsProvider)
 		if err != nil {
 			return err
 		}
@@ -130,6 +130,6 @@ func shQuote(s string) string {
 func init() {
 	tsCmd.Flags().BoolVar(&tsLocal, "local", false, "run on the box itself instead of ssh-ing to one")
 	tsCmd.Flags().StringVar(&tsAuthKey, "authkey", "", "auth key for setkey (default: $TS_AUTHKEY)")
-	tsCmd.Flags().StringVar(&tsProvider, "provider", "runpod", "provider (runpod)")
+	tsCmd.Flags().StringVar(&tsProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	doctorCmd.AddCommand(tsCmd)
 }

@@ -14,36 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// surface is a known web surface on a box: its port, a short label, the browser
-// path to open, and the `megh enable` feature that provides it (empty when the
-// surface is baked into every image and so cannot be missing).
-type surface struct {
-	port    int
-	label   string
-	path    string
-	feature string
-}
-
-var surfaces = []surface{
-	{7681, "shell", "/", ""},
-	{7682, "webterm", "/", ""},
-	{6080, "vnc", "/vnc.html", "vnc"},
-	{8080, "code", "/", "code"},
-}
-
 // probeCmd asks the box which surface ports are listening. It wraps the loop in
 // `bash -c` so it does not run under the box's login shell (zsh), which has no
 // /dev/tcp, and ends in `exit 0` so the status reports "the probe ran" rather
 // than "the last port was open".
-const probeCmd = `bash -c 'for p in 7681 7682 6080 8080; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done; exit 0'`
+var probeCmd = buildProbeCmd()
 
-func surfaceFor(port int) surface {
-	for _, s := range surfaces {
-		if s.port == port {
-			return s
-		}
+func buildProbeCmd() string {
+	ports := make([]string, 0, len(providers.Surfaces))
+	for _, p := range providers.SurfacePorts() {
+		ports = append(ports, strconv.Itoa(p))
 	}
-	return surface{port: port, label: "port", path: "/"}
+	return `bash -c 'for p in ` + strings.Join(ports, " ") +
+		`; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done; exit 0'`
 }
 
 // notListeningMsg explains a requested port that nothing is serving, and names
@@ -51,20 +34,20 @@ func surfaceFor(port int) surface {
 // there used to print a working-looking URL and then leave ssh spewing
 // "channel N: open failed" — the box is fine, the surface simply is not there.
 func notListeningMsg(want int, live []int, box string) string {
-	s := surfaceFor(want)
+	s := providers.SurfaceFor(want)
 	var b strings.Builder
-	fmt.Fprintf(&b, "nothing is listening on %d (%s) on %s.\n", want, s.label, box)
+	fmt.Fprintf(&b, "nothing is listening on %d (%s) on %s.\n", want, s.Label, box)
 	if len(live) == 0 {
 		b.WriteString("  no web surfaces are up at all; is the box still booting?\n")
 	} else {
 		b.WriteString("  up right now:")
 		for _, p := range live {
-			fmt.Fprintf(&b, " %d (%s)", p, surfaceFor(p).label)
+			fmt.Fprintf(&b, " %d (%s)", p, providers.SurfaceFor(p).Label)
 		}
 		b.WriteString("\n")
 	}
-	if s.feature != "" {
-		fmt.Fprintf(&b, "  add it with: megh enable %s %s", s.feature, box)
+	if s.Feature != "" {
+		fmt.Fprintf(&b, "  add it with: megh enable %s %s", s.Feature, box)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
@@ -83,7 +66,7 @@ print the URLs, and keep the tunnels open until Ctrl-C. No Tailscale needed.
 Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := providers.For(browseProvider)
+		prov, err := resolveProvider(cmd, browseProvider)
 		if err != nil {
 			return err
 		}
@@ -134,9 +117,9 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 		fwd := []string{"-N"}
 		fmt.Fprintf(os.Stderr, "tunneling %s -> localhost (Ctrl-C to close):\n", pod.DisplayName())
 		for _, p := range ports {
-			s := surfaceFor(p)
+			s := providers.SurfaceFor(p)
 			fwd = append(fwd, "-L", fmt.Sprintf("%d:localhost:%d", p, p))
-			fmt.Fprintf(os.Stderr, "  %-7s http://localhost:%d%s\n", s.label, p, s.path)
+			fmt.Fprintf(os.Stderr, "  %-7s http://localhost:%d%s\n", s.Label, p, s.Path)
 		}
 
 		sshArgs := append(d.opts(fwd...), d.userHost())
@@ -194,6 +177,6 @@ func sshCaptureCtx(ctx context.Context, keyFile string, d dial, remote string) (
 }
 
 func init() {
-	browseCmd.Flags().StringVar(&browseProvider, "provider", "runpod", "provider (runpod)")
+	browseCmd.Flags().StringVar(&browseProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	rootCmd.AddCommand(browseCmd)
 }

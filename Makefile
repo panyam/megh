@@ -83,6 +83,29 @@ repo-create: ## create the private GitHub repo and push (triggers image build)
 image: ## push current HEAD to origin to trigger the GHCR image build
 	git push origin HEAD
 
+# Build the dev-env image on THIS machine, for THIS machine's architecture, for
+# the docker backend. CI publishes linux/amd64 only (RunPod CPU pods are x86_64),
+# so on an arm64 laptop the published image would run under emulation.
+#
+# It stages the same two files CI stages, from the same source of truth, so a
+# local image and a published one differ only in architecture. Both staged paths
+# are gitignored, and the trap cleans them up even on a failed build so a stale
+# binary cannot be baked into the next one.
+LOCAL_ARCH  := $(shell go env GOARCH)
+LOCAL_IMAGE ?= megh-local:$(LOCAL_ARCH)
+LOCAL_SLIM  ?= 1
+
+.PHONY: image-local
+image-local: ## build the dev-env image locally for this machine's arch (LOCAL_SLIM=0 for the full flavor)
+	@trap 'rm -f env/base/megh env/base/megh.yaml' EXIT; \
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(LOCAL_ARCH) go build -o env/base/megh . && \
+	cp megh.yaml.example env/base/megh.yaml && \
+	docker build \
+	  --build-arg MEGH_SLIM=$(LOCAL_SLIM) \
+	  --build-arg MEGH_BUILD_REF=$$(git rev-parse --short HEAD)-local \
+	  -t $(LOCAL_IMAGE) env/base
+	@echo "built $(LOCAL_IMAGE); set providers.docker.image to it in megh.yaml"
+
 .PHONY: image-watch
 image-watch: ## watch the latest build-env workflow run
 	gh run watch $$(gh run list --workflow=build-env --limit=1 --json databaseId --jq '.[0].databaseId')
