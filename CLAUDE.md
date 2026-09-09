@@ -48,6 +48,7 @@ megh profile create|use|list|show # profiles; profile gh add|list for GitHub ide
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
 megh tmux ls [name]               # what tmux sessions/windows a box has; READ-ONLY (ssh would create one)
+megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 ```
@@ -62,6 +63,14 @@ image), `make registry`.
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
+
+**A session holds WINDOWS, a window holds PANES, and you attach a SESSION.**
+There is no "tab" in tmux: a tab is what iTerm2 shows for a tmux WINDOW in
+control mode. You cannot attach a window, so `megh tmux attach <session>` then
+`ctrl-b <number>` is the whole navigation model. `megh tmux ls` prints windows
+with the word `window` on each line, because tmux auto-names a session created
+without `-s` by NUMBER, and a session called `3` beside window indices that are
+also small numbers is otherwise unreadable.
 
 **"Session" means two different things in this CLI.** `megh sessions collect`
 is AGENT TRANSCRIPT history (Claude/Codex JSONL, pushed to the sessions repo);
