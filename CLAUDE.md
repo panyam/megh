@@ -34,6 +34,7 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
                                   # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
+                                  # re-run it to REATTACH after ctrl-b d; --cc for iTerm2 control mode
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
 megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)

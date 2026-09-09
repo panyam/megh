@@ -14,6 +14,7 @@ var (
 	sshProvider string
 	sshNoTmux   bool
 	sshSession  string
+	sshCC       bool
 )
 
 // defaultTmuxSession is the session `megh ssh` attaches, and it matches the one
@@ -64,15 +65,26 @@ func validTmuxSession(name string) error {
 //
 // `tmux new -A -s <name>` attaches the session if it exists and creates it
 // otherwise, so it is the same command on the first connect and the hundredth.
-// Working in a plain shell is the failure this removes: the shell dies with the
-// connection and takes any running work with it, which on a flaky mobile link
-// is a matter of when rather than whether.
+// That is what makes `megh ssh` its own reattach command: detach, run it again,
+// and you are back in the same session. Working in a plain shell is the failure
+// this removes: the shell dies with the connection and takes any running work
+// with it, which on a flaky mobile link is a matter of when rather than whether.
+//
+// controlMode adds -CC, which switches tmux from drawing its own interface to
+// REPORTING its structure over a protocol the terminal emulator renders. iTerm2
+// speaks it and turns tmux windows into native tabs, with native scrollback,
+// find and copy. The session is an ordinary tmux session either way, so a box
+// can be attached in control mode from a laptop and normally from a phone.
 //
 // Falls back to a login shell if tmux is somehow missing, because failing to
 // find tmux should not mean failing to get a shell.
-func tmuxAttachCmd(session string) string {
+func tmuxAttachCmd(session string, controlMode bool) string {
+	flags := ""
+	if controlMode {
+		flags = "-CC "
+	}
 	q := shQuote(session)
-	return "if command -v tmux >/dev/null 2>&1; then exec tmux new -A -s " + q +
+	return "if command -v tmux >/dev/null 2>&1; then exec tmux " + flags + "new -A -s " + q +
 		"; else echo 'megh: tmux not found, plain shell' >&2; exec \"$SHELL\" -l; fi"
 }
 
@@ -85,8 +97,16 @@ Host aliases so git works.
 
 Attaches the tmux session 'main', the same one webterm and ttyd serve, so work
 survives a disconnect and the desktop and phone share one session with no id to
-carry between them. --no-tmux gives a plain shell. Pick another session with --session, or
+carry between them. Because it attaches-or-creates, this IS the reattach command:
+detach with ctrl-b d, run 'megh ssh' again, and you are back where you were.
+--no-tmux gives a plain shell. Pick another session with --session, or
 MEGH_TMUX=<name> (MEGH_TMUX_SESSION also works).
+
+--cc attaches in tmux CONTROL MODE, which iTerm2 renders as native tabs with
+native scrollback, find and copy. Same session either way, so a box can be in
+control mode on a laptop and a normal attach on a phone at the same time. It
+needs a terminal that speaks the protocol; in anything else you get the raw
+%begin/%output stream, which is unreadable rather than broken.
 
 For browser access to the box's web surfaces, use 'megh browse' (localhost
 tunnels) or Tailscale.
@@ -136,6 +156,9 @@ argument it connects to the only box.`,
 			fmt.Fprintf(os.Stderr, "megh: warning: file copy failed: %v\n", err)
 		}
 
+		if sshNoTmux && sshCC {
+			return fmt.Errorf("--cc and --no-tmux are opposites: --cc attaches tmux in control mode, --no-tmux attaches no tmux at all")
+		}
 		if sshNoTmux {
 			sshArgs := append(d.opts("-A"), d.userHost())
 			fmt.Fprintf(os.Stderr, "megh: ssh %s (plain shell; browser access: megh browse)\n", d.userHost())
@@ -147,9 +170,14 @@ argument it connects to the only box.`,
 		if err := validTmuxSession(session); err != nil {
 			return err
 		}
-		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session))
-		fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
-			d.userHost(), session)
+		sshArgs := append(d.opts("-A", "-t"), d.userHost(), tmuxAttachCmd(session, sshCC))
+		if sshCC {
+			fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q in control mode; close the window to detach)\n",
+				d.userHost(), session)
+		} else {
+			fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
+				d.userHost(), session)
+		}
 		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
 	},
 }
@@ -158,5 +186,6 @@ func init() {
 	sshCmd.Flags().StringVar(&sshProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	sshCmd.Flags().BoolVar(&sshNoTmux, "no-tmux", false, "plain shell instead of attaching tmux")
 	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
+	sshCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
 	rootCmd.AddCommand(sshCmd)
 }
