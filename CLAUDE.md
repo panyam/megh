@@ -388,6 +388,22 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   is no agent, so an unattended
   box cannot write to your repos. Pushing from the phone therefore needs a
   session open somewhere, webterm alone is not one.
+- **Clipboard: xclip cannot work on a box, OSC 52 is the only route.** There is
+  no X server (no Xvfb, nothing in `/tmp/.X11-unix`) and no `DISPLAY`, so xclip
+  answers `Can't open display: :0`; even with `megh enable vnc` it would fill the
+  CONTAINER's clipboard, which the Mac cannot read. And the baked vim is built
+  `-clipboard -xterm_clipboard`, so `"+y` has no register to write to. The route
+  that works is the terminal connection you already have: `pbcopy` (written by
+  the entrypoint) base64s stdin into an OSC 52 sequence on `/dev/tty`, so
+  `... | pbcopy` and vim's `:'<,'>w !pbcopy` reach the Mac with no daemon, port
+  or bridge. `/etc/tmux.conf` sets `set-clipboard on` for this: tmux's DEFAULT is
+  `external`, which forwards only tmux's OWN copy-mode selections and silently
+  ignores a sequence an application emits. Pasting INTO the box needs nothing --
+  Cmd-V is the terminal typing characters. There is deliberately no `pbpaste`:
+  OSC 52 can ask a terminal to report its clipboard, but terminals disable that
+  by default, so it would be a command that mostly hangs. The last mile is a
+  per-terminal preference megh cannot set: iTerm2 needs *Applications in terminal
+  may access clipboard*.
 - **Session flush needs a credential on the box** (background timer can't use SSH
   agent forwarding). Use a fine-grained PAT scoped to only `megh-sessions`.
 - **"Box not on the tailnet" is usually not a code bug.** Tailscale comes up
