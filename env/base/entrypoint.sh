@@ -154,7 +154,8 @@ chmod 700 /root/.ssh
 # Deliberately NOT a persistent agent holding a key on the box: with no session
 # open there is no agent and nothing can push, which is the property that keeps
 # an unattended box unable to write to your repos.
-cat > /etc/profile.d/megh-ssh-agent.sh <<'AGENTRC'
+mkdir -p /etc/megh
+cat > /etc/megh/ssh-agent.sh <<'AGENTRC'
 # megh: follow the current connection's forwarded agent (see entrypoint.sh).
 _megh_sock="${HOME}/.ssh/agent.sock"
 if [ -n "${SSH_AUTH_SOCK:-}" ] && [ "${SSH_AUTH_SOCK}" != "${_megh_sock}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
@@ -167,7 +168,35 @@ fi
 [ -S "${_megh_sock}" ] && export SSH_AUTH_SOCK="${_megh_sock}"
 unset _megh_sock
 AGENTRC
+chmod 0644 /etc/megh/ssh-agent.sh
+
+# Loaded from BOTH shell families, because the box's login shell is zsh and zsh
+# never reads /etc/profile.d. Debian ships /etc/zsh/zprofile with nothing in it
+# but comments (Ubuntu's sources /etc/profile; Debian's does not), so a snippet
+# dropped only in profile.d is dead code here: the symptom is a tmux pane whose
+# SSH_AUTH_SOCK still names a socket from a connection that logged out days ago,
+# and a `git pull` that answers "Permission denied (publickey)" while the keys
+# are fine and `ssh -T git@github.com` from a fresh login succeeds.
+#
+# zshenv, not zprofile, because it is read by EVERY zsh: a new pane in an old
+# session and a non-interactive `ssh box "git push"` both get the repoint, not
+# just login shells.
+cat > /etc/profile.d/megh-ssh-agent.sh <<'AGENTRC'
+# megh: see /etc/megh/ssh-agent.sh (sh/bash login shells).
+[ -r /etc/megh/ssh-agent.sh ] && . /etc/megh/ssh-agent.sh
+AGENTRC
 chmod 0644 /etc/profile.d/megh-ssh-agent.sh
+
+# Idempotent: the entrypoint runs on every boot, and /etc/zsh/zshenv is a file
+# the zsh package owns, so append the block once and rewrite it in place after.
+if ! grep -q '^# >>> megh ssh-agent >>>' /etc/zsh/zshenv 2>/dev/null; then
+  cat >> /etc/zsh/zshenv <<'AGENTRC'
+
+# >>> megh ssh-agent >>>
+[ -r /etc/megh/ssh-agent.sh ] && . /etc/megh/ssh-agent.sh
+# <<< megh ssh-agent <<<
+AGENTRC
+fi
 
 # tmux defaults aimed at a phone. /etc/tmux.conf is read BEFORE ~/.tmux.conf, so
 # anything you put in your own file still wins.

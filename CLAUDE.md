@@ -375,10 +375,17 @@ runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
   whatever `SSH_AUTH_SOCK` held when the session was created. Reattach the next
   day, or open the same session in webterm, and git push fails with "Permission
   denied (publickey)" though the keys are fine. The entrypoint writes
-  `/etc/profile.d/megh-ssh-agent.sh`, which repoints `~/.ssh/agent.sock` at the
-  live socket on every login and exports that stable path, so an old session
-  follows whichever connection is open now. It is deliberately NOT a persistent
-  agent holding a key: with no session open there is no agent, so an unattended
+  `/etc/megh/ssh-agent.sh`, which repoints `~/.ssh/agent.sock` at the live socket
+  and exports that stable path, so an old session follows whichever connection is
+  open now. **It is loaded from `/etc/zsh/zshenv` AND `/etc/profile.d`, because
+  the box's login shell is zsh and zsh never reads `profile.d`.** Debian ships
+  `/etc/zsh/zprofile` containing only comments (Ubuntu's sources `/etc/profile`;
+  Debian's does not), so the profile.d drop alone was dead code and the bug it
+  was written to fix still happened. zshenv rather than zprofile because every
+  zsh reads it, so a new pane in an old session and a non-interactive
+  `ssh box "git push"` get the repoint too, not just login shells. It is
+  deliberately NOT a persistent agent holding a key: with no session open there
+  is no agent, so an unattended
   box cannot write to your repos. Pushing from the phone therefore needs a
   session open somewhere, webterm alone is not one.
 - **Session flush needs a credential on the box** (background timer can't use SSH
