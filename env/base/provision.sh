@@ -38,7 +38,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   ca-certificates curl wget gnupg git git-lfs openssh-server rsync \
   tmux ripgrep fd-find fzf jq unzip zip build-essential pkg-config \
-  python3 python3-pip python3-venv zsh \
+  python3 python3-pip python3-venv zsh xclip \
   sudo locales tzdata less nano vim htop procps net-tools iproute2
 
 # --- GitHub CLI ------------------------------------------------------------
