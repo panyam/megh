@@ -208,6 +208,14 @@ fi
 #   - pane-base-index 1 to match base-index: without it windows count from 1 and
 #     the panes inside them count from 0, so `megh tmux ls` and ctrl-b q print
 #     two different numbering schemes on adjacent lines.
+#   - set-clipboard on: the box has no X server and no way to reach the Mac's
+#     clipboard except back through the terminal that is already connected. OSC
+#     52 is that channel. `on` (tmux's default is `external`) is what makes tmux
+#     forward a sequence an APPLICATION emits, which is what `pbcopy` below and
+#     vim's `:w !pbcopy` rely on; `external` only covers tmux's own copy-mode.
+#     The Ms override tells tmux the outer terminal can take it -- iTerm2 and
+#     Termux both can, but only if their own "allow clipboard access" setting
+#     is on, which is a per-terminal preference megh cannot set from here.
 cat > /etc/tmux.conf <<'TMUXCONF'
 set -g mouse on
 set -g history-limit 50000
@@ -217,7 +225,34 @@ set -g escape-time 10
 set -g status-left '[#S] '
 set -g status-left-length 30
 set -g default-terminal 'screen-256color'
+set -g set-clipboard on
+set -ag terminal-overrides ',xterm*:Ms=\E]52;%p1%s;%p2%s\007'
 TMUXCONF
+
+# `pbcopy`, so copying out of the box works the same way it does on the Mac.
+#
+# There is no X server here and no route to the Mac's clipboard except back
+# through the terminal that is already connected, so xclip and friends cannot
+# help: they talk to a local X display that does not exist. OSC 52 rides the
+# existing connection instead -- no daemon, no port, no bridge, and it works
+# over ssh, through tmux, and from the phone.
+#
+# The other direction needs nothing: pasting INTO the box is the terminal
+# typing the characters, so Cmd-V already works.
+#
+# Deliberately no `pbpaste`: OSC 52 can ask a terminal to REPORT its clipboard,
+# but terminals disable that by default (a remote host being able to read your
+# clipboard is a real leak), so it would be a command that mostly hangs.
+cat > /usr/local/bin/pbcopy <<'PBCOPY'
+#!/bin/sh
+# megh: copy stdin to the clipboard of the terminal you are sitting at (OSC 52).
+set -eu
+_b64=$(base64 | tr -d '\r\n')
+# /dev/tty, not stdout: this has to work mid-pipeline and from vim's `:w !pbcopy`,
+# where stdout is not the terminal.
+printf '\033]52;c;%s\a' "$_b64" > /dev/tty
+PBCOPY
+chmod 0755 /usr/local/bin/pbcopy
 chmod 0644 /etc/tmux.conf
 if [ -n "${PUBLIC_KEY:-}" ]; then
   echo "${PUBLIC_KEY}" >> /root/.ssh/authorized_keys
