@@ -36,7 +36,7 @@ megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all =
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
                                   # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
-megh enable [feature]             # add webterm/vnc/playwright/code/lgtm to a box on demand
+megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
@@ -308,6 +308,38 @@ OTEL_EXPORTER_OTLP_HEADERS=X-Scope-OrgID=<project>
 It does not start at boot; `lgtm start|stop|status|logs|tenants|purge <tenant>`
 runs it on the box. Everything lives on the volume under `/mnt/work/state/lgtm`.
 **Implementation lore and its gotchas: `internal/features/NOTES.md`.**
+
+## GUI apps on a box (X, not just browsers)
+
+A box can run any Linux-native GUI app — KiCad, gerbv, xschem, a debugger UI.
+Two features, split because they are two different things:
+
+- **`megh enable vnc`** is the DISPLAY: `Xvfb :99` + fluxbox + x11vnc + noVNC on
+  `127.0.0.1:6080`. Nothing about it is browser-specific; the name is historical
+  (it exists for headed Playwright). Watch it with `megh browse 6080` ->
+  `http://localhost:6080/vnc.html`, or `http://<box>:6080/vnc.html` on the
+  tailnet, which the feature serves itself.
+- **`megh enable eda`** is what draws on it: KiCad + its libraries, lepton-eda,
+  gerbv, xschem, ngspice, gtkwave, pcb-rnd, ddd, plus the software-GL, X and
+  font packages a GUI app needs where there is no GPU. `MEGH_EDA_PKGS` replaces
+  the app list, `MEGH_EDA_EXTRA` adds to it, `MEGH_EDA_3D=1` adds KiCad's 3D
+  model packages (+5.7 GB, hence opt-in), `MEGH_EDA_KICAD_PPA=9.0` takes KiCad
+  from upstream instead of Ubuntu 24.04's 7.0.11.
+
+Order does not matter and either can be re-run alone, but nothing is visible
+until both have. Then `DISPLAY=:99 kicad &` over `megh ssh`, or right-click the
+noVNC desktop -> EDA, which `enable eda` fills from the packages' own `.desktop`
+files (so `MEGH_EDA_EXTRA` entries get launchers too).
+
+Three things to know. **There is no GPU**, so GL is mesa's llvmpipe: fine for
+schematic capture, slow for pcbnew's GL canvas and the 3D viewer (pcbnew
+Preferences -> Graphics -> Fallback when it crawls). **apt installs onto the
+container disk**, which dies with the box, so `enable eda` is re-run per box;
+the debs cache on the volume so that is an unpack and not a 195 MB download, and
+app config/libraries persist there too. **`geda` and `pcb` no longer exist in
+Ubuntu 24.04** — the script installs their successors `lepton-eda` and `pcb-rnd`
+and tells you it did. Clipboard out of a GUI app goes through noVNC's own
+clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Gotchas (things that bit us)
 
