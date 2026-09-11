@@ -120,3 +120,38 @@ func TestFeatureScriptsBindLoopback(t *testing.T) {
 		})
 	}
 }
+
+// KiCad's symbol and footprint libraries arrive through Recommends, not
+// Depends. `apt-get install --no-install-recommends kicad` therefore succeeds
+// and gives you a KiCad that opens, shows a schematic editor, and cannot place
+// a single part — a failure that looks like a broken app rather than a missing
+// package. eda.sh installs its X support packages with --no-install-recommends
+// (leaf libraries, and mesa's recommends pull in a lot) and the apps WITHOUT
+// it, deliberately. Merging the two calls would be the obvious tidy-up.
+func TestEDAInstallsAppsWithRecommends(t *testing.T) {
+	script, err := Script("eda")
+	if err != nil {
+		t.Fatalf("Script(eda): %v", err)
+	}
+	var checked int
+	for i, line := range strings.Split(string(script), "\n") {
+		code, _, _ := strings.Cut(line, "#")
+		if !strings.Contains(code, "apt-get install") {
+			continue
+		}
+		// The two calls that install the app list: the group one and the
+		// per-package retry.
+		if !strings.Contains(code, "${wanted}") && !strings.Contains(code, `"${p}"`) {
+			continue
+		}
+		checked++
+		if strings.Contains(code, "--no-install-recommends") {
+			t.Errorf("eda.sh:%d installs the apps with --no-install-recommends, which "+
+				"leaves kicad without its symbol/footprint libraries:\n\t%s",
+				i+1, strings.TrimSpace(line))
+		}
+	}
+	if checked != 2 {
+		t.Errorf("expected to check 2 app-install calls in eda.sh, found %d", checked)
+	}
+}

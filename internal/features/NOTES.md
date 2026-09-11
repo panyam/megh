@@ -63,6 +63,71 @@ The noVNC page logs a 404 for `/package.json` on load. It is cosmetic, the same
 class as the webterm favicon 404: noVNC fetches it for version display and works
 fine without it.
 
+## eda
+
+The desktop EDA/CAD apps (KiCad, lepton-eda, gerbv, xschem, ngspice, gtkwave,
+pcb-rnd, ddd). **`vnc` owns the display, `eda` owns what draws on it**, and the
+split is the point: the display stack is generic X plumbing that Playwright
+wants too, and re-running either must not disturb the other.
+
+**Two of the names people ask for no longer exist.** Checked against noble on
+2026-09-11: `geda` / `geda-gaf` / `geda-gschem` and `pcb` / `pcb-gtk` are gone
+from Ubuntu 24.04 entirely, and each has a maintained successor under a new
+name — `lepton-eda` 1.9.18 and `pcb-rnd` 3.1.4. The script translates the old
+names and says so, because apt's own answer ("no installation candidate") reads
+like the tool is unavailable when it is right there under a different name.
+
+**Sizes, measured on noble.** The default set is ~195 MB of debs across 168
+packages. `kicad-packages3d` alone is 424 MB to download and **5.7 GB**
+installed, which is a quarter of a 20 GB container disk for 3D models that only
+the 3D viewer reads, so it is behind `MEGH_EDA_3D=1`. Ubuntu 24.04 ships KiCad
+**7.0.11**, a 2023 release; `MEGH_EDA_KICAD_PPA=9.0` takes it from upstream's
+PPA instead, best-effort.
+
+**The debs cache on the volume.** Everything apt unpacks is on the container
+disk and dies with the box, so the packages are reinstalled per box either way;
+pointing `Dir::Cache::archives` at `/mnt/work/cache/apt/<arch>` makes that a
+local unpack rather than a 195 MB re-download. It also sets
+`APT::Sandbox::User=root`: apt downloads as the `_apt` user, which cannot write
+into a directory on the root-squashed NFS volume, and would otherwise print a
+warning and retry as root on every single run.
+
+**A metapackage owns no files.** `dpkg -L pcb-rnd` lists nothing executable —
+the binary is in `pcb-rnd-core`. The first pass therefore reported it as
+"installed (data only)" and gave it no menu entry, though it was installed and
+working. The fix is to fall back to a package's installed direct dependencies,
+and *only* as a fallback, so kicad (which ships its own `.desktop` files and
+depends on python3) is never described by something it merely pulled in.
+
+**Picking the binary needs a rule, not `head -1`.** `pcb-rnd-core` ships four,
+and alphabetically first is `fp2preview`, a footprint-to-image converter. Prefer
+the one named after the package, then one sharing its prefix.
+
+**The fluxbox menu is generated from the packages' own `.desktop` files**, so
+anything added through `MEGH_EDA_EXTRA` gets a launcher with no list to
+maintain. Parse only the `[Desktop Entry]` group (an Action group carries its
+own `Name`/`Exec` and would otherwise win by appearing first) and strip the `%U`
+/ `%F` field codes, which are for a file manager passing arguments and are not
+valid shell. A package with no `.desktop` anywhere in its family falls back to
+`xterm -e <binary>`: a GUI app still opens its window with its stderr visible,
+and a CLI-only package like ngspice gives a usable terminal instead of a menu
+entry that silently does nothing. The include line is added to `~/.fluxbox/menu`
+once, before its last `[end]`, rather than overwriting a menu you may have
+edited.
+
+App config persists onto the volume using the **same slot names as the
+entrypoint's `persist:`** (path with `/` -> `-`, leading dot dropped, so
+`~/.config/kicad` -> `state/config-kicad`). Adding those paths to `persist:` in
+megh.yaml later then links to the directory that is already there instead of
+starting a second, divergent copy.
+
+Validated on a live box (2026-09-11, arm64 docker backend): gerbv mapped a real
+1440x810 window on `:99`, the generated menu entries were correct, and the deb
+cache landed on the volume. GL is `llvmpipe (LLVM 20.1.2, 128 bits)` — there is
+no GPU and no DRI device, so `libgl1-mesa-dri` is what KiCad's GL canvas falls
+back onto. It works; it is not fast, and pcbnew's Fallback (Cairo) canvas is the
+answer when it crawls.
+
 ## postgres / redis
 
 Native services, because RunPod pods cannot run containers at all (see

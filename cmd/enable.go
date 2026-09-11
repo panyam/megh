@@ -60,6 +60,8 @@ works against any box (piped over SSH) and needs no image rebuild.
   megh enable             list available features
   megh enable webterm     mobile/tablet web terminal + on-screen key bar (:7682)
   megh enable vnc         headed-browser display (noVNC on :6080)
+  megh enable eda         KiCad, lepton-eda, gerbv, xschem, ngspice, gtkwave,
+                          pcb-rnd, ddd + software GL (draws on 'enable vnc')
   megh enable playwright  Playwright + Chromium (headed needs 'enable vnc')
   megh enable code        code-server (VS Code on :8080)
   megh enable postgres    PostgreSQL + pgvector on :5433 (one db per project)
