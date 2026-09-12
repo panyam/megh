@@ -331,9 +331,11 @@ until both have. Then `DISPLAY=:99 kicad &` over `megh ssh`, or right-click the
 noVNC desktop -> EDA, which `enable eda` fills from the packages' own `.desktop`
 files (so `MEGH_EDA_EXTRA` entries get launchers too).
 
-Three things to know. **There is no GPU**, so GL is mesa's llvmpipe: fine for
-schematic capture, slow for pcbnew's GL canvas and the 3D viewer (pcbnew
-Preferences -> Graphics -> Fallback when it crawls). **apt installs onto the
+Three things to know. **There is no GPU** — not on a CPU pod, and not on the
+docker backend either, where the Mac's GPU is unreachable from a Linux container
+(measured, with the reasoning, in `internal/features/NOTES.md`). So GL is mesa's
+llvmpipe: fine for schematic capture, slow for pcbnew's GL canvas and the 3D
+viewer (pcbnew Preferences -> Graphics -> Fallback when it crawls). **apt installs onto the
 container disk**, which dies with the box, so `enable eda` is re-run per box;
 the debs cache on the volume so that is an unpack and not a 195 MB download, and
 app config/libraries persist there too. **`geda` and `pcb` no longer exist in

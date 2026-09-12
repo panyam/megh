@@ -128,6 +128,50 @@ no GPU and no DRI device, so `libgl1-mesa-dri` is what KiCad's GL canvas falls
 back onto. It works; it is not fast, and pcbnew's Fallback (Cairo) canvas is the
 answer when it crawls.
 
+### There is no GPU, on either backend, and that is not a flag away
+
+Two separate answers that both end at llvmpipe, worth writing down because the
+question comes back and the reasoning is not obvious.
+
+**Xvfb cannot use a GPU even when one is present.** It is a software
+framebuffer and its GLX is always swrast, so renting a GPU box and re-running
+`megh enable eda` prints the same `llvmpipe` line. Hardware GL needs a second
+piece: VirtualGL (`vglrun`), which intercepts the app's GLX calls, renders them
+through EGL on the GPU with no X server of its own, and hands the pixels back to
+Xvfb. So "add GPU support" is a provider change (`computeType: "GPU"` plus
+`gpuTypeIds`/`gpuCount` in `internal/providers/runpod`, where "CPU" is currently
+hardcoded) AND a feature, not one flag. Unverified: whether a RunPod GPU pod
+exposes `/dev/nvidia*` and the EGL ICD to an unprivileged container. That needs
+a real rent to answer.
+
+**The docker backend cannot reach the Mac's GPU.** Measured on a live local box
+(2026-09-12, Apple Silicon):
+
+    /dev/dri          No such file or directory
+    /dev/nvidia*      no matches
+    /sys/class/drm/   only "version" — no DRM device at all
+    glxinfo -B        Accelerated: no   llvmpipe (Mesa 25.2.8)
+
+The kernel is `6.12.54-linuxkit`: containers run inside a Linux VM, and Apple's
+Virtualization.framework does not pass the GPU through to a Linux guest. There is
+no Metal-to-DRM bridge, so the guest kernel enumerates no GPU and Mesa has
+nothing to bind to — `--gpus all` is a Linux-host/NVIDIA feature and a no-op on
+macOS. Mesa ships `asahi_dri.so` inside the container, so the Apple Silicon
+driver is right there with no device to drive. Docker Desktop's own
+GPU-accelerated feature (Model Runner) runs as a host-side macOS process for
+exactly this reason.
+
+What the local box has instead is better than it sounds: 14 cores feeding
+llvmpipe against a CPU pod's 4, and a loopback transport, so the rasteriser is
+the only limit rather than the wire. And its bind mounts mean a project file in
+the box IS the file on the Mac, so the answer for interactive KiCad on a local
+box is to run KiCad natively on macOS, where it has Metal, and leave the box the
+batch half (`kicad-cli` ERC, DRC, gerbers, renders) on the identical tree.
+
+X11 forwarding to XQuartz is not a way around either: its GLX is indirect, off by
+default and limited to old GL, usually slower than llvmpipe, and the image
+carries no `xauth` anyway.
+
 ## postgres / redis
 
 Native services, because RunPod pods cannot run containers at all (see
