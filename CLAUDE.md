@@ -130,7 +130,7 @@ Four things differ, and each is deliberate.
 
 **Never mount a directory whose entries are absolute host symlinks.** `~/personal`
 is one: `helper_functions`, `anchor_pr_files` and `completions` point into
-`/Users/.../dotfiles/shared`, which does not exist in a container. The entrypoint's
+`/Users/<you>/dotfiles/shared`, which does not exist in a container. The entrypoint's
 skip test is `[ -e "$link" ] && [ ! -L "$link" ]`, so it does NOT skip a symlink,
 it replaces it. Read-only the `ln` fails and kills PID 1; read-write it succeeds
 and rewrites the HOST's copy to point at `/mnt/work`. Mount such a tree at a path
@@ -483,6 +483,16 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   the megh binary. The entrypoint runs it at boot (`megh doctor ts start
   --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
   repair never drift and `doctor ts` works on any box regardless of image age.
+- **A shared artifact never encodes one machine's paths — `CONSTRAINTS.md` C6.**
+  This is the single disease behind the PATH-clobbering `~/.zshrc`, the
+  `~/personal` absolute-symlink mount hazard, the leafless-vs-`/main` `repos:`
+  entries, and the dotfiles repo's two git-tracked symlinks into
+  `/Users/<user>/newstack/...` that made the `gaps` skill exist on the Mac only.
+  The Mac is where it originates because it is the only machine here that is
+  never rebuilt, so a Mac-specific assumption survives for months while a
+  box-specific one dies at the next `megh up`. Enforced mechanically:
+  `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` here, and
+  `shared/checks/no-machine-paths.sh` in CI on the dotfiles repo.
 - **The `megh-` prefix is internal only.** It marks RunPod pods (no tags there)
   but is never the tailnet hostname or a name the user types/sees. Route box
   names through `runpod.ShortName`/`Pod.DisplayName`, not raw `Pod.Name`. See

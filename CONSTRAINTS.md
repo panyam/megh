@@ -181,3 +181,54 @@ return nothing. The key may appear only in `internal/tsapi/`, `internal/config/`
 `cmd/`, the docs, and a TEST asserting it never travels: a deny-list test has to
 spell the name it denies, and excluding tests from the grep is what keeps that
 from reading as the violation it is the opposite of.
+
+## C6: a shared artifact never encodes one machine's paths
+
+A path that resolves on exactly one machine must not reach a file that more than
+one machine reads. The Mac is where this drift originates, and not because it is
+special: it is the only machine here that is never rebuilt. A box-specific
+assumption dies at the next `megh up`, loudly, within a day. A Mac-specific one
+is load-bearing for months, because nothing ever tears down the Mac to expose
+it. So every shared artifact slowly acquires the shape of the one machine that
+never gets rebuilt, and the box being disposable is what tests the config.
+
+This was five separate gotcha entries before it was one constraint. All five are
+the same failure:
+
+- `~/.zshrc` **set** `PATH` rather than appending, so a box got the Mac's list
+  (`/Users/<you>/.lmstudio/bin` on a Linux box is the tell). Fixed.
+- `~/personal`'s entries are absolute symlinks into the Mac's dotfiles checkout,
+  and the entrypoint REPLACES a dangling symlink rather than skipping it: read-only
+  the `ln` kills PID 1, read-write it rewrites the Mac's copy. Hence the
+  `/root/personal-mac` mount.
+- megh's own `repos:` entry is leafless "because that is where the Mac keeps it",
+  and gap-tracker's was not, so its skill resolved on a cloud box and nowhere else.
+- The dotfiles repo carried two git-tracked symlinks pointing at
+  `/Users/<user>/newstack/gap-tracker/...`, so the `gaps` skill and `/gap-track`
+  existed only on the Mac. That is what sent us looking.
+- The LM Studio installer appended a Mac path to `shared/zshrc` AND
+  `shared/bashrc`, which every box mounts.
+
+The rule is not "avoid absolute paths". A path may be absolute when it names
+something the box genuinely has (`/mnt/work`, `/usr/local/bin`, `/etc/megh`).
+The test is whether the path exists on every machine that reads the file. Use
+`$HOME`, a repo-relative path, `${CLAUDE_PLUGIN_ROOT}` in a Claude Code plugin,
+or derive it at run time.
+
+**Per-machine files are the escape hatch, and they must be named as such.** The
+dotfiles repo has `gmmac/` for the Mac and `box/` for boxes; an absolute path in
+`gmmac/` is correct by construction. `.machine-paths-allow` exempts that one
+directory and nothing else. A shared file needing a real home path is a `$HOME`
+fix, never a new exemption.
+
+**Verify:** `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` (fails on a
+tracked symlink that is absolute or escapes the repo, and on a per-user home path
+in tracked text). The dotfiles repo runs the same two rules as
+`shared/checks/no-machine-paths.sh` in CI, because that repo is mounted on every
+box and is where this drift lands first. Both spell the pattern they forbid, so
+each exempts itself — the trap this file's preamble describes.
+
+`-count=1` is not optional here. The tracked-file list comes from `git`, which
+Go's test cache cannot see through, so a stale `ok (cached)` is possible after
+adding a file. That is this file's preamble in a second costume: the gate was
+caching a pass while a planted absolute symlink sat in the index.
