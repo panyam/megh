@@ -221,7 +221,7 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 		// on a cloud box and pointless here, and worse than pointless: the
 		// entrypoint branches on the variable being SET, so passing it even empty
 		// would take the tailscale bring-up path with nothing to authenticate.
-		if config.IsControlPlaneSecret(k) || k == tsAuthKeyEnv {
+		if config.DeniedToBox(k) || k == tsAuthKeyEnv {
 			continue
 		}
 		env[k] = v

@@ -124,8 +124,30 @@ run:
   terminate.
 
 `megh up` enforces the deliberateness rather than the policy: it refuses to spawn
-from a box unless `--i-am-the-control-plane` is passed
-(`refuseToSpawnFromABox` in `cmd/up.go`), a flag too verbose to type by accident.
+from a box unless the machine says otherwise (`refuseToSpawnFromABox` in
+`cmd/up.go`). Two ways to say it, and the difference is the point:
+
+- `--i-am-the-control-plane`, per launch. Too verbose to type by accident, which
+  is what makes it right for a one-off and wrong for the daily case: an escape
+  hatch retyped on every launch ends up in a shell alias, and then it is no
+  longer deliberate.
+- `MEGH_CONTROL_PLANE=1`, per machine, set where that box already gets its
+  provider credential. This is the one to prefer now that development runs on
+  boxes, because it makes "may spawn" and "holds the key" one declared property
+  of one machine instead of two unrelated facts.
+
+Only `1`, `true` and `yes` declare it. `0` and `false` do not, so a truthiness
+check written as "is it set" would be a bug, and a test pins both.
+
+**It must not go in `megh.yaml`,** which is installed on every box: that would
+elevate all of them at once. For the same reason it is denied to the box env.
+`MEGH_CONTROL_PLANE` carries the MEGH_ prefix `meghEnv` forwards, so left alone
+it would travel to every box `megh enable` touched and tell each one it may
+spawn — inverting the guard rather than opening it. This is C5's prefix trap in
+a variable that is not a credential: the prefix does not care why a setting is
+dangerous on a box. Hence `config.DeniedToBox`, which is the wider check both
+forwarding channels now use, with `IsControlPlaneSecret` left meaning exactly
+what C5 says it means.
 
 ### The channel matters as much as the box
 
@@ -138,8 +160,12 @@ Elevate through a channel scoped to the boxes meant to be elevated. For local
 boxes that is `providers.docker.mounts:`, which the cloud backends never read.
 Keep provider credentials out of `box-envvars`.
 
-**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
-(the mount allowlist and the credential deny list, both red-checked). Then
+**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey|TestRunArgsNeverSendsTheControlPlaneDeclaration'`
+(the mount allowlist and both deny lists, all red-checked), plus
+`go test ./cmd/ -run 'TestSpawnAllowed|TestMeghEnvNeverForwardsTheControlPlaneDeclaration'`
+— note `TestRefuseToSpawnFromABox` SKIPS when run on a box, which is precisely
+the machine it governs, so `TestSpawnAllowed` carries the decision as a pure
+function and is the one that actually runs there. Then
 `grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in `meghEnv`, and
 `grep -nE '^[[:space:]]*export[[:space:]]+(RUNPOD|VAST|LAMBDA)_API_KEY=' ~/personal/box-envvars`
 must return NOTHING — not because a box may never hold the key, but because that
