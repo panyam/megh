@@ -76,16 +76,24 @@ left in `entrypoint.sh` should be the shutdown `logout` in the SIGTERM trap; the
 must be no `tailscaled --tun` or `tailscale up`/`serve --bg` invocation there
 (matches in comments or `log "…"` strings don't count).
 
-## C3: megh never sends a provider credential to a box
+## C3: a provider credential reaches a box only by deliberate elevation
 
-A box with `RUNPOD_API_KEY` can terminate and launch your OTHER boxes, so nothing
-megh copies to a box may carry one. This is an invariant across every channel
-megh has, not a property of any one command:
+**Relaxed 2026-09-12.** This used to read "megh never sends a provider credential
+to a box" and treated a box holding one as a defect with no legitimate case. That
+assumed the control plane is a device you physically hold and every box is a work
+box. Development moved predominantly off the Mac, so the machine running `megh up`
+is now itself a box, and a rule that forbids the thing being done daily does not
+survive contact — it gets worked around, which is how the old `box-envvars` came
+to hold a live `RUNPOD_API_KEY` for months under a header claiming it held none.
+State the real rule instead.
+
+**What did not change: megh never sends one on its own.** Elevation is something
+you do deliberately, to one box, by a channel you name. It is never something
+megh infers, and no allowlist below is loosened:
 
 - `megh enable` forwards only `MEGH_`-prefixed environment (`meghEnv` in
   `cmd/enable.go`), never the ambient environment.
-- `files:` copies only what `megh.yaml` names, which is why the pattern is a
-  scoped `~/personal/box-envvars` rather than the real `~/personal/envvars`.
+- `files:` copies only what `megh.yaml` names.
 - `box_envs:` is an explicit opt-in list, never a wildcard.
 - **`providers.docker.mounts:` is the local backend's allowlist.** A bind mount is
   a fourth channel to a box, and a wider one than the other three: it exposes a
@@ -94,28 +102,56 @@ megh has, not a property of any one command:
   ambient environment, the working directory, or what happens to exist next to a
   mounted path.
 
-New code that ships environment, files, scripts, or MOUNTS to a box passes an
-allowlist, never the caller's whole environment or filesystem.
+New code that ships environment, files, scripts, or MOUNTS to a box still passes
+an allowlist, never the caller's whole environment or filesystem.
 
-Two things the local backend makes concrete. `box-envvars` is the file that
-actually reaches a box, so its contents are the constraint, not its name: it held
-a live `RUNPOD_API_KEY` for months while its own header claimed it held no
-credentials, which is why the check below reads the file rather than trusting the
-comment. And mounting a whole directory is how a scoped copy quietly becomes an
-unscoped one, so a mount that would expose a secret is shadowed by a narrower
-mount over it rather than being allowed and documented.
+### What elevation means, and where it is safe
+
+A credential on a box can terminate and launch every other box on the account.
+That cost does not go away; what changed is that it is now sometimes worth paying.
+The axis that decides it is **who owns the hardware**, not which command is being
+run:
+
+- **A local (docker) box runs on a machine you physically hold.** The credential
+  is already on that machine — the container is a boundary around the rest of your
+  filesystem, not around your secrets (CLAUDE.md: "a local box is not a security
+  sandbox"). Elevating it adds no party who could not already read the key. This
+  is the sanctioned case.
+- **A cloud box runs on someone else's hardware.** Elevating it exposes the
+  credential to the provider's host and to anyone who gets a shell on the pod,
+  and the blast radius is every box on the account. Sanctioned only with a
+  **restricted, read-only** provider key, and never with one that can launch or
+  terminate.
+
+`megh up` enforces the deliberateness rather than the policy: it refuses to spawn
+from a box unless `--i-am-the-control-plane` is passed
+(`refuseToSpawnFromABox` in `cmd/up.go`), a flag too verbose to type by accident.
+
+### The channel matters as much as the box
+
+`box-envvars` is the **every-box** channel: `files:` copies it to each box megh
+touches, cloud and local alike. A provider credential placed there is therefore
+elevated on every box, which is broader than any intent that motivated the
+elevation, and it is silent — nothing at launch says a pod just received it.
+
+Elevate through a channel scoped to the boxes meant to be elevated. For local
+boxes that is `providers.docker.mounts:`, which the cloud backends never read.
+Keep provider credentials out of `box-envvars`.
 
 **Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
-(the mount allowlist and the credential deny list, both red-checked), and
+(the mount allowlist and the credential deny list, both red-checked). Then
+`grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in `meghEnv`, and
 `grep -nE '^[[:space:]]*export[[:space:]]+(RUNPOD|VAST|LAMBDA)_API_KEY=' ~/personal/box-envvars`
-must return NOTHING. Then `grep -n 'MEGH_' cmd/enable.go` must show the prefix
-filter in `meghEnv`. The other `os.Environ()` uses in `cmd/` are NOT violations: they set
-the environment of a LOCAL child process (the ssh client in `sshexec.go`, the
-local bash in `doctorts.go --local`), and megh never configures ssh `SendEnv`, so
-the calling shell's environment is not forwarded to a box. Confirm that with
-`grep -rn 'SendEnv' cmd/ internal/`, which must return nothing. What must never
-happen is a provider key reaching a box through pod env (`box_envs`), a `files:`
-copy, or a script piped over SSH.
+must return NOTHING — not because a box may never hold the key, but because that
+file reaches boxes this constraint has not elevated. The other `os.Environ()` uses
+in `cmd/` are NOT violations: they set the environment of a LOCAL child process
+(the ssh client in `sshexec.go`, the local bash in `doctorts.go --local`), and megh
+never configures ssh `SendEnv`, so the calling shell's environment is not forwarded
+to a box. Confirm that with `grep -rn 'SendEnv' cmd/ internal/`, which must return
+nothing.
+
+Tailnet control-plane credentials are a separate and stricter case: they are
+denied by name regardless of elevation. See C5.
 
 ## C4: Every box service binds loopback
 
