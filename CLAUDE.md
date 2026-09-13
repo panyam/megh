@@ -30,7 +30,8 @@ Run `megh` directly only after `source ~/personal/envvars`.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
-                                  # refuses to run ON a box (C3); --i-am-the-control-plane overrides
+                                  # refuses to run ON a box (C3); MEGH_CONTROL_PLANE=1 declares the
+                                  # machine (preferred), --i-am-the-control-plane is the one-off
                                   # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux

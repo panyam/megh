@@ -173,7 +173,7 @@ func init() {
 	// Defaults are empty/zero so `Changed` distinguishes an explicit flag from a
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
 	f.BoolVar(&upFromBox, "i-am-the-control-plane", false,
-		"allow launching from a box (needs a provider credential there; see CONSTRAINTS C3)")
+		"allow launching from a box for this one run (or declare the machine: export MEGH_CONTROL_PLANE=1; see CONSTRAINTS C3)")
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use base for frontend)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
@@ -207,11 +207,9 @@ const boxMarker = "/etc/megh/build-info"
 // --i-am-the-control-plane overrides it, deliberately verbose: an escape hatch
 // you cannot type by accident, for a box you have decided to elevate.
 func refuseToSpawnFromABox() error {
-	if upFromBox {
+	_, err := os.Stat(boxMarker)
+	if spawnAllowed(err == nil, upFromBox, os.Getenv(controlPlaneEnv)) {
 		return nil
-	}
-	if _, err := os.Stat(boxMarker); err != nil {
-		return nil // not a box; the normal case
 	}
 	return fmt.Errorf(`refusing to launch a box from another box.
 
@@ -219,5 +217,37 @@ A box that can spawn boxes needs a provider credential, and one that holds it ca
 terminate every other box on the account (CONSTRAINTS.md C3). Spawn from a device
 you hold instead; megh runs fine on a phone under Termux.
 
-If this box IS your control plane, say so: megh up --i-am-the-control-plane`)
+If this box IS your control plane, declare it once where that box already gets
+its provider credential:  export %s=1
+For a one-off, the flag still works:  megh up --i-am-the-control-plane`, controlPlaneEnv)
+}
+
+// controlPlaneEnv declares that THIS machine is the control plane.
+//
+// The flag came first and is still the right shape for a one-off. It is the
+// wrong shape for the case that is now normal: development moved onto boxes, so
+// the machine running `megh up` is itself a box, and an escape hatch retyped on
+// every launch stops being deliberate the moment it lands in a shell alias.
+// Declaring it once, beside the provider credential that box was deliberately
+// given, keeps "may spawn" and "holds the key" one property of one machine.
+//
+// It must NOT go in megh.yaml, which is installed on every box: that would
+// elevate all of them. For the same reason it is denied to the box env — see
+// config.DeniedToBox, and the note on the MEGH_ prefix in C3.
+const controlPlaneEnv = "MEGH_CONTROL_PLANE"
+
+// spawnAllowed is the whole decision, pure so it is testable ON a box. The
+// guard's own test has to skip when the marker is present, which is exactly the
+// machine the rule governs, so the logic lives here where no filesystem state
+// is needed to exercise it.
+func spawnAllowed(onABox, flagSet bool, declared string) bool {
+	if !onABox || flagSet {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(declared)) {
+	case "1", "true", "yes":
+		return true
+	}
+	// Anything else, "0" and "false" included, is not a declaration.
+	return false
 }

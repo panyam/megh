@@ -143,6 +143,51 @@ func TestRefuseToSpawnFromABox(t *testing.T) {
 	}
 }
 
+// spawnAllowed is the guard's whole decision, and unlike TestRefuseToSpawnFromABox
+// this runs everywhere -- including ON a box, which is the machine the rule
+// actually governs and the one that test has to skip.
+func TestSpawnAllowed(t *testing.T) {
+	cases := []struct {
+		name     string
+		onABox   bool
+		flag     bool
+		declared string
+		want     bool
+	}{
+		{"control machine, nothing set", false, false, "", true},
+		{"box, nothing set", true, false, "", false},
+		{"box, one-off flag", true, true, "", true},
+		{"box, declared 1", true, false, "1", true},
+		{"box, declared true", true, false, "TRUE", true},
+		{"box, declared yes", true, false, " yes ", true},
+		// "0" and "false" are the ones worth pinning: a truthiness check written
+		// as "is it set" would read either as a declaration and elevate the box.
+		{"box, declared 0", true, false, "0", false},
+		{"box, declared false", true, false, "false", false},
+		{"box, junk value", true, false, "maybe", false},
+	}
+	for _, c := range cases {
+		if got := spawnAllowed(c.onABox, c.flag, c.declared); got != c.want {
+			t.Errorf("%s: spawnAllowed(%v, %v, %q) = %v, want %v",
+				c.name, c.onABox, c.flag, c.declared, got, c.want)
+		}
+	}
+}
+
+// C3. MEGH_CONTROL_PLANE says "this machine may spawn boxes". Forwarded, it says
+// that to every box it reaches, which inverts the guard rather than opening it.
+func TestMeghEnvNeverForwardsTheControlPlaneDeclaration(t *testing.T) {
+	t.Setenv(controlPlaneEnv, "1")
+	t.Setenv("MEGH_ORDINARY", "carried")
+	out := string(meghEnv())
+	if strings.Contains(out, controlPlaneEnv) {
+		t.Errorf("%s must never reach a box; meghEnv produced:\n%s", controlPlaneEnv, out)
+	}
+	if !strings.Contains(out, "MEGH_ORDINARY") {
+		t.Errorf("ordinary MEGH_ vars should still be forwarded; got:\n%s", out)
+	}
+}
+
 // The default gh login lacks admin:public_key, so this is the first thing
 // anyone enrolling a key from a new device will hit. gh's own message does not
 // name the scope, so misclassifying it means the user gets a bare 403.
