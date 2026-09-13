@@ -137,6 +137,17 @@ and rewrites the HOST's copy to point at `/mnt/work`. Mount such a tree at a pat
 nothing symlinks into (`/root/personal-mac`) and let `symlinks:` build the box's
 own `~/personal` from the dotfiles mount, exactly as on a cloud box.
 
+**Bind-mount the DIRECTORY, never the single file.** A file bind mount binds an
+inode, not a name, so it survives an in-place append and dies on anything that
+saves by writing a replacement and renaming it over the original -- which is what
+most editors do. The mount then points at an unlinked inode: reads fail with
+ENOENT while `ls` still shows the entry with a link count of 0, and
+`/proc/self/mountinfo` names the source `<path>//deleted`. That is the tell, and
+it is the only one that says so outright. Nothing re-binds until the box is
+recreated. Measured 2026-09-12 on `~/personal/box-envvars`, whose mount had been
+dead since the Mac last edited it. Mount the parent directory and reference the
+file inside it; a directory's inode survives its children being rewritten.
+
 **A local box is not a security sandbox.** Anything mounted read-write can be
 deleted from inside it. What it isolates is the rest of the machine.
 
