@@ -214,8 +214,12 @@ content. Targets may be files or dirs and may not exist until `megh hydrate` run
 `files:` copies LOCAL files onto a box over SSH (on `megh ssh`/`hydrate`, mode
 0600) — rc files and **secret** files that must not live in a repo or image
 (`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
-connect); a `/mnt/work/` path persists. **Never copy a file with `RUNPOD_API_KEY`**
-(a box with it can manage your other boxes). Split of concerns: versioned dotfiles
+connect); a `/mnt/work/` path persists. **`files:` is the EVERY-BOX channel**, so a
+provider credential placed there is elevated on every box megh touches, cloud pods
+included, and silently. A box that is your control plane may hold one deliberately
+(C3 was relaxed 2026-09-12), but elevate it through a channel scoped to the boxes
+you mean — `providers.docker.mounts:` for local boxes, which the cloud backends
+never read — and keep it out of `box-envvars`. Split of concerns: versioned dotfiles
 -> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
 ## Profiles (`~/.megh/profiles/<name>/`)
