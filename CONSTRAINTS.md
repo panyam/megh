@@ -76,16 +76,24 @@ left in `entrypoint.sh` should be the shutdown `logout` in the SIGTERM trap; the
 must be no `tailscaled --tun` or `tailscale up`/`serve --bg` invocation there
 (matches in comments or `log "…"` strings don't count).
 
-## C3: megh never sends a provider credential to a box
+## C3: a provider credential reaches a box only by deliberate elevation
 
-A box with `RUNPOD_API_KEY` can terminate and launch your OTHER boxes, so nothing
-megh copies to a box may carry one. This is an invariant across every channel
-megh has, not a property of any one command:
+**Relaxed 2026-09-12.** This used to read "megh never sends a provider credential
+to a box" and treated a box holding one as a defect with no legitimate case. That
+assumed the control plane is a device you physically hold and every box is a work
+box. Development moved predominantly off the Mac, so the machine running `megh up`
+is now itself a box, and a rule that forbids the thing being done daily does not
+survive contact — it gets worked around, which is how the old `box-envvars` came
+to hold a live `RUNPOD_API_KEY` for months under a header claiming it held none.
+State the real rule instead.
+
+**What did not change: megh never sends one on its own.** Elevation is something
+you do deliberately, to one box, by a channel you name. It is never something
+megh infers, and no allowlist below is loosened:
 
 - `megh enable` forwards only `MEGH_`-prefixed environment (`meghEnv` in
   `cmd/enable.go`), never the ambient environment.
-- `files:` copies only what `megh.yaml` names, which is why the pattern is a
-  scoped `~/personal/box-envvars` rather than the real `~/personal/envvars`.
+- `files:` copies only what `megh.yaml` names.
 - `box_envs:` is an explicit opt-in list, never a wildcard.
 - **`providers.docker.mounts:` is the local backend's allowlist.** A bind mount is
   a fourth channel to a box, and a wider one than the other three: it exposes a
@@ -94,28 +102,82 @@ megh has, not a property of any one command:
   ambient environment, the working directory, or what happens to exist next to a
   mounted path.
 
-New code that ships environment, files, scripts, or MOUNTS to a box passes an
-allowlist, never the caller's whole environment or filesystem.
+New code that ships environment, files, scripts, or MOUNTS to a box still passes
+an allowlist, never the caller's whole environment or filesystem.
 
-Two things the local backend makes concrete. `box-envvars` is the file that
-actually reaches a box, so its contents are the constraint, not its name: it held
-a live `RUNPOD_API_KEY` for months while its own header claimed it held no
-credentials, which is why the check below reads the file rather than trusting the
-comment. And mounting a whole directory is how a scoped copy quietly becomes an
-unscoped one, so a mount that would expose a secret is shadowed by a narrower
-mount over it rather than being allowed and documented.
+### What elevation means, and where it is safe
 
-**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
-(the mount allowlist and the credential deny list, both red-checked), and
+A credential on a box can terminate and launch every other box on the account.
+That cost does not go away; what changed is that it is now sometimes worth paying.
+The axis that decides it is **who owns the hardware**, not which command is being
+run:
+
+- **A local (docker) box runs on a machine you physically hold.** The credential
+  is already on that machine — the container is a boundary around the rest of your
+  filesystem, not around your secrets (CLAUDE.md: "a local box is not a security
+  sandbox"). Elevating it adds no party who could not already read the key. This
+  is the sanctioned case.
+- **A cloud box runs on someone else's hardware.** Elevating it exposes the
+  credential to the provider's host and to anyone who gets a shell on the pod,
+  and the blast radius is every box on the account. Sanctioned only with a
+  **restricted, read-only** provider key, and never with one that can launch or
+  terminate.
+
+`megh up` enforces the deliberateness rather than the policy: it refuses to spawn
+from a box unless the machine says otherwise (`refuseToSpawnFromABox` in
+`cmd/up.go`). Two ways to say it, and the difference is the point:
+
+- `--i-am-the-control-plane`, per launch. Too verbose to type by accident, which
+  is what makes it right for a one-off and wrong for the daily case: an escape
+  hatch retyped on every launch ends up in a shell alias, and then it is no
+  longer deliberate.
+- `MEGH_CONTROL_PLANE=1`, per machine, set where that box already gets its
+  provider credential. This is the one to prefer now that development runs on
+  boxes, because it makes "may spawn" and "holds the key" one declared property
+  of one machine instead of two unrelated facts.
+
+Only `1`, `true` and `yes` declare it. `0` and `false` do not, so a truthiness
+check written as "is it set" would be a bug, and a test pins both.
+
+**It must not go in `megh.yaml`,** which is installed on every box: that would
+elevate all of them at once. For the same reason it is denied to the box env.
+`MEGH_CONTROL_PLANE` carries the MEGH_ prefix `meghEnv` forwards, so left alone
+it would travel to every box `megh enable` touched and tell each one it may
+spawn — inverting the guard rather than opening it. This is C5's prefix trap in
+a variable that is not a credential: the prefix does not care why a setting is
+dangerous on a box. Hence `config.DeniedToBox`, which is the wider check both
+forwarding channels now use, with `IsControlPlaneSecret` left meaning exactly
+what C5 says it means.
+
+### The channel matters as much as the box
+
+`box-envvars` is the **every-box** channel: `files:` copies it to each box megh
+touches, cloud and local alike. A provider credential placed there is therefore
+elevated on every box, which is broader than any intent that motivated the
+elevation, and it is silent — nothing at launch says a pod just received it.
+
+Elevate through a channel scoped to the boxes meant to be elevated. For local
+boxes that is `providers.docker.mounts:`, which the cloud backends never read.
+Keep provider credentials out of `box-envvars`.
+
+**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey|TestRunArgsNeverSendsTheControlPlaneDeclaration'`
+(the mount allowlist and both deny lists, all red-checked), plus
+`go test ./cmd/ -run 'TestSpawnAllowed|TestMeghEnvNeverForwardsTheControlPlaneDeclaration'`
+— note `TestRefuseToSpawnFromABox` SKIPS when run on a box, which is precisely
+the machine it governs, so `TestSpawnAllowed` carries the decision as a pure
+function and is the one that actually runs there. Then
+`grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in `meghEnv`, and
 `grep -nE '^[[:space:]]*export[[:space:]]+(RUNPOD|VAST|LAMBDA)_API_KEY=' ~/personal/box-envvars`
-must return NOTHING. Then `grep -n 'MEGH_' cmd/enable.go` must show the prefix
-filter in `meghEnv`. The other `os.Environ()` uses in `cmd/` are NOT violations: they set
-the environment of a LOCAL child process (the ssh client in `sshexec.go`, the
-local bash in `doctorts.go --local`), and megh never configures ssh `SendEnv`, so
-the calling shell's environment is not forwarded to a box. Confirm that with
-`grep -rn 'SendEnv' cmd/ internal/`, which must return nothing. What must never
-happen is a provider key reaching a box through pod env (`box_envs`), a `files:`
-copy, or a script piped over SSH.
+must return NOTHING — not because a box may never hold the key, but because that
+file reaches boxes this constraint has not elevated. The other `os.Environ()` uses
+in `cmd/` are NOT violations: they set the environment of a LOCAL child process
+(the ssh client in `sshexec.go`, the local bash in `doctorts.go --local`), and megh
+never configures ssh `SendEnv`, so the calling shell's environment is not forwarded
+to a box. Confirm that with `grep -rn 'SendEnv' cmd/ internal/`, which must return
+nothing.
+
+Tailnet control-plane credentials are a separate and stricter case: they are
+denied by name regardless of elevation. See C5.
 
 ## C4: Every box service binds loopback
 
@@ -181,3 +243,54 @@ return nothing. The key may appear only in `internal/tsapi/`, `internal/config/`
 `cmd/`, the docs, and a TEST asserting it never travels: a deny-list test has to
 spell the name it denies, and excluding tests from the grep is what keeps that
 from reading as the violation it is the opposite of.
+
+## C6: a shared artifact never encodes one machine's paths
+
+A path that resolves on exactly one machine must not reach a file that more than
+one machine reads. The Mac is where this drift originates, and not because it is
+special: it is the only machine here that is never rebuilt. A box-specific
+assumption dies at the next `megh up`, loudly, within a day. A Mac-specific one
+is load-bearing for months, because nothing ever tears down the Mac to expose
+it. So every shared artifact slowly acquires the shape of the one machine that
+never gets rebuilt, and the box being disposable is what tests the config.
+
+This was five separate gotcha entries before it was one constraint. All five are
+the same failure:
+
+- `~/.zshrc` **set** `PATH` rather than appending, so a box got the Mac's list
+  (`/Users/<you>/.lmstudio/bin` on a Linux box is the tell). Fixed.
+- `~/personal`'s entries are absolute symlinks into the Mac's dotfiles checkout,
+  and the entrypoint REPLACES a dangling symlink rather than skipping it: read-only
+  the `ln` kills PID 1, read-write it rewrites the Mac's copy. Hence the
+  `/root/personal-mac` mount.
+- megh's own `repos:` entry is leafless "because that is where the Mac keeps it",
+  and gap-tracker's was not, so its skill resolved on a cloud box and nowhere else.
+- The dotfiles repo carried two git-tracked symlinks pointing at
+  `/Users/<user>/newstack/gap-tracker/...`, so the `gaps` skill and `/gap-track`
+  existed only on the Mac. That is what sent us looking.
+- The LM Studio installer appended a Mac path to `shared/zshrc` AND
+  `shared/bashrc`, which every box mounts.
+
+The rule is not "avoid absolute paths". A path may be absolute when it names
+something the box genuinely has (`/mnt/work`, `/usr/local/bin`, `/etc/megh`).
+The test is whether the path exists on every machine that reads the file. Use
+`$HOME`, a repo-relative path, `${CLAUDE_PLUGIN_ROOT}` in a Claude Code plugin,
+or derive it at run time.
+
+**Per-machine files are the escape hatch, and they must be named as such.** The
+dotfiles repo has `gmmac/` for the Mac and `box/` for boxes; an absolute path in
+`gmmac/` is correct by construction. `.machine-paths-allow` exempts that one
+directory and nothing else. A shared file needing a real home path is a `$HOME`
+fix, never a new exemption.
+
+**Verify:** `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` (fails on a
+tracked symlink that is absolute or escapes the repo, and on a per-user home path
+in tracked text). The dotfiles repo runs the same two rules as
+`shared/checks/no-machine-paths.sh` in CI, because that repo is mounted on every
+box and is where this drift lands first. Both spell the pattern they forbid, so
+each exempts itself — the trap this file's preamble describes.
+
+`-count=1` is not optional here. The tracked-file list comes from `git`, which
+Go's test cache cannot see through, so a stale `ok (cached)` is possible after
+adding a file. That is this file's preamble in a second costume: the gate was
+caching a pass while a planted absolute symlink sat in the index.

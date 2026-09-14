@@ -30,7 +30,8 @@ Run `megh` directly only after `source ~/personal/envvars`.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
-                                  # refuses to run ON a box (C3); --i-am-the-control-plane overrides
+                                  # refuses to run ON a box (C3); MEGH_CONTROL_PLANE=1 declares the
+                                  # machine (preferred), --i-am-the-control-plane is the one-off
                                   # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
@@ -130,7 +131,7 @@ Four things differ, and each is deliberate.
 
 **Never mount a directory whose entries are absolute host symlinks.** `~/personal`
 is one: `helper_functions`, `anchor_pr_files` and `completions` point into
-`/Users/.../dotfiles/shared`, which does not exist in a container. The entrypoint's
+`/Users/<you>/dotfiles/shared`, which does not exist in a container. The entrypoint's
 skip test is `[ -e "$link" ] && [ ! -L "$link" ]`, so it does NOT skip a symlink,
 it replaces it. Read-only the `ln` fails and kills PID 1; read-write it succeeds
 and rewrites the HOST's copy to point at `/mnt/work`. Mount such a tree at a path
@@ -225,8 +226,12 @@ content. Targets may be files or dirs and may not exist until `megh hydrate` run
 `files:` copies LOCAL files onto a box over SSH (on `megh ssh`/`hydrate`, mode
 0600) — rc files and **secret** files that must not live in a repo or image
 (`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
-connect); a `/mnt/work/` path persists. **Never copy a file with `RUNPOD_API_KEY`**
-(a box with it can manage your other boxes). Split of concerns: versioned dotfiles
+connect); a `/mnt/work/` path persists. **`files:` is the EVERY-BOX channel**, so a
+provider credential placed there is elevated on every box megh touches, cloud pods
+included, and silently. A box that is your control plane may hold one deliberately
+(C3 was relaxed 2026-09-12), but elevate it through a channel scoped to the boxes
+you mean — `providers.docker.mounts:` for local boxes, which the cloud backends
+never read — and keep it out of `box-envvars`. Split of concerns: versioned dotfiles
 -> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
 ## Profiles (`~/.megh/profiles/<name>/`)
@@ -360,7 +365,22 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
   starting. Testcontainers and `docker build` are impossible here. Full evidence
   and the native-services answer: `DESIGN.md`.
-- **The volume is NFS with root squashed: `chown` is denied for EVERY uid,
+- **The scratch volume is NFS or MooseFS depending on the TIER, and they do not
+  behave the same.** RunPod's volume-creation form has a "high performance"
+  checkbox: US-CA-2 forces it ON, US-IL-1 lets you leave it off. The REST API has
+  no tier field at all (create takes only `{name, size, dataCenterId}`, and
+  "high performance storage" appears nowhere but the BILLING schema), so megh
+  cannot express the choice and the volume has to be made in the console.
+  Measured 2026-09-13: high-perf is NFS (`10.100.232.10:/runpodfs/...`) at
+  ~$0.142/GB/month; standard is MooseFS (`mfs#us-il-1.runpod.net:9421`) at about
+  half that. Three differences that matter more than the price:
+  **`chown` WORKS on MooseFS** and does not on NFS, so the next bullet's
+  limitation is tier-specific rather than a property of "the volume";
+  `df` reports the whole MooseFS cluster (658 TB) rather than your quota, so it
+  cannot tell you how full your volume is; and identical data reports far larger
+  (`state/claude`: 6.3 MB on NFS, 188 MB on MooseFS) because of chunk
+  allocation, so `du` on MooseFS is not comparable to `du` on NFS.
+- **On the NFS (high-performance) tier, `chown` is denied for EVERY uid,
   including root.** Measured. Root cannot hand a directory to another user there.
   But the export PRESERVES the creating process's uid, so a directory created BY
   that user is owned by it and needs no chown. (This bit us: postgres was briefly
@@ -494,6 +514,16 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   the megh binary. The entrypoint runs it at boot (`megh doctor ts start
   --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
   repair never drift and `doctor ts` works on any box regardless of image age.
+- **A shared artifact never encodes one machine's paths — `CONSTRAINTS.md` C6.**
+  This is the single disease behind the PATH-clobbering `~/.zshrc`, the
+  `~/personal` absolute-symlink mount hazard, the leafless-vs-`/main` `repos:`
+  entries, and the dotfiles repo's two git-tracked symlinks into
+  `/Users/<user>/newstack/...` that made the `gaps` skill exist on the Mac only.
+  The Mac is where it originates because it is the only machine here that is
+  never rebuilt, so a Mac-specific assumption survives for months while a
+  box-specific one dies at the next `megh up`. Enforced mechanically:
+  `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` here, and
+  `shared/checks/no-machine-paths.sh` in CI on the dotfiles repo.
 - **The `megh-` prefix is internal only.** It marks RunPod pods (no tags there)
   but is never the tailnet hostname or a name the user types/sees. Route box
   names through `runpod.ShortName`/`Pod.DisplayName`, not raw `Pod.Name`. See
