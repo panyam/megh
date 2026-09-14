@@ -243,6 +243,13 @@ It holds a dedicated **box key** (one; SSH into VMs), N **GitHub identity keys**
 fall back to ambient). Keys are generated in-process via `oneauth/sshkeys`.
 Active profile: `--profile` > `$MEGH_PROFILE` > `~/.megh/current` > `default`.
 
+A profile is what makes a machine a control plane, so once development moved onto
+boxes a BOX needs one too: `megh profile create <n> && megh profile use <n>`, then
+`megh profile gh add <id> --register` (which needs `gh auth refresh -s
+admin:public_key` first — the default `gh` login lacks that scope). `~/.megh` is
+persisted so this survives rebuilds. Check the whole set with
+`megh doctor control-plane`.
+
 - **box key**: `megh ssh` connects with it; its pubkey is injected on `megh up`.
 - **gh keys**: forwarded via a **scoped ssh-agent** (only the profile's keys, so
   a corporate key in your normal agent never reaches a third-party VM). On the
@@ -515,6 +522,42 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   the megh binary. The entrypoint runs it at boot (`megh doctor ts start
   --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
   repair never drift and `doctor ts` works on any box regardless of image age.
+- **Making a box a control plane is a CHECKLIST, and `megh doctor control-plane`
+  is that checklist.** The Mac satisfies every prerequisite implicitly, by being
+  where everything was set up; a fresh box satisfies none, and each missing piece
+  surfaces far from its cause. Eight were found one at a time before the command
+  existed: the spawn guard, the provider key, a box key, a GitHub identity, the
+  `requires:` gate, no tailnet, no docker CLI, and a portal remote naming a
+  Mac-only ssh alias. Run it on any machine you expect to drive boxes; it exits
+  non-zero on a real blocker and only warns for reduced function.
+- **A profile's keys are per CONTROL MACHINE, not per box.** `megh profile gh add
+  <name>` mints a NEW keypair into `~/.megh/profiles/<p>/gh/`, and only its
+  PUBLIC half ever reaches a box (as `~/.ssh/gh-<name>.pub` plus a `Host gh-<name>`
+  stanza); the private half is offered through a throwaway scoped ssh-agent that
+  lives for the duration of one ssh call. So boxes need nothing persistent, but
+  every machine you run megh FROM needs its own identity registered with GitHub.
+  `~/.megh` is in `persist:` for exactly this: re-minting is not a re-login,
+  because each new key must be REGISTERED again and the old one lingers in your
+  GitHub account. Note `IdentityFile` points at the `.pub` — not a typo: it names
+  which key to offer so `IdentitiesOnly` can pin it while the private half stays home.
+- **`megh ssh` cannot run a command: it attaches tmux and takes no remote argv.**
+  `megh ssh box -- 'cmd'` fails with "accepts at most 1 arg(s)". For scripting,
+  ssh directly with the profile's box key
+  (`ssh -i "$(megh profile show | awk '/^dir:/{print $2}')/box.key" -p <port> root@<ip>`);
+  `megh list` prints the `ip:port`. This is what makes piping a tarball on or off
+  a volume awkward, and it is why the migration runbook in `WORKFLOW.md` uses raw ssh.
+- **"ssh: Could not resolve hostname \<box\>" means THIS machine is not on the
+  tailnet**, not that the box is broken. Any box without public SSH mapped is
+  dialled by its MagicDNS name, which only resolves for a tailnet member — so a
+  control machine with no Tailscale credential fails on a name that is perfectly
+  correct. `dial.preflight` now does the lookup first and says so; if you see the
+  raw ssh error again, something bypassed it.
+- **`megh up` never reads `GH_MEGH_TOKEN`, but `requires:` blocks on it.** The
+  RunPod path resolves the console-configured registry credential through the API
+  and passes `containerRegistryAuthId`; the token is only used by
+  `internal/registry/oci.go` for `megh registry ls`. So a launch can be gated on a
+  variable the launch does not use. Worth remembering before hunting for a
+  registry problem that is really a `requires.envs` entry.
 - **A shared artifact never encodes one machine's paths — `CONSTRAINTS.md` C6.**
   This is the single disease behind the PATH-clobbering `~/.zshrc`, the
   `~/personal` absolute-symlink mount hazard, the leafless-vs-`/main` `repos:`

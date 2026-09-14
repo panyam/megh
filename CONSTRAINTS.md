@@ -225,8 +225,14 @@ All three names begin with `MEGH_`, which is exactly the prefix `meghEnv` in
 variable means adding it to the list; the prefix rule makes leaking it the
 default, not the accident.
 
-**There is ONE deny list**, `config.IsControlPlaneSecret`, used by both
-`meghEnv` and the docker backend's box env. It started as a private map in
+**There is ONE deny check**, `config.DeniedToBox`, used by both `meghEnv` and
+the docker backend's box env. It is the union of two lists kept deliberately
+apart: `controlPlaneSecrets` (this constraint's tailnet credentials) and
+`boxDeniedEnv` (variables a box must not receive for reasons other than being a
+credential, currently `MEGH_CONTROL_PLANE`, whose forwarding would tell every box
+it may spawn boxes). Splitting them keeps THIS constraint's Verify, which greps
+for the tailnet names, meaning exactly what it says while still routing every
+forwarding channel through one check. The list started as a private map in
 `cmd/enable.go`; when the docker backend needed the same rule, copying it would
 have created two lists that could drift, and spelling the names inside
 `internal/providers/` would have tripped this constraint's own grep. It lives in
