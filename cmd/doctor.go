@@ -100,6 +100,9 @@ docker-build viability is still planned.)`,
 		}
 		pod = awaitSSHReady(ctx, prov, pod)
 		d := dialFor(pod)
+		if err := d.preflight(pod); err != nil {
+			return err
+		}
 		sshArgs := append(d.opts(), d.userHost(), "bash -s")
 		fmt.Fprintf(os.Stderr, "megh: probing %s\n", pod.DisplayName())
 		return runSSH(d.keyFor(cfg.SSHKeyFile), nil, sshArgs, bytes.NewReader([]byte(doctorScript)))
@@ -107,6 +110,7 @@ docker-build viability is still planned.)`,
 }
 
 func init() {
+	doctorCmd.AddCommand(doctorControlPlaneCmd)
 	doctorCmd.Flags().StringVar(&doctorProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	doctorCmd.Flags().BoolVar(&doctorLocal, "local", false, "run on the box itself instead of ssh-ing to one")
 	rootCmd.AddCommand(doctorCmd)

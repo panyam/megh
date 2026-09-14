@@ -40,6 +40,7 @@ megh browse [port]                # tunnel box web surfaces to localhost, print 
 megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
+megh doctor control-plane         # can THIS machine spawn/reach/hydrate boxes? (the checklist)
 megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
 megh doctor ts gc [name...]       # delete tailnet nodes whose box is gone (control plane; needs MEGH_TAILSCALE_API_KEY)
 megh storage list|create|rm       # network volumes, one global cross-provider view

@@ -117,6 +117,9 @@ second arg). Use --local when running on the box itself.`,
 			return err
 		}
 		d := dialFor(pod)
+		if err := d.preflight(pod); err != nil {
+			return err
+		}
 		sshArgs := append(d.opts(), d.userHost(), "bash -s")
 		fmt.Fprintf(os.Stderr, "megh: enabling %q on %s\n", name, pod.DisplayName())
 		return runSSH(d.keyFor(cfg.SSHKeyFile), nil, sshArgs, bytes.NewReader(script))
