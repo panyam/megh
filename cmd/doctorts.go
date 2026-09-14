@@ -105,6 +105,9 @@ targets the only box; --local runs on the box itself.`,
 			return err
 		}
 		d := dialFor(pod)
+		if err := d.preflight(pod); err != nil {
+			return err
+		}
 
 		// Pass the tailnet hostname (and, for setkey, the key) to the script via a
 		// stdin preamble, not the command line, so the key never lands in the box's

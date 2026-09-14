@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -54,6 +55,35 @@ func dialFor(pod *providers.Box) dial {
 }
 
 func (d dial) tailnet() bool { return d.port == 0 }
+
+// preflight explains an unreachable box BEFORE ssh does, because ssh's own
+// message names the symptom and not the cause.
+//
+// The tailnet path is taken whenever a box has no public SSH mapped, and it
+// assumes THIS machine is on the tailnet. When it is not -- a control machine
+// with no Tailscale credential, which is the normal state of a box that has just
+// started driving other boxes -- every command that dials fails with
+// "ssh: Could not resolve hostname <box>". That reads like the box is broken or
+// the name is wrong. Both are fine: the name is MagicDNS, and this machine is
+// not on the network that resolves it.
+//
+// A DNS lookup is the whole test, and it is honest either way: if MagicDNS
+// resolves, the tailnet path really is available.
+func (d dial) preflight(pod *providers.Box) error {
+	if !d.tailnet() {
+		return nil
+	}
+	if _, err := net.LookupHost(d.host); err == nil {
+		return nil
+	}
+	return fmt.Errorf(`cannot reach %s: it has no public SSH endpoint, and %q does not resolve.
+
+That name is MagicDNS, so it only resolves for a machine ON the tailnet. Either:
+  - this machine is not on the tailnet (check: megh doctor control-plane), or
+  - the box has not finished joining yet (Tailscale comes up 1-2 min after RUNNING), or
+  - the box was launched with expose_ssh: false and never joined (check: megh doctor ts logs %s)`,
+		pod.DisplayName(), d.host, pod.DisplayName())
+}
 
 func (d dial) userHost() string { return "root@" + d.host }
 

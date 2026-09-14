@@ -83,6 +83,9 @@ Credential-shaped files are excluded on the way out.`,
 		}
 		box := pod.DisplayName()
 		d := dialFor(pod)
+		if err := d.preflight(pod); err != nil {
+			return err
+		}
 
 		clone, err := sessionsClone(cfg.Sessions.Repo)
 		if err != nil {

@@ -50,12 +50,12 @@ func resolveInt(cmd *cobra.Command, flagName string, flagVal, cfgVal, def int) i
 
 // resolvePubKey reads the SSH public key: explicit flag/env value, else the
 // contents of the configured pubkey file (default ~/.ssh/id_ed25519.pub).
-func resolvePubKey(cmd *cobra.Command, flagVal, cfgFile string) string {
+func resolvePubKey(cmd *cobra.Command, flagVal, cfgFile string) (string, error) {
 	if cmd.Flags().Changed("pubkey") {
-		return flagVal
+		return flagVal, nil
 	}
 	if v := os.Getenv("MEGH_PUBKEY"); v != "" {
-		return v
+		return v, nil
 	}
 	path := cfgFile
 	if path == "" {
@@ -63,9 +63,25 @@ func resolvePubKey(cmd *cobra.Command, flagVal, cfgFile string) string {
 	}
 	b, err := os.ReadFile(config.ExpandPath(path))
 	if err != nil {
-		return ""
+		// This used to return "" and launch anyway. The pod then comes up with no
+		// key of yours in authorized_keys and nothing says so: `megh up` prints a
+		// normal summary, the box bills, and the failure surfaces minutes later as
+		// "Permission denied (publickey)" with no hint that the cause was a file
+		// missing HERE. It cost a pod and a rebuild before being understood.
+		//
+		// A control machine set up long ago has this file and never notices it is
+		// load-bearing, so the case only appears when megh runs somewhere new --
+		// which is exactly where it is hardest to diagnose.
+		return "", fmt.Errorf(`no SSH public key to inject, so the box would be unreachable.
+
+Tried: %s (%v)
+
+Give it one of:
+  megh profile create <name> && megh profile use <name>   (recommended; megh mints and injects a box key)
+  export MEGH_PUBKEY="$(cat ~/.ssh/some_key.pub)"
+  megh up --pubkey "$(cat ~/.ssh/some_key.pub)"`, path, err)
 	}
-	return strings.TrimSpace(string(b))
+	return strings.TrimSpace(string(b)), nil
 }
 
 var upCmd = &cobra.Command{
@@ -92,7 +108,10 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		upOpts.DataCenter = resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", p.DefaultDC, "")
 		upOpts.VolumeID = resolve(cmd, "volume", upOpts.VolumeID, "MEGH_VOLUME_ID", p.DefaultVolume, "")
 		upOpts.Image = resolve(cmd, "image", upOpts.Image, "MEGH_IMAGE", "", cfg.DefaultImage(upFlavor))
-		upOpts.PubKey = resolvePubKey(cmd, upOpts.PubKey, cfg.SSHPubKeyFile)
+		upOpts.PubKey, err = resolvePubKey(cmd, upOpts.PubKey, cfg.SSHPubKeyFile)
+		if err != nil {
+			return err
+		}
 		upOpts.VCPU = resolveInt(cmd, "vcpu", upOpts.VCPU, p.VCPU, 2)
 		upOpts.RAMGiB = resolveInt(cmd, "ram", upOpts.RAMGiB, p.RAM, 8)
 		upOpts.DiskGiB = resolveInt(cmd, "disk", upOpts.DiskGiB, p.Disk, 20)

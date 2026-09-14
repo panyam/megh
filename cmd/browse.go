@@ -91,6 +91,9 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 			return err
 		}
 		d := dialFor(pod)
+		if err := d.preflight(pod); err != nil {
+			return err
+		}
 		boxKey := d.keyFor(cfg.SSHKeyFile)
 
 		// Probe in BOTH cases. Naming a port used to skip this and forward blindly,

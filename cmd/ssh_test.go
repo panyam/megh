@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -140,6 +141,41 @@ func TestRefuseToSpawnFromABox(t *testing.T) {
 	defer func() { upFromBox = false }()
 	if err := refuseToSpawnFromABox(); err != nil {
 		t.Errorf("--i-am-the-control-plane should allow it: %v", err)
+	}
+}
+
+// A missing pubkey used to yield "" and launch anyway, producing a running,
+// billing pod with none of your keys in authorized_keys and no message saying so.
+// The failure then surfaced minutes later as "Permission denied (publickey)",
+// nowhere near its cause. With a profile active, root.go points SSHPubKeyFile at
+// the profile's box.key.pub, so the error must fire ONLY when there is really no
+// key to inject -- not on the working path.
+func TestResolvePubKeyFailsLoudlyWhenThereIsNoKey(t *testing.T) {
+	t.Setenv("MEGH_PUBKEY", "")
+	cmd := &cobra.Command{}
+	cmd.Flags().String("pubkey", "", "")
+
+	missing := filepath.Join(t.TempDir(), "nope.pub")
+	if _, err := resolvePubKey(cmd, "", missing); err == nil {
+		t.Error("a missing key file must be an error, not an empty string and a launch")
+	}
+
+	real := filepath.Join(t.TempDir(), "id.pub")
+	if err := os.WriteFile(real, []byte("ssh-ed25519 AAAAC3Nza test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := resolvePubKey(cmd, "", real)
+	if err != nil {
+		t.Errorf("an existing key file must resolve: %v", err)
+	}
+	if got != "ssh-ed25519 AAAAC3Nza test" {
+		t.Errorf("key not read/trimmed correctly: %q", got)
+	}
+
+	// MEGH_PUBKEY wins over a missing file, so setting it is a real escape hatch.
+	t.Setenv("MEGH_PUBKEY", "ssh-ed25519 AAAAfromenv env")
+	if got, err := resolvePubKey(cmd, "", missing); err != nil || got != "ssh-ed25519 AAAAfromenv env" {
+		t.Errorf("MEGH_PUBKEY should win: got %q, %v", got, err)
 	}
 }
 
