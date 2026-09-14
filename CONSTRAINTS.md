@@ -271,6 +271,17 @@ the same failure:
 - The LM Studio installer appended a Mac path to `shared/zshrc` AND
   `shared/bashrc`, which every box mounts.
 
+**A hostname can be machine-local too, and that is the same bug.** `megh.yaml`
+carried `portal.repo: git@panyam-github:panyam/dotfiles.git`. `panyam-github` is
+an `~/.ssh/config` Host alias defined only on the Mac (it keeps the personal
+GitHub account apart from an enterprise one there), so `megh portal` worked on
+the Mac and died on every box with "Could not resolve hostname panyam-github".
+Nothing about it is a path, and the first version of this constraint's check
+sailed straight past it. `aliasedURL` compounded it: that function rewrites
+`git@github.com:` to a per-identity alias and returns anything else untouched,
+so the alias form was passed through verbatim rather than corrected. A real host
+is a FQDN and has a dot; an SSH url whose host has none is an alias.
+
 The rule is not "avoid absolute paths". A path may be absolute when it names
 something the box genuinely has (`/mnt/work`, `/usr/local/bin`, `/etc/megh`).
 The test is whether the path exists on every machine that reads the file. Use
@@ -284,8 +295,11 @@ directory and nothing else. A shared file needing a real home path is a `$HOME`
 fix, never a new exemption.
 
 **Verify:** `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` (fails on a
-tracked symlink that is absolute or escapes the repo, and on a per-user home path
-in tracked text). The dotfiles repo runs the same two rules as
+tracked symlink that is absolute or escapes the repo, on a per-user home path in
+tracked text, and on an SSH url naming a dotless host). Rule 3 skips `_test.go`
+and the placeholder hosts documentation uses (`git@host:owner/repo`), because a
+parser test and a doc comment must both be able to spell the form they describe
+— the narrowing C5 prescribes, never dropping the check. The dotfiles repo runs the same two rules as
 `shared/checks/no-machine-paths.sh` in CI, because that repo is mounted on every
 box and is where this drift lands first. Both spell the pattern they forbid, so
 each exempts itself — the trap this file's preamble describes.
