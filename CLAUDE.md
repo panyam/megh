@@ -354,7 +354,22 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
   starting. Testcontainers and `docker build` are impossible here. Full evidence
   and the native-services answer: `DESIGN.md`.
-- **The volume is NFS with root squashed: `chown` is denied for EVERY uid,
+- **The scratch volume is NFS or MooseFS depending on the TIER, and they do not
+  behave the same.** RunPod's volume-creation form has a "high performance"
+  checkbox: US-CA-2 forces it ON, US-IL-1 lets you leave it off. The REST API has
+  no tier field at all (create takes only `{name, size, dataCenterId}`, and
+  "high performance storage" appears nowhere but the BILLING schema), so megh
+  cannot express the choice and the volume has to be made in the console.
+  Measured 2026-09-13: high-perf is NFS (`10.100.232.10:/runpodfs/...`) at
+  ~$0.142/GB/month; standard is MooseFS (`mfs#us-il-1.runpod.net:9421`) at about
+  half that. Three differences that matter more than the price:
+  **`chown` WORKS on MooseFS** and does not on NFS, so the next bullet's
+  limitation is tier-specific rather than a property of "the volume";
+  `df` reports the whole MooseFS cluster (658 TB) rather than your quota, so it
+  cannot tell you how full your volume is; and identical data reports far larger
+  (`state/claude`: 6.3 MB on NFS, 188 MB on MooseFS) because of chunk
+  allocation, so `du` on MooseFS is not comparable to `du` on NFS.
+- **On the NFS (high-performance) tier, `chown` is denied for EVERY uid,
   including root.** Measured. Root cannot hand a directory to another user there.
   But the export PRESERVES the creating process's uid, so a directory created BY
   that user is owned by it and needs no chown. (This bit us: postgres was briefly
