@@ -14,7 +14,7 @@ import (
 // them. The Mac satisfies all three implicitly, by being the machine everything
 // was set up on. A box satisfies none of them until each is arranged, and until
 // this command existed you learned the list only by failing through it one
-// prerequisite at a time -- eight of them, each surfacing as an unrelated-looking
+// prerequisite at a time -- seven of them, each surfacing as an unrelated-looking
 // error a long way from its cause (a pod nobody could SSH into, a clone that
 // could not resolve a host alias, a doctor probe against a name with no DNS).
 //
@@ -54,29 +54,30 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 	var out []cpCheck
 	add := func(c cpCheck) { out = append(out, c) }
 
-	// 1. May this machine spawn at all? (C3)
-	switch {
-	case !onABox:
-		add(cpCheck{"spawn", cpOK, "not a box; no elevation needed", ""})
-	case spawnAllowed(true, false, os.Getenv(controlPlaneEnv)):
-		add(cpCheck{"spawn", cpOK, "declared via " + controlPlaneEnv, ""})
-	default:
-		add(cpCheck{"spawn", cpFail, "this is a box and has not declared itself",
-			"export " + controlPlaneEnv + "=1 where this box gets its provider credential"})
-	}
-
-	// 2. The provider credential the spawn actually needs.
+	// 1. The provider credential. On a box this is the elevation ITSELF: holding
+	//    a launch-capable key is the whole of what makes a machine a control
+	//    plane (C3), so there is nothing further to declare. What decides whether
+	//    that was deliberate is the CHANNEL the key arrived by, which megh cannot
+	//    see from here -- an env var carries no provenance. Hence the fix line
+	//    names the scoped channel rather than "set this variable".
 	provName := cfg.DefaultProvider
 	if p, ok := cfg.Providers[provName]; ok && p.APIKeyEnv != "" {
-		if envSet(p.APIKeyEnv) {
+		switch {
+		case envSet(p.APIKeyEnv) && onABox:
+			add(cpCheck{"provider key", cpOK, p.APIKeyEnv + " is set; this box is elevated (C3)", ""})
+		case envSet(p.APIKeyEnv):
 			add(cpCheck{"provider key", cpOK, p.APIKeyEnv + " is set", ""})
-		} else {
+		case onABox:
+			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set; this box cannot launch",
+				"put " + p.APIKeyEnv + " in a channel scoped to the boxes you mean " +
+					"(providers.docker.mounts:), never box-envvars"})
+		default:
 			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set",
 				"add " + p.APIKeyEnv + " to this machine's environment"})
 		}
 	}
 
-	// 3. The box key. Without it `megh up` injects nothing and you get a running
+	// 2. The box key. Without it `megh up` injects nothing and you get a running
 	//    pod you cannot log into -- silently, which is how one was launched today.
 	switch {
 	case activeProfile != nil:
@@ -96,7 +97,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 		}
 	}
 
-	// 4. A GitHub identity, or hydrate clones nothing. Private keys stay here and
+	// 3. A GitHub identity, or hydrate clones nothing. Private keys stay here and
 	//    reach a box only through the scoped agent, so this is per machine.
 	switch {
 	case activeProfile == nil:
@@ -113,7 +114,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 		add(cpCheck{"github identity", cpOK, fmt.Sprintf("%v", activeProfile.GHKeyNames()), ""})
 	}
 
-	// 5. Whatever megh.yaml declares it needs before launching.
+	// 4. Whatever megh.yaml declares it needs before launching.
 	for _, e := range cfg.Requires.Envs {
 		if envSet(e) {
 			add(cpCheck{"requires " + e, cpOK, "set", ""})
@@ -123,7 +124,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 		}
 	}
 
-	// 6. Tailnet. A warn, never a fail: without it boxes still launch and megh
+	// 5. Tailnet. A warn, never a fail: without it boxes still launch and megh
 	//    still reaches them over public SSH. What you lose is name resolution, so
 	//    `megh doctor <box>` and the portal URLs stop working.
 	hasNode := envSet(cfg.Tailscale.AuthKeyEnv) || cfg.Tailscale.MintKeys
@@ -147,7 +148,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 			"scope the credential to tag:megh, or keep it off boxes entirely"})
 	}
 
-	// 7. The local backend is a control plane for itself and needs a docker CLI.
+	// 6. The local backend is a control plane for itself and needs a docker CLI.
 	if _, ok := cfg.Providers["docker"]; ok {
 		if _, err := exec.LookPath("docker"); err == nil {
 			add(cpCheck{"docker backend", cpOK, "docker on PATH", ""})

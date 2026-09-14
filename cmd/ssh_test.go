@@ -123,27 +123,6 @@ func TestValidTmuxSession(t *testing.T) {
 	}
 }
 
-// CONSTRAINTS C3. megh already refuses to SEND a provider credential to a box;
-// this covers the other half, where someone puts one there by hand and the
-// property quietly stops holding. The marker is written into the image, so its
-// presence is the signal.
-func TestRefuseToSpawnFromABox(t *testing.T) {
-	// On a laptop there is no marker, so up must proceed.
-	if _, err := os.Stat(boxMarker); err == nil {
-		t.Skip("running on a megh box; this test assumes a control machine")
-	}
-	upFromBox = false
-	if err := refuseToSpawnFromABox(); err != nil {
-		t.Errorf("should not refuse off a box: %v", err)
-	}
-	// The override exists so an intentionally elevated box still works.
-	upFromBox = true
-	defer func() { upFromBox = false }()
-	if err := refuseToSpawnFromABox(); err != nil {
-		t.Errorf("--i-am-the-control-plane should allow it: %v", err)
-	}
-}
-
 // A missing pubkey used to yield "" and launch anyway, producing a running,
 // billing pod with none of your keys in authorized_keys and no message saying so.
 // The failure then surfaced minutes later as "Permission denied (publickey)",
@@ -176,51 +155,6 @@ func TestResolvePubKeyFailsLoudlyWhenThereIsNoKey(t *testing.T) {
 	t.Setenv("MEGH_PUBKEY", "ssh-ed25519 AAAAfromenv env")
 	if got, err := resolvePubKey(cmd, "", missing); err != nil || got != "ssh-ed25519 AAAAfromenv env" {
 		t.Errorf("MEGH_PUBKEY should win: got %q, %v", got, err)
-	}
-}
-
-// spawnAllowed is the guard's whole decision, and unlike TestRefuseToSpawnFromABox
-// this runs everywhere -- including ON a box, which is the machine the rule
-// actually governs and the one that test has to skip.
-func TestSpawnAllowed(t *testing.T) {
-	cases := []struct {
-		name     string
-		onABox   bool
-		flag     bool
-		declared string
-		want     bool
-	}{
-		{"control machine, nothing set", false, false, "", true},
-		{"box, nothing set", true, false, "", false},
-		{"box, one-off flag", true, true, "", true},
-		{"box, declared 1", true, false, "1", true},
-		{"box, declared true", true, false, "TRUE", true},
-		{"box, declared yes", true, false, " yes ", true},
-		// "0" and "false" are the ones worth pinning: a truthiness check written
-		// as "is it set" would read either as a declaration and elevate the box.
-		{"box, declared 0", true, false, "0", false},
-		{"box, declared false", true, false, "false", false},
-		{"box, junk value", true, false, "maybe", false},
-	}
-	for _, c := range cases {
-		if got := spawnAllowed(c.onABox, c.flag, c.declared); got != c.want {
-			t.Errorf("%s: spawnAllowed(%v, %v, %q) = %v, want %v",
-				c.name, c.onABox, c.flag, c.declared, got, c.want)
-		}
-	}
-}
-
-// C3. MEGH_CONTROL_PLANE says "this machine may spawn boxes". Forwarded, it says
-// that to every box it reaches, which inverts the guard rather than opening it.
-func TestMeghEnvNeverForwardsTheControlPlaneDeclaration(t *testing.T) {
-	t.Setenv(controlPlaneEnv, "1")
-	t.Setenv("MEGH_ORDINARY", "carried")
-	out := string(meghEnv())
-	if strings.Contains(out, controlPlaneEnv) {
-		t.Errorf("%s must never reach a box; meghEnv produced:\n%s", controlPlaneEnv, out)
-	}
-	if !strings.Contains(out, "MEGH_ORDINARY") {
-		t.Errorf("ordinary MEGH_ vars should still be forwarded; got:\n%s", out)
 	}
 }
 

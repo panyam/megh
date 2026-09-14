@@ -39,7 +39,7 @@ func meghEnv() []byte {
 		if i < 0 || !strings.HasPrefix(kv, "MEGH_") {
 			continue
 		}
-		if config.DeniedToBox(kv[:i]) {
+		if config.IsControlPlaneSecret(kv[:i]) {
 			continue
 		}
 		k, v := kv[:i], kv[i+1:]

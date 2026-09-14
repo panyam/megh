@@ -30,8 +30,8 @@ Run `megh` directly only after `source ~/personal/envvars`.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
-                                  # refuses to run ON a box (C3); MEGH_CONTROL_PLANE=1 declares the
-                                  # machine (preferred), --i-am-the-control-plane is the one-off
+                                  # runs anywhere the provider key is: holding it IS being the
+                                  # control plane (C3), so there is nothing to declare
                                   # --provider docker runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
@@ -529,7 +529,13 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   existed: the spawn guard, the provider key, a box key, a GitHub identity, the
   `requires:` gate, no tailnet, no docker CLI, and a portal remote naming a
   Mac-only ssh alias. Run it on any machine you expect to drive boxes; it exits
-  non-zero on a real blocker and only warns for reduced function.
+  non-zero on a real blocker and only warns for reduced function. The spawn guard
+  is no longer one of them: **holding the provider key IS being the control
+  plane** (C3, simplified 2026-09-14), so `MEGH_CONTROL_PLANE` and
+  `--i-am-the-control-plane` are gone and the `provider key` row carries the whole
+  question. What scopes elevation is the CHANNEL the key arrives by —
+  `providers.docker.mounts:` reaches local boxes only, `box-envvars` reaches every
+  box megh touches, cloud pods included.
 - **A profile's keys are per CONTROL MACHINE, not per box.** `megh profile gh add
   <name>` mints a NEW keypair into `~/.megh/profiles/<p>/gh/`, and only its
   PUBLIC half ever reaches a box (as `~/.ssh/gh-<name>.pub` plus a `Host gh-<name>`
