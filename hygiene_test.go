@@ -21,6 +21,23 @@ const hygieneSelf = "hygiene_test.go"
 // file is the same bug.
 var perUserHome = regexp.MustCompile(`/(Users|home)/[a-zA-Z0-9._-]+/`)
 
+// A git SSH url whose host has no dot in it, e.g. "git@panyam-github:owner/repo".
+// That host is an ~/.ssh/config Host alias, so it resolves only on the machine
+// whose config defines it -- the same failure as an absolute path, spelled as a
+// hostname. A real host is a FQDN and has a dot, which the second pattern lets
+// through. This bit `megh portal`, which died on every box with "Could not
+// resolve hostname panyam-github" while working fine on the Mac.
+var sshHostAlias = regexp.MustCompile(`(^|[^A-Za-z0-9._-])[A-Za-z0-9._-]+@([A-Za-z0-9-]+):`)
+var sshRealHost = regexp.MustCompile(`[A-Za-z0-9._-]+@[A-Za-z0-9.-]*\.[A-Za-z0-9-]+:`)
+
+// Hosts that are obviously placeholders in documentation rather than a real
+// alias someone will try to resolve. Narrowing the pattern is the fix C5
+// prescribes for a check that trips on the prose describing it; dropping the
+// check is not.
+var docPlaceholderHost = map[string]bool{
+	"host": true, "hostname": true, "example": true, "alias": true, "HOST": true,
+}
+
 func gitLines(t *testing.T, args ...string) []string {
 	t.Helper()
 	out, err := exec.Command("git", args...).Output()
@@ -86,6 +103,20 @@ func TestNoMachineLocalPathsInTrackedFiles(t *testing.T) {
 		}
 		if m := perUserHome.Find(body); m != nil {
 			t.Errorf("%s carries a per-user home path (%q): use $HOME, a repo-relative path, or derive it at run time (C6)", path, m)
+		}
+		// A _test.go file may legitimately spell an alias as a FIXTURE -- the
+		// parser tests do exactly that -- so rule 3 skips tests, the same
+		// narrowing C5's Verify uses for the names it denies.
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		for _, line := range bytes.Split(body, []byte("\n")) {
+			m := sshHostAlias.FindSubmatch(line)
+			if m == nil || sshRealHost.Match(line) || docPlaceholderHost[string(m[2])] {
+				continue
+			}
+			t.Errorf("%s names the ssh host alias %q: it resolves only where that ~/.ssh/config lives; use a real hostname (C6)",
+				path, m[2])
 		}
 	}
 }
