@@ -128,6 +128,54 @@ curl -s -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" \
 The network volume and its `/mnt/work` contents survive. An ephemeral Tailscale
 node auto-leaves the tailnet. A rebuilt box hydrates from git + the volume.
 
+## Moving to another volume (tier change, resize, DC change)
+
+A volume cannot be shrunk (`/networkvolumes/{id}/update` requires a size GREATER
+than the current one) and its tier cannot be changed, so both mean a new volume.
+Neither is as big a job as it looks: **almost nothing on a volume is
+irreplaceable.** Measured on a real migration, 4.3 GB of volume held ~3 MB that
+mattered.
+
+- `state/` minus `state/lgtm` — credentials and tool state. THE thing to copy.
+- `repos/` — git clones; `megh hydrate` rebuilds them. Do not copy.
+- `cache/`, `state/lgtm` — rebuildable caches. Do not copy.
+
+So the migration is "copy 3 MB and re-hydrate", not "move 100 GB".
+
+A pod mounts one network volume, so the copy goes old box -> control machine ->
+new box. `megh ssh` attaches tmux and takes no remote command, so use raw ssh:
+
+```sh
+KEY="$(megh profile show | awk '/^dir:/{print $2}')/box.key"
+boxssh() { EP=$(megh list | awk -v n="$1" '$1==n{print $NF}'); shift; \
+  ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -p "${EP##*:}" "root@${EP%%:*}" "$@"; }
+
+megh up migold --volume <OLD> --dc <DC>
+boxssh migold 'cd /mnt/work && tar czf - --exclude=state/lgtm -p state' > ~/megh-state.tgz
+tar tzf ~/megh-state.tgz | grep credentials.json      # prove it is not empty
+megh down migold -y
+
+megh up mignew --volume <NEW> --dc <DC>
+boxssh mignew 'cd /mnt/work && tar xzf - -p' < ~/megh-state.tgz
+boxssh mignew 'for p in ~/.claude ~/.claude.json ~/.codex ~/.config/gh ~/.gitconfig; do \
+  printf "%-18s %s\n" "$p" "$([ -e "$p" ] && echo OK || echo BROKEN)"; done'
+```
+
+All five must say OK before deleting the old volume, which is the only step that
+cannot be undone. Then `megh storage rm <OLD>` and update `default_volume` in
+**all three** `megh.yaml` copies.
+
+Two things to check FIRST, both cheap and both able to sink the plan:
+
+- **Scan for uncommitted work**, the only thing `hydrate` cannot rebuild:
+  `for g in $(find /mnt/work/repos -maxdepth 5 -name .git -type d); do r=$(dirname $g); \
+  echo "$r $(git -C $r status --porcelain | wc -l) $(git -C $r log --branches --not --remotes --oneline | wc -l)"; done`
+  Read the result carefully: a repo showing hundreds of "deleted" files may just
+  have a broken index whose on-disk content is identical to HEAD, which a
+  re-clone fixes. Compare a sample against `git show HEAD:<path>` before worrying.
+- **Probe the new DC** if it differs: `megh regions probe --dc <DC> -y`. Storage
+  and CPU must coexist in one DC and a defined flavor is not a rentable one.
+
 ## Lessons captured
 
 - Trust the live API over the docs; the RunPod REST schema differed on nearly
