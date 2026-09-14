@@ -14,7 +14,15 @@ import (
 // C6: a path that resolves on exactly one machine must not reach a file that
 // more than one machine reads. Both halves of this test spell the pattern they
 // forbid, so both exempt this file — the preamble trap in CONSTRAINTS.md.
-const hygieneSelf = "hygiene_test.go"
+// Files that DESCRIBE these rules and therefore have to spell the forms they
+// forbid: this test, and the constraint doc that explains why each is a bug.
+// Exempting them is the narrowing C5 prescribes; the alternative is prose that
+// cannot name its own example, which makes the constraint harder to understand
+// than the check is to satisfy.
+var selfDocumenting = map[string]bool{
+	"hygiene_test.go": true,
+	"CONSTRAINTS.md":  true,
+}
 
 // A per-user home directory. Deliberately not anchored to one OS: /Users/<name>
 // is the Mac, /home/<name> a Linux box or CI runner, and either one in a tracked
@@ -91,7 +99,7 @@ func TestNoMachineLocalPathsInTrackedFiles(t *testing.T) {
 
 	// The same rule spelled out in text rather than in a link.
 	for _, path := range gitLines(t, "ls-files") {
-		if path == hygieneSelf {
+		if selfDocumenting[path] {
 			continue
 		}
 		body, err := os.ReadFile(path)
