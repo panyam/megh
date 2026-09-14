@@ -87,27 +87,6 @@ func TestRunArgsPublishesOnlyLoopbackSSH(t *testing.T) {
 // absent rather than empty: an empty value is still "set" to the shell and would
 // take the bring-up branch with no key. The control-plane credentials are a
 // separate matter and must never reach any box on any backend.
-// C3. The docker backend is the second channel that forwards MEGH_* env, so the
-// control-plane declaration has to be withheld here too. A local box is the one
-// most likely to have it set in the ambient environment, since the machine
-// running megh IS the host.
-func TestRunArgsNeverSendsTheControlPlaneDeclaration(t *testing.T) {
-	args := argvOf(t, settings{}, providers.Options{
-		Name: "local1",
-		ExtraEnv: map[string]string{
-			"MEGH_CONTROL_PLANE": "1",
-			"MEGH_ORDINARY":      "legitimate",
-		},
-	})
-	got := joined(args)
-	if strings.Contains(got, "MEGH_CONTROL_PLANE") {
-		t.Errorf("argv carries MEGH_CONTROL_PLANE; forwarding it would elevate every box it reaches:\n%s", got)
-	}
-	if !strings.Contains(got, "MEGH_ORDINARY") {
-		t.Errorf("ordinary MEGH_ vars should still travel; argv:\n%s", got)
-	}
-}
-
 func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
 	args := argvOf(t, settings{}, providers.Options{
 		Name:      "local1",

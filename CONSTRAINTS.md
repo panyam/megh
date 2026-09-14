@@ -87,6 +87,25 @@ survive contact — it gets worked around, which is how the old `box-envvars` ca
 to hold a live `RUNPOD_API_KEY` for months under a header claiming it held none.
 State the real rule instead.
 
+**Simplified 2026-09-14.** The relaxation left behind a second signal,
+`MEGH_CONTROL_PLANE`, plus a `--i-am-the-control-plane` flag and a `megh up`
+guard that refused to launch without one of them. Both are gone. **Holding a
+launch-capable provider credential IS being the control plane** — there is
+nothing further to declare, and a machine that has the key but has not said so
+was never a state worth distinguishing.
+
+The declaration existed because the key was in the every-box channel: with
+`RUNPOD_API_KEY` in `box-envvars`, every box held it, so "holds the key" proved
+nothing about intent and a separate, non-propagating variable had to carry the
+intent instead. That is a workaround for a misplaced credential, not a control.
+Fix the channel and it has no work left to do. What decides elevation is the
+channel the key arrives by, which is the rest of this constraint.
+
+The cost of dropping it is real and worth stating: nothing in the code now stops
+a box that holds the key from launching boxes. That was always true of the key
+itself — the guard only ever caught the case where the key was already somewhere
+it should not have been.
+
 **What did not change: megh never sends one on its own.** Elevation is something
 you do deliberately, to one box, by a channel you name. It is never something
 megh infers, and no allowlist below is loosened:
@@ -123,31 +142,16 @@ run:
   **restricted, read-only** provider key, and never with one that can launch or
   terminate.
 
-`megh up` enforces the deliberateness rather than the policy: it refuses to spawn
-from a box unless the machine says otherwise (`refuseToSpawnFromABox` in
-`cmd/up.go`). Two ways to say it, and the difference is the point:
+`megh up` no longer asks. It launches if the provider credential is there and
+fails with the provider's own "unauthorized" if it is not, which is the same
+answer a laptop gets and needs no megh-specific concept. The enforcement lives
+entirely in the channels below: a box you did not elevate has no key, so it
+cannot spawn, and nothing had to be declared for that to be true.
 
-- `--i-am-the-control-plane`, per launch. Too verbose to type by accident, which
-  is what makes it right for a one-off and wrong for the daily case: an escape
-  hatch retyped on every launch ends up in a shell alias, and then it is no
-  longer deliberate.
-- `MEGH_CONTROL_PLANE=1`, per machine, set where that box already gets its
-  provider credential. This is the one to prefer now that development runs on
-  boxes, because it makes "may spawn" and "holds the key" one declared property
-  of one machine instead of two unrelated facts.
-
-Only `1`, `true` and `yes` declare it. `0` and `false` do not, so a truthiness
-check written as "is it set" would be a bug, and a test pins both.
-
-**It must not go in `megh.yaml`,** which is installed on every box: that would
-elevate all of them at once. For the same reason it is denied to the box env.
-`MEGH_CONTROL_PLANE` carries the MEGH_ prefix `meghEnv` forwards, so left alone
-it would travel to every box `megh enable` touched and tell each one it may
-spawn — inverting the guard rather than opening it. This is C5's prefix trap in
-a variable that is not a credential: the prefix does not care why a setting is
-dangerous on a box. Hence `config.DeniedToBox`, which is the wider check both
-forwarding channels now use, with `IsControlPlaneSecret` left meaning exactly
-what C5 says it means.
+`megh doctor control-plane` reports the elevation rather than gating it. On a box
+with the key set, the `provider key` row reads "this box is elevated (C3)"; with
+it unset, the fix line names the scoped channel instead of telling you to export
+something.
 
 ### The channel matters as much as the box
 
@@ -160,16 +164,14 @@ Elevate through a channel scoped to the boxes meant to be elevated. For local
 boxes that is `providers.docker.mounts:`, which the cloud backends never read.
 Keep provider credentials out of `box-envvars`.
 
-**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey|TestRunArgsNeverSendsTheControlPlaneDeclaration'`
-(the mount allowlist and both deny lists, all red-checked), plus
-`go test ./cmd/ -run 'TestSpawnAllowed|TestMeghEnvNeverForwardsTheControlPlaneDeclaration'`
-— note `TestRefuseToSpawnFromABox` SKIPS when run on a box, which is precisely
-the machine it governs, so `TestSpawnAllowed` carries the decision as a pure
-function and is the one that actually runs there. Then
+**Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
+(the mount allowlist and the deny list, both red-checked). Then
 `grep -n 'MEGH_' cmd/enable.go` must show the prefix filter in `meghEnv`, and
 `grep -nE '^[[:space:]]*export[[:space:]]+(RUNPOD|VAST|LAMBDA)_API_KEY=' ~/personal/box-envvars`
 must return NOTHING — not because a box may never hold the key, but because that
-file reaches boxes this constraint has not elevated. The other `os.Environ()` uses
+file reaches boxes this constraint has not elevated. **That grep is now the whole
+enforcement**, not a supplement to a code guard, so it is the one to run when a
+box turns out to be able to spawn and should not. The other `os.Environ()` uses
 in `cmd/` are NOT violations: they set the environment of a LOCAL child process
 (the ssh client in `sshexec.go`, the local bash in `doctorts.go --local`), and megh
 never configures ssh `SendEnv`, so the calling shell's environment is not forwarded
@@ -225,14 +227,14 @@ All three names begin with `MEGH_`, which is exactly the prefix `meghEnv` in
 variable means adding it to the list; the prefix rule makes leaking it the
 default, not the accident.
 
-**There is ONE deny check**, `config.DeniedToBox`, used by both `meghEnv` and
-the docker backend's box env. It is the union of two lists kept deliberately
-apart: `controlPlaneSecrets` (this constraint's tailnet credentials) and
-`boxDeniedEnv` (variables a box must not receive for reasons other than being a
-credential, currently `MEGH_CONTROL_PLANE`, whose forwarding would tell every box
-it may spawn boxes). Splitting them keeps THIS constraint's Verify, which greps
-for the tailnet names, meaning exactly what it says while still routing every
-forwarding channel through one check. The list started as a private map in
+**There is ONE deny check**, `config.IsControlPlaneSecret`, used by both
+`meghEnv` and the docker backend's box env. It was briefly the union of two
+lists, `controlPlaneSecrets` plus a `boxDeniedEnv` holding `MEGH_CONTROL_PLANE`;
+that variable is gone (C3, simplified 2026-09-14) and the union collapsed back to
+this constraint's tailnet credentials alone. If a future variable needs denying
+for a reason other than being a credential, split the lists again rather than
+widening this one — THIS constraint's Verify greps for the tailnet names and
+should keep meaning exactly what it says. The list started as a private map in
 `cmd/enable.go`; when the docker backend needed the same rule, copying it would
 have created two lists that could drift, and spelling the names inside
 `internal/providers/` would have tripped this constraint's own grep. It lives in
