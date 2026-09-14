@@ -81,6 +81,26 @@ var controlPlaneSecrets = map[string]bool{
 // control-plane credential, which must never be sent to a box.
 func IsControlPlaneSecret(name string) bool { return controlPlaneSecrets[name] }
 
+// boxDeniedEnv are MEGH_* variables a box must not receive for reasons OTHER
+// than being a credential. They are kept apart from controlPlaneSecrets so C5's
+// Verify, which greps for the tailnet key names, keeps meaning exactly what it
+// says.
+//
+// MEGH_CONTROL_PLANE declares "this machine may spawn boxes". Forwarded, it
+// would say that to every box it reached, which inverts the guard it exists to
+// open: one deliberately elevated machine would silently elevate all of them.
+// This is the MEGH_-prefix trap C5 already describes, in a variable that is not
+// a secret -- the prefix that carries a setting to a box does not care why the
+// setting is dangerous there.
+var boxDeniedEnv = map[string]bool{
+	"MEGH_CONTROL_PLANE": true,
+}
+
+// DeniedToBox reports whether a MEGH_* variable must be withheld from a box,
+// for any reason. Every channel that forwards environment uses this, not the
+// narrower credential check.
+func DeniedToBox(name string) bool { return controlPlaneSecrets[name] || boxDeniedEnv[name] }
+
 // PublicSSH reports whether public break-glass SSH (22/tcp) is exposed. Default
 // true; set expose_ssh: false to run tailnet-only (zero public ports).
 func (p Provider) PublicSSH() bool { return p.ExposeSSH == nil || *p.ExposeSSH }
