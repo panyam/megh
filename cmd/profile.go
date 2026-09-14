@@ -173,7 +173,7 @@ var profileGHListCmd = &cobra.Command{
 
 func init() {
 	profileGHAddCmd.Flags().BoolVar(&ghRegister, "register", false,
-		"also upload the pubkey to the GitHub account `gh` is logged in as")
+		"also upload the pubkey to the GitHub account the gh CLI is logged in as")
 	profileGHCmd.AddCommand(profileGHAddCmd, profileGHListCmd)
 	profileCmd.AddCommand(profileCreateCmd, profileUseCmd, profileListCmd, profileShowCmd, profileGHCmd)
 	rootCmd.AddCommand(profileCmd)
