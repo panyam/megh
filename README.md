@@ -23,17 +23,28 @@ box costs minutes, not work.
   migrate. On the local backend it is a host directory, so the same layout is a
   path you can open in an editor.
 - **Canonical state** is git: your code in its own repos, agent transcripts
-  pushed to a `megh-sessions` repo by a timer on the box. That is the only layer
+  pulled off a box by `megh sessions collect` and pushed from the control
+  machine, so nothing on a box can write your history. That is the only layer
   that crosses providers.
-- **Reachability** is two paths, both load-bearing. Public SSH on 22/tcp with key
-  auth is how the laptop drives a box (`ssh`, `browse`, `hydrate`, `doctor`).
-  Tailscale, in userspace mode with `tailscale serve`, is how a phone or tablet
-  reaches one. Web surfaces bind to loopback and are never published to RunPod's
-  open proxy.
+- **Reachability** is two paths, and both are required. Public SSH on 22/tcp
+  with key auth is how the laptop drives a box (`ssh`, `browse`, `hydrate`,
+  `doctor`). Tailscale, in userspace mode with `tailscale serve`, is how a phone
+  or tablet reaches one. Web surfaces bind to loopback and are never published
+  to RunPod's open proxy.
 
 Boxes ship a web shell (ttyd plus tmux) and a browser-based terminal. A headed
 browser display (noVNC), Playwright, code-server, an observability stack,
 postgres, and redis are added per box with `megh enable`.
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | sh
+```
+
+Picks the right build for the machine (including Android/Termux, which needs a
+PIE binary a plain `linux/arm64` build cannot give it), verifies the checksum,
+and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 
 ## A box on your own machine
 
@@ -50,8 +61,8 @@ tailnet, because over loopback there is nothing a tailnet would add. Its tool
 logins live on the work dir, separately from the host's own `~/.claude`, so one
 `claude login` survives rebuilds without touching yours.
 
-It is not a security sandbox. Anything mounted read-write can be deleted from
-inside it. What it isolates is the rest of the machine.
+It is not a security sandbox. An agent in the box can delete anything mounted
+read-write. What it isolates is the rest of the machine.
 
 Mounts are declared in `providers.docker.mounts` and are the only bind mounts
 megh passes. `megh.yaml.example` documents the shape, including the one mount
@@ -60,28 +71,22 @@ that will not work: a directory whose entries are absolute host symlinks.
 ## Commands
 
 `megh up` / `list` / `ssh` / `browse` / `down` are the daily loop. Beyond those:
-`enable` adds a feature to a box, `doctor` probes health and repairs Tailscale,
-`storage` manages volumes, `regions` finds a datacenter that will actually rent
-the box you want (RunPod only; a local box has one place to run), `hydrate`
-clones repos onto a volume, `profile` holds
-per-context SSH and GitHub identities, and `portal` publishes a bookmarkable
-index of boxes and URLs. `megh config` shows resolved settings and which secrets
-are set, never their values.
+
+| Command | What it does |
+| --- | --- |
+| `enable` | adds a feature to a box |
+| `doctor` | probes health and repairs Tailscale |
+| `storage` | manages volumes |
+| `regions` | finds a datacenter that will actually rent the box you want (RunPod only; a local box has one place to run) |
+| `hydrate` | clones repos onto a volume |
+| `profile` | holds per-context SSH and GitHub identities |
+| `portal` | publishes a bookmarkable index of boxes and URLs |
+| `config` | shows resolved settings and which secrets are set, never their values |
 
 Settings and pointers to secrets (env-var names) live in `megh.yaml`. Only
 `megh.yaml.example` is tracked here: a real one names every repo you work on, so
 it belongs in your own private config repo. Secret values live in the
 environment and never in either.
-
-## Install
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | sh
-```
-
-Picks the right build for the machine (including Android/Termux, which needs a
-PIE binary a plain `linux/arm64` build cannot give it), verifies the checksum,
-and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 
 ## Start here
 
