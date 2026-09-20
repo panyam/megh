@@ -32,19 +32,51 @@ import (
 var (
 	meshProvider string
 	meshAuthKey  string
+	meshLocal    bool
 )
 
+// meshHelperAction maps a `megh mesh` verb to the ts-up.sh action behind it.
+//
+// `join` covers what used to be two commands. `doctor ts start` and `doctor ts
+// setkey` both ran the script's `up`, differing only in whether a fresh key was
+// injected, so they were one action wearing two names: `megh mesh join` reuses
+// the box's stored auth, and `--authkey` (or a minted key) re-keys it.
+func meshHelperAction(verb string) (string, error) {
+	switch verb {
+	case "join":
+		return "up", nil
+	case "status":
+		return "status", nil
+	case "logs":
+		return "logs", nil
+	case "restart":
+		return "restart", nil
+	}
+	return "", fmt.Errorf("no bring-up action for %q", verb)
+}
+
 var meshCmd = &cobra.Command{
-	Use:   "mesh <join|leave|ls>",
-	Short: "Put a box on the overlay network, take it off, or see who is on",
+	Use:   "mesh <join|leave|ls|status|logs|restart|gc>",
+	Short: "Everything about a box's membership in the overlay network",
 	Long: `Manage a box's membership in the mesh named by providers.<name>.mesh.
 
-  join   bring the box up on the mesh and serve its surfaces there
-  leave  log the box out; an ephemeral node disappears with it
-  ls     every box, whether it is on, its node address and served ports
+  join     bring the box up on the mesh and serve its surfaces there;
+           --authkey (or a minted key) re-keys a box whose key went stale
+  leave    log the box out; an ephemeral node disappears with it
+  ls       every box, whether it is on, its node address and served ports
+  status   what the box's own daemon reports
+  logs     the bring-up log, the daemon log and status (what failed)
+  restart  bounce the daemon, then bring it back up
+  gc       delete nodes left behind by boxes that no longer exist
+           (acts on the control plane, not on a box; see megh mesh gc -h)
 
 A box on the mesh is reachable from any device on it, which an SSH tunnel
-(megh browse) never is: a tunnel only reaches the machine that opened it.`,
+(megh browse) never is: a tunnel only reaches the machine that opened it.
+
+These verbs used to live under "megh doctor ts", which grouped them by vendor
+and put a routine step (join this box) behind a word that means repair. Health
+probes stay where they were: "megh doctor <box>" for a box, and
+"megh doctor control-plane" for this machine.`,
 }
 
 // meshOn resolves the provider and refuses early when it has no mesh, naming the
@@ -61,31 +93,6 @@ func meshOn(cmd *cobra.Command) (providers.Provider, providers.Mesh, error) {
 			prov.Name(), prov.Name(), providers.MeshTailscale)
 	}
 	return prov, m, nil
-}
-
-var meshJoinCmd = &cobra.Command{
-	Use:   "join [box]",
-	Short: "Bring a box up on the mesh (mints a key, serves its surfaces)",
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, _, err := meshOn(cmd)
-		if err != nil {
-			return err
-		}
-		ctx := context.Background()
-		pod, err := providers.FindOrSole(ctx, prov, args)
-		if err != nil {
-			return err
-		}
-		pod = awaitSSHReady(ctx, prov, pod)
-		d := dialFor(pod)
-		if err := d.preflight(pod); err != nil {
-			return err
-		}
-		key := meshJoinKey(ctx, pod.DisplayName())
-		fmt.Fprintf(os.Stderr, "megh: joining %s\n", pod.DisplayName())
-		return tsBringUp(d, pod.DisplayName(), key, "up")
-	},
 }
 
 // meshJoinKey resolves the node key to hand the box: --authkey, else one minted
@@ -208,6 +215,62 @@ func parseMeshProbe(out string) meshState {
 	return s
 }
 
+// meshBoxCmd builds a subcommand that runs one bring-up action against a box.
+// The verbs differ only in the action and in whether they offer a key, so they
+// are one function rather than four near-copies.
+func meshBoxCmd(verb, short string, withKey bool) *cobra.Command {
+	c := &cobra.Command{
+		Use:   verb + " [box]",
+		Short: short,
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			action, err := meshHelperAction(verb)
+			if err != nil {
+				return err
+			}
+			// --local is how the entrypoint brings a box up on its own boot: no
+			// provider, no SSH, no config to consult. It deliberately skips the
+			// mesh-configured check, because a box's baked megh.yaml knows nothing
+			// about the control machine's settings.
+			if meshLocal {
+				key := meshAuthKey
+				if key == "" {
+					key = os.Getenv("TS_AUTHKEY")
+				}
+				return tsBringUpLocal(action, key)
+			}
+			prov, _, err := meshOn(cmd)
+			if err != nil {
+				return err
+			}
+			ctx := context.Background()
+			pod, err := providers.FindOrSole(ctx, prov, args)
+			if err != nil {
+				return err
+			}
+			if withKey {
+				pod = awaitSSHReady(ctx, prov, pod)
+			}
+			d := dialFor(pod)
+			if err := d.preflight(pod); err != nil {
+				return err
+			}
+			key := ""
+			if withKey {
+				key = meshJoinKey(ctx, pod.DisplayName())
+			}
+			fmt.Fprintf(os.Stderr, "megh: mesh %s on %s\n", verb, pod.DisplayName())
+			return tsBringUp(d, pod.DisplayName(), key, action)
+		},
+	}
+	c.Flags().StringVar(&meshProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	if withKey {
+		c.Flags().StringVar(&meshAuthKey, "authkey", "", "node key to join with (default: minted, else $TS_AUTHKEY)")
+		c.Flags().BoolVar(&meshLocal, "local", false, "run on the box itself instead of ssh-ing to one")
+	}
+	return c
+}
+
 var meshLsCmd = &cobra.Command{
 	Use:   "ls",
 	Short: "Show which boxes are on the mesh, with their node address and ports",
@@ -258,10 +321,16 @@ var meshLsCmd = &cobra.Command{
 }
 
 func init() {
-	for _, c := range []*cobra.Command{meshJoinCmd, meshLeaveCmd, meshLsCmd} {
+	for _, c := range []*cobra.Command{meshLeaveCmd, meshLsCmd} {
 		c.Flags().StringVar(&meshProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 		meshCmd.AddCommand(c)
 	}
-	meshJoinCmd.Flags().StringVar(&meshAuthKey, "authkey", "", "node key to join with (default: minted, else $TS_AUTHKEY)")
+	meshCmd.AddCommand(
+		meshBoxCmd("join", "Bring a box up on the mesh, or re-key one whose key went stale", true),
+		meshBoxCmd("status", "What the box's own daemon reports", false),
+		meshBoxCmd("logs", "The bring-up log, the daemon log and status (what failed)", false),
+		meshBoxCmd("restart", "Bounce the daemon, then bring it back up", false),
+		newTSGCCmd(),
+	)
 	rootCmd.AddCommand(meshCmd)
 }

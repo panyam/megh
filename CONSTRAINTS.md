@@ -60,16 +60,20 @@ user-facing display or tailnet address, which use `DisplayName()`.
 The logic to bring a box onto the tailnet (start `tailscaled` in userspace, run
 `tailscale up`, and `tailscale serve` the surfaces) lives ONLY in
 `internal/tsops/ts-up.sh`, embedded in the megh binary. The entrypoint must not
-re-implement it inline; it runs the helper via `megh doctor ts start --local`.
-`megh doctor ts` pipes the same embedded bytes over SSH. This keeps boot and
-repair identical and lets `doctor ts` work on boxes built from older images
-(the script rides in the CLI, not the box).
+re-implement it inline; it runs the helper via `megh mesh join --local`.
+`megh mesh join|status|logs|restart` pipes the same embedded bytes over SSH.
+This keeps boot and repair identical and lets those verbs work on boxes built
+from older images (the script rides in the CLI, not the box).
+
+The command moved (it was `megh doctor ts start --local` until 2026-09-20) and
+may move again; what this constraint fixes is that ONE copy of the logic exists
+and both paths run it, not what the copy is called.
 
 New tailscale bring-up or serve logic goes in `ts-up.sh`, not in `entrypoint.sh`
 or a Go string literal.
 
-**Verify:** `grep -q 'megh doctor ts start --local' env/base/entrypoint.sh` (the
-entrypoint delegates) and `grep -qE 'tailscale.*\bup\b' internal/tsops/ts-up.sh &&
+**Verify:** `go test ./ -run TestEntrypointDelegatesBringUpToTheMeshCommand` (the
+entrypoint delegates rather than reimplementing) and `grep -qE 'tailscale.*\bup\b' internal/tsops/ts-up.sh &&
 grep -q 'serve --bg' internal/tsops/ts-up.sh` (the helper is where bring-up +
 serve live; serve goes through the `ts` wrapper). The only bare `tailscale` call
 left in `entrypoint.sh` should be the shutdown `logout` in the SIGTERM trap; there
@@ -212,7 +216,7 @@ megh holds two Tailscale secrets and they are not interchangeable.
   it reaches machines megh never created, including your laptop and phone.
 
 The API key is used only by the control machine, in `internal/tsapi`, for
-`megh down`, `megh doctor ts gc`, and minting per-box node keys in `megh up`.
+`megh down`, `megh mesh gc`, and minting per-box node keys in `megh up`.
 It must never reach a box. Note the asymmetry that makes this easy to get wrong:
 `megh up` uses the API key to PRODUCE something the box does receive, so the
 minted key travels while the credential that made it does not. This is C3's
