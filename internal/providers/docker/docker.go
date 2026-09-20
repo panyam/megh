@@ -9,8 +9,14 @@
 // It shells out to the `docker` CLI rather than taking an SDK dependency, the
 // same way internal/registry talks to OCI registries with stdlib only.
 //
-// A local box never joins the tailnet. Over loopback the tailnet buys nothing,
-// and skipping it means megh mints no node key and leaves no node behind.
+// A local box is reached over loopback, so it needs no overlay network to be
+// usable. It joins one only when `providers.docker.mesh` names a vendor, and
+// even then only when asked: `megh mesh join` hands the node key over on the
+// bring-up script's stdin, after the box is up. The key therefore never enters
+// the container's stored env, where `docker inspect` would keep it for the life
+// of a box that runs agent code. The reason to join at all is a device that is
+// not this machine, a phone being the usual one, since an SSH tunnel only ever
+// reaches the machine that opened it.
 package docker
 
 import (
@@ -53,6 +59,7 @@ type settings struct {
 	workDir    string
 	volumeRoot string
 	mounts     map[string]string
+	mesh       string
 }
 
 // Provider is the local docker backend.
@@ -78,6 +85,7 @@ func (p *Provider) settings() settings {
 		workDir:    orDefault(c.WorkDir, "~/.megh/volumes/local"),
 		volumeRoot: orDefault(c.VolumeRoot, "~/.megh/volumes"),
 		mounts:     c.Mounts,
+		mesh:       c.Mesh,
 	}
 }
 
@@ -92,32 +100,44 @@ var _ providers.Provider = (*Provider)(nil)
 
 func (*Provider) Name() string { return "docker" }
 
-// Tailnet is false: see the package comment.
-func (*Provider) Tailnet() bool { return false }
+// Mesh is whatever `providers.docker.mesh` names, never at boot: see the
+// package comment for why a local box is handed its key afterwards.
+func (p *Provider) Mesh() providers.Mesh {
+	return providers.Mesh{Vendor: p.settings().mesh}
+}
 
 // Result is a launched local box.
 type Result struct {
 	ID      string
 	Name    string
 	SSHPort int
+	Mesh    string // the overlay this box can join, if any; see Summary
 }
 
 // Summary is the connection info after `megh up`. It deliberately does not
-// print tailnet URLs the way the RunPod summary does, because a local box has
-// no tailnet: its web surfaces bind loopback INSIDE the container and only 22 is
-// published, so `megh browse` tunnelling over SSH is the only path to them.
+// print mesh URLs the way the RunPod summary does, because a local box does not
+// join one while being created: its web surfaces bind loopback INSIDE the
+// container and only 22 is published, so `megh browse` tunnelling over SSH is
+// the path to them until somebody asks for more.
 func (r *Result) Summary() string {
+	reach := `No mesh: this box is reached over loopback, so no node key was minted and no
+node was added. The surfaces need the tunnel either way: they bind the box's own
+loopback (C4), which a published port cannot reach. Only 22/tcp is published,
+and only on 127.0.0.1.
+`
+	if r.Mesh != "" {
+		reach = fmt.Sprintf(`Not on the mesh yet. Join it when you want this box reachable from another
+device (a phone, say): megh mesh join %s. The key is handed over then, on the
+bring-up script's stdin, so it never lands in the container's env.
+`, r.Name)
+	}
 	return fmt.Sprintf(`box created: %s (container %s)
 
 Access:
   ssh       : megh ssh %[1]s
   surfaces  : megh browse %[1]s        (ttyd, webterm, code-server over an SSH tunnel)
 
-No tailnet: a local box is reached over loopback, so no node key was minted and
-no node was added. The surfaces still need the tunnel: they bind the box's own
-loopback (C4), which a published port cannot reach. Only 22/tcp is published,
-and only on 127.0.0.1.
-`, r.Name, shortID(r.ID))
+%s`, r.Name, shortID(r.ID), reach)
 }
 
 func shortID(id string) string {
@@ -166,7 +186,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	if err != nil {
 		return nil, err
 	}
-	return &Result{ID: id, Name: providers.ShortName(name), SSHPort: box.SSHPort}, nil
+	return &Result{ID: id, Name: providers.ShortName(name), SSHPort: box.SSHPort, Mesh: set.mesh}, nil
 }
 
 // runArgs builds the full `docker run` argv. Split out from Up so it can be
@@ -207,9 +227,10 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 		args = append(args, "-v", m.Arg())
 	}
 
-	// The box env. TS_AUTHKEY is deliberately absent rather than empty: the
-	// entrypoint branches on it being set, so leaving it out is what makes the
-	// box skip tailscale bring-up entirely.
+	// The box env carries no node key at all. The entrypoint's guard is
+	// `[ -n "$TS_AUTHKEY" ]`, so an absent one skips the bring-up, and a box that
+	// wants the mesh is joined afterwards by `megh mesh join`, which keeps the key
+	// out of `docker inspect`.
 	env := map[string]string{
 		"PUBLIC_KEY": o.PubKey,
 		"WORK_MOUNT": workMount,
@@ -218,9 +239,9 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 	for k, v := range o.ExtraEnv {
 		// Two different reasons, both deliberate. A control-plane credential must
 		// never reach ANY box on ANY backend (C5). A node auth key is legitimate
-		// on a cloud box and pointless here, and worse than pointless: the
-		// entrypoint branches on the variable being SET, so passing it even empty
-		// would take the tailscale bring-up path with nothing to authenticate.
+		// on a cloud box, where it is the only way a pod can join while booting,
+		// but here it would be a durable copy of a credential in the container's
+		// stored env for no gain, since `megh mesh join` hands one over on stdin.
 		if config.IsControlPlaneSecret(k) || k == tsAuthKeyEnv {
 			continue
 		}

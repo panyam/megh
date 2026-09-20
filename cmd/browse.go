@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -187,17 +188,31 @@ func sshCapture(keyFile string, d dial, remote string) (string, error) {
 // bit us — hangs indefinitely without an outer deadline. Cancelling the context
 // kills the ssh process.
 func sshCaptureCtx(ctx context.Context, keyFile string, d dial, remote string) (string, error) {
+	return sshCaptureIn(ctx, keyFile, d, remote, nil)
+}
+
+// sshCaptureIn is sshCaptureCtx with a script on stdin, for a probe too long or
+// too quote-heavy to pass as an argument (`megh mesh ls` is the caller).
+func sshCaptureIn(ctx context.Context, keyFile string, d dial, remote string, stdin io.Reader) (string, error) {
+	c := exec.CommandContext(ctx, "ssh", sshCaptureArgs(keyFile, d, remote)...)
+	c.Stdin = stdin
+	out, err := c.Output()
+	return string(out), err
+}
+
+// sshCaptureArgs builds the argv for a non-interactive remote command.
+//
+// The options come from d.opts so a loopback box is dialled the way every other
+// command dials it: docker recycles host ports, so a recreated box behind a
+// recycled port trips a host-key MISMATCH, and a probe that pinned the key would
+// fail where `megh ssh` succeeds.
+func sshCaptureArgs(keyFile string, d dial, remote string) []string {
 	var args []string
 	if keyFile != "" {
 		args = append(args, "-i", config.ExpandPath(keyFile), "-o", "IdentitiesOnly=yes")
 	}
-	args = append(args, "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
-	if d.port != 0 {
-		args = append(args, "-p", strconv.Itoa(d.port))
-	}
-	args = append(args, d.userHost(), remote)
-	out, err := exec.CommandContext(ctx, "ssh", args...).Output()
-	return string(out), err
+	args = append(args, d.opts("-o", "BatchMode=yes", "-o", "ConnectTimeout=10")...)
+	return append(args, d.userHost(), remote)
 }
 
 func init() {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/providers"
 )
 
@@ -82,13 +83,16 @@ func TestRunArgsPublishesOnlyLoopbackSSH(t *testing.T) {
 	}
 }
 
-// CONSTRAINTS C5, and the entrypoint's contract. The entrypoint brings tailscale
-// up only when TS_AUTHKEY is SET, so a local box skips it by the variable being
-// absent rather than empty: an empty value is still "set" to the shell and would
-// take the bring-up branch with no key. The control-plane credentials are a
-// separate matter and must never reach any box on any backend.
+// CONSTRAINTS C5, and the key-handover decision for a local box. A node key is
+// handed over after the box is up, on the stdin of the bring-up script, so it
+// never lands in the container's stored env where `docker inspect` would keep it
+// for the life of the box. The control-plane credentials are a separate matter
+// and must never reach any box on any backend.
+//
+// `mesh: tailscale` must not change this: a box on the mesh is still a box whose
+// env holds no key.
 func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
-	args := argvOf(t, settings{}, providers.Options{
+	args := argvOf(t, settings{mesh: "tailscale"}, providers.Options{
 		Name:      "local1",
 		TSAuthKey: "tskey-auth-SHOULD-NOT-TRAVEL",
 		ExtraEnv: map[string]string{
@@ -110,6 +114,27 @@ func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
 	}
 	if !hasPair(args, "-e", "GH_PERSONAL_TOKEN=legitimate") {
 		t.Error("the deny list ate a legitimate box_env")
+	}
+}
+
+// A local box joins on request, never at create: `megh up` has no SSH to hand a
+// key over yet, and a create that is also a network operation is what the split
+// into `megh mesh join` exists to avoid.
+func TestMeshFollowsConfigAndNeverJoinsAtBoot(t *testing.T) {
+	cfgWith := func(mesh string) func() config.Config {
+		return func() config.Config {
+			return config.Config{Providers: map[string]config.Provider{"docker": {Mesh: mesh}}}
+		}
+	}
+	if got := New(cfgWith("")).Mesh(); got.On() {
+		t.Errorf("no mesh configured, got %+v", got)
+	}
+	got := New(cfgWith("tailscale")).Mesh()
+	if got.Vendor != "tailscale" || !got.On() {
+		t.Errorf("mesh = %+v, want tailscale", got)
+	}
+	if got.AtBoot {
+		t.Error("a local box must not expect a key in its create-time env")
 	}
 }
 

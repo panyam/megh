@@ -57,6 +57,16 @@ providers:
     work_dir: ~/.megh/volumes/local
     # Where `megh storage create|list|rm` puts local volumes.
     volume_root: ~/.megh/volumes
+    # The overlay network this backend's boxes may join. Absent means none, which
+    # is right when you only ever reach the box from this machine: `megh browse`
+    # tunnels the surfaces over SSH and needs nothing else.
+    #
+    # Set it when another device has to reach the box (a phone), since a tunnel
+    # only reaches the machine that opened it. A local box then joins WHEN ASKED,
+    # never at create: `megh mesh join <box>`. Naming the vendor rather than
+    # saying true keeps the setting honest if there is ever a second one; an
+    # unknown value is an error at load.
+    # mesh: tailscale
     # Bind mounts, host path -> box path. The box path follows the same
     # convention as a `symlinks:` target: relative to the work mount unless
     # absolute. Add ":ro" for read-only.

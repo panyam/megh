@@ -18,10 +18,14 @@ var _ providers.Provider = (*Provider)(nil)
 
 func (*Provider) Name() string { return "runpod" }
 
-// Tailnet is true: a RunPod box joins the tailnet, which is how a phone reaches
-// its web surfaces and how the control machine reaches it when public SSH is
-// off.
-func (*Provider) Tailnet() bool { return true }
+// Mesh is Tailscale at boot: the node key travels in the pod env and the pod
+// brings itself up on the tailnet, which is how a phone reaches its web surfaces
+// and how the control machine reaches it when public SSH is off. It is not
+// configurable, because a pod megh cannot reach over the mesh and cannot reach
+// over public SSH is a pod megh cannot reach.
+func (*Provider) Mesh() providers.Mesh {
+	return providers.Mesh{Vendor: providers.MeshTailscale, AtBoot: true}
+}
 
 func (*Provider) Up(ctx context.Context, o providers.Options) (providers.Result, error) {
 	return up(ctx, o)
