@@ -40,12 +40,13 @@ megh browse [port]                # tunnel box web surfaces to localhost, print 
                                   # any listening port works (a dev server), no box restart
 megh mesh join|leave|ls [box]     # put a box on the overlay named by providers.<p>.mesh
                                   # a local box joins ONLY when asked; a pod joins at boot
+                                  # join --authkey re-keys a box (this WAS doctor ts setkey)
 megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor control-plane         # can THIS machine spawn/reach/hydrate boxes? (the checklist)
-megh doctor ts <action> [name]    # tailscale ops: logs|status|start|stop|restart|setkey (setkey re-keys a box)
-megh doctor ts gc [name...]       # delete tailnet nodes whose box is gone (control plane; needs MEGH_TAILSCALE_API_KEY)
+megh mesh status|logs|restart     # a box's mesh daemon: what it reports, why it failed, bounce it
+megh mesh gc [name...]            # delete tailnet nodes whose box is gone (control plane; needs MEGH_TAILSCALE_API_KEY)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh regions list|probe|place     # find a DC that will actually rent (probe = real rent + immediate terminate)
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
@@ -101,7 +102,7 @@ rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 work against it unchanged, because a local box runs sshd and megh reaches it the
 same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` stays
 RunPod-only, and says so, because capacity probing has no meaning locally.
-`doctor ts` works anywhere: it dials the box the same way every other command
+`megh mesh` works anywhere: it dials the box the same way every other command
 does, so it diagnoses a local box on the mesh exactly as it does a pod.
 
 Four things differ, and each is deliberate.
@@ -296,7 +297,7 @@ persisted so this survives rebuilds. Check the whole set with
   a PAT (`tskey-api-...`) or a bare OAuth secret. The pair wins when both are
   set, so a leftover PAT does not shadow a new credential. megh exchanges an
   OAuth secret for a short-lived token automatically. Lets `megh down` and
-  `megh doctor ts gc` delete stale nodes, and `megh up` mint per-box keys when
+  `megh mesh gc` delete stale nodes, and `megh up` mint per-box keys when
   `tailscale.mint_keys` is on. Control machine ONLY, and never on a box:
   `meghEnv` denies all three by name despite the `MEGH_` prefix it forwards.
   How much damage a leaked one does depends on the form: an unscoped PAT can
@@ -508,17 +509,17 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   briefly race GC and land as `<name>-1` (a stale offline node still holding the
   name). The SSH logout alone cannot cover a box that was already unreachable,
   which is the case that leaves debris, and is why the API delete exists.
-  Diagnose with `megh doctor <name>` (or `megh doctor ts logs <name>` for the raw
+  Diagnose with `megh doctor <name>` (or `megh mesh logs <name>` for the raw
   tailscale logs). The `TS_AUTHKEY` must be reusable + ephemeral; a
   single-use/expired key fails silently. **If nodes pile up permanently instead
   of clearing on their own, suspect the key is NOT ephemeral** (an ephemeral node
   is removed by Tailscale a while after it goes offline, even when the box died
   without a logout). Check that before blaming megh, since no amount of GC fixes
-  the source. Clear existing debris with `megh doctor ts gc <name>`, which also
+  the source. Clear existing debris with `megh mesh gc <name>`, which also
   takes the `<name>-1` / `<name>-2` variants that made the name drift.
   Most common real cause: the box was launched with a **stale key** (the
   launching shell's `TS_AUTHKEY` was older than the box's). Fix in place without
-  a rebuild: `megh doctor ts setkey <name>` re-authenticates with the control
+  a rebuild: `megh mesh join --authkey <name>` re-authenticates with the control
   machine's current `TS_AUTHKEY` (or `--authkey`) and re-serves. Turning on
   `tailscale.mint_keys` makes BOTH of these impossible rather than diagnosable:
   the key is minted at launch, so it cannot be stale, and it is ephemeral, so
@@ -540,9 +541,17 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   only the `gh` CLI is affected. One login on any box fixes it for every box
   after, since that is the point of persisting it.
 - **Tailscale bring-up is one script** (`internal/tsops/ts-up.sh`), embedded in
-  the megh binary. The entrypoint runs it at boot (`megh doctor ts start
-  --local`) and `megh doctor ts` pipes the same bytes over SSH, so boot and
-  repair never drift and `doctor ts` works on any box regardless of image age.
+  the megh binary. The entrypoint runs it at boot (`megh mesh join --local`) and
+  `megh mesh join|status|logs|restart` pipes the same bytes over SSH, so boot and
+  repair never drift and those verbs work on any box regardless of image age.
+
+  **These verbs moved out of `megh doctor ts` on 2026-09-20** (`start` and
+  `setkey` collapsing into `join`, since both ran the script's `up` and differed
+  only in whether a key came along). `doctor ts` still works, hidden from help,
+  because the entrypoint baked into every older image calls it at boot. `megh
+  doctor` keeps what it should have meant all along: `megh doctor <box>` and
+  `megh doctor control-plane`, the probes you reach for when you do not yet know
+  which subsystem is broken.
 - **Making a box a control plane is a CHECKLIST, and `megh doctor control-plane`
   is that checklist.** The Mac satisfies every prerequisite implicitly, by being
   where everything was set up; a fresh box satisfies none, and each missing piece

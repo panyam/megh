@@ -40,10 +40,30 @@ func tsHelperAction(action string) (helper string, injectKey bool, err error) {
 	}
 }
 
+// tsCmd is the retired spelling of what `megh mesh` now owns. It is hidden
+// rather than deleted for two reasons: the entrypoint baked into every image
+// built before the move calls `megh doctor ts start --local` at boot, and the
+// command is named throughout the notes. It runs the same code the mesh verbs
+// run, so there is nothing here to drift.
 var tsCmd = &cobra.Command{
-	Use:   "ts <logs|status|start|stop|restart|setkey|gc> [box]",
-	Short: "Inspect and control Tailscale on a box (diagnose, restart, re-key)",
-	Long: `Manage a box's Tailscale connection — the usual reason a box is unreachable.
+	Use:    "ts <logs|status|start|stop|restart|setkey|gc> [box]",
+	Hidden: true,
+	Short:  "Retired: use megh mesh join|status|logs|restart|gc",
+	Long: `Retired. These verbs moved to "megh mesh", which groups them by what they
+act on rather than by which vendor provides it:
+
+  megh doctor ts start    ->  megh mesh join
+  megh doctor ts setkey   ->  megh mesh join --authkey
+  megh doctor ts status   ->  megh mesh status
+  megh doctor ts logs     ->  megh mesh logs
+  megh doctor ts restart  ->  megh mesh restart
+  megh doctor ts gc       ->  megh mesh gc
+  megh doctor ts stop     ->  megh mesh leave (logs out; the old stop only
+                              disconnected, keeping the box's auth)
+
+It still works, so a box booted from an older image keeps working.
+
+Manage a box's Tailscale connection — the usual reason a box is unreachable.
 
   logs     show /tmp/tailscale-up.log + the daemon log + status (what failed)
   status   tailscale status
@@ -78,14 +98,7 @@ targets the only box; --local runs on the box itself.`,
 		}
 
 		if tsLocal {
-			c := exec.Command("bash", "-s", "--", helper)
-			c.Stdin = bytes.NewReader(tsops.Script())
-			c.Env = os.Environ()
-			if injectKey {
-				c.Env = append(c.Env, "TS_AUTHKEY="+key)
-			}
-			c.Stdout, c.Stderr = os.Stdout, os.Stderr
-			return c.Run()
+			return tsBringUpLocal(helper, key)
 		}
 
 		prov, err := resolveProvider(cmd, tsProvider)
@@ -119,6 +132,19 @@ targets the only box; --local runs on the box itself.`,
 func tsBringUp(d dial, host, key, action string) error {
 	stdin := bytes.NewReader(tsBringUpStdin(host, key))
 	return runSSH(d.keyFor(cfg.SSHKeyFile), nil, tsBringUpArgs(d, action), stdin)
+}
+
+// tsBringUpLocal runs an action on THIS machine, which is what the entrypoint
+// does at boot: same script, no SSH, no provider.
+func tsBringUpLocal(action, key string) error {
+	c := exec.Command("bash", "-s", "--", action)
+	c.Stdin = bytes.NewReader(tsops.Script())
+	c.Env = os.Environ()
+	if key != "" {
+		c.Env = append(c.Env, "TS_AUTHKEY="+key)
+	}
+	c.Stdout, c.Stderr = os.Stdout, os.Stderr
+	return c.Run()
 }
 
 // tsBringUpArgs is the ssh argv for one bring-up action. It carries no secret:
