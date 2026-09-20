@@ -149,9 +149,11 @@ Four things differ, and each is deliberate.
   fail, and under `set -euo pipefail` that kills PID 1 and the box never boots.
 - **The image is built locally.** CI publishes `linux/amd64` only (RunPod CPU pods
   are x86_64), so on an arm64 machine the published image emulates. `make
-  image-local` builds for this machine's arch from the same `provision.sh`, using
-  BuildKit's `TARGETARCH`; set `providers.docker.image` to the tag it prints.
-  Defaults to the slim flavor.
+  image-local-base` and `make image-local-slim` build for this machine's arch from
+  the same `provision.sh`, using BuildKit's `TARGETARCH`; set
+  `providers.docker.image` to the tag the build prints. **One tag per flavor**, so
+  building one does not change what a box on the other flavor gets at its next
+  recreate. `image-local` is an alias for the base one.
 
 **Never mount a directory whose entries are absolute host symlinks.** `~/personal`
 is one: `helper_functions`, `anchor_pr_files` and `completions` point into

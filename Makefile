@@ -91,20 +91,40 @@ image: ## push current HEAD to origin to trigger the GHCR image build
 # local image and a published one differ only in architecture. Both staged paths
 # are gitignored, and the trap cleans them up even on a failed build so a stale
 # binary cannot be baked into the next one.
-LOCAL_ARCH  := $(shell go env GOARCH)
-LOCAL_IMAGE ?= megh-local:$(LOCAL_ARCH)
-LOCAL_SLIM  ?= 1
+#
+# One tag per flavor, mirroring the two CI publishes, rather than one tag and a
+# flag. A single tag makes the flavors overwrite each other: building the full
+# one for frontend work silently changes what every other local box gets at its
+# next `megh down`/`megh up`, because a container is created from whatever the
+# tag points at then. Two tags let a slim backend box and a full frontend box
+# coexist on one machine.
+LOCAL_ARCH       := $(shell go env GOARCH)
+LOCAL_IMAGE_BASE ?= megh-local-base:$(LOCAL_ARCH)
+LOCAL_IMAGE_SLIM ?= megh-local-slim:$(LOCAL_ARCH)
 
-.PHONY: image-local
-image-local: ## build the dev-env image locally for this machine's arch (LOCAL_SLIM=0 for the full flavor)
+# $(1) is the tag, $(2) is MEGH_SLIM. Both flavors build from one recipe for the
+# same reason CI builds them from one provision.sh: a second copy drifts.
+define build_local_image
 	@trap 'rm -f env/base/megh env/base/megh.yaml' EXIT; \
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(LOCAL_ARCH) go build -o env/base/megh . && \
 	cp megh.yaml.example env/base/megh.yaml && \
 	docker build \
-	  --build-arg MEGH_SLIM=$(LOCAL_SLIM) \
+	  --build-arg MEGH_SLIM=$(2) \
 	  --build-arg MEGH_BUILD_REF=$$(git rev-parse --short HEAD)-local \
-	  -t $(LOCAL_IMAGE) env/base
-	@echo "built $(LOCAL_IMAGE); set providers.docker.image to it in megh.yaml"
+	  -t $(1) env/base
+	@echo "built $(1); set providers.docker.image to it in megh.yaml"
+endef
+
+.PHONY: image-local-base
+image-local-base: ## build the FULL local image: Playwright, headed display and code-server baked
+	$(call build_local_image,$(LOCAL_IMAGE_BASE),0)
+
+.PHONY: image-local-slim
+image-local-slim: ## build the SLIM local image: no frontend stack, code-server installs at boot
+	$(call build_local_image,$(LOCAL_IMAGE_SLIM),1)
+
+.PHONY: image-local
+image-local: image-local-base ## alias for image-local-base, the flavor a laptop box usually wants
 
 .PHONY: image-watch
 image-watch: ## watch the latest build-env workflow run

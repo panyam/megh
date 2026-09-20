@@ -14,7 +14,7 @@ If you only want to see what a box IS, the local backend gets you one in a coupl
 of minutes with no account, no key, and no bill:
 
 ```sh
-make image-local                       # builds for this machine's arch
+make image-local-base                  # builds for this machine's arch
 megh up   --provider docker local1
 megh ssh  --provider docker local1     # tmux 'main', claude and codex already installed
 megh down --provider docker local1
@@ -22,8 +22,11 @@ megh down --provider docker local1
 
 It runs the same image and the same entrypoint as a rented box, so everything you
 learn about persist, symlinks, `megh enable` and `megh browse` transfers. Set
-`providers.docker.image` to the tag `make image-local` prints, and declare what to
+`providers.docker.image` to the tag the build prints, and declare what to
 bind-mount under `providers.docker.mounts`; `megh.yaml.example` has the shape.
+There are two local tags, one per flavor: `image-local-base` bakes Playwright, the
+headed display and code-server, `image-local-slim` leaves them out and installs
+code-server at boot.
 
 The rest of this page is the rented path, which is what you want once you need
 the box to outlive your laptop being closed.
