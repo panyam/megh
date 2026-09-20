@@ -70,3 +70,19 @@ func TestProvisionPutsGoOnEveryPath(t *testing.T) {
 		t.Error("provision.sh should drop the go caches, which are hundreds of MB of dead layer")
 	}
 }
+
+// A box joined by `megh mesh join` holds no auth key: the key travelled on the
+// bring-up script's stdin and was single-use. Its tailscaled state survives a
+// restart, so the entrypoint has to treat that state as a second reason to bring
+// tailscale up, or a restarted box drops off the mesh with no way back except a
+// re-join from the control machine.
+func TestEntrypointBringsTailscaleUpFromStoredAuth(t *testing.T) {
+	src, err := os.ReadFile("env/base/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	guard := `if [ -n "${TS_AUTHKEY:-}" ] || [ -s /var/lib/tailscale/tailscaled.state ]; then`
+	if !strings.Contains(string(src), guard) {
+		t.Errorf("entrypoint does not bring tailscale up from stored auth; expected:\n%s", guard)
+	}
+}

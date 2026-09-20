@@ -52,12 +52,12 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 				return nil
 			}
 		}
-		// Best-effort: have the box deregister itself from the tailnet before we
-		// terminate it — the node-side opposite of the entrypoint's `tailscale up`,
-		// so an ephemeral node is removed immediately instead of lingering until GC
-		// (and a persistent one is deauthenticated). Runs over the SSH access megh
-		// already has, so no Tailscale API credential is needed. Never blocks
-		// termination: an unreachable or tailnet-only box just skips it.
+		// Best-effort: have the box deregister itself before we terminate it — the
+		// node-side opposite of `tailscale up`, so an ephemeral node is removed
+		// immediately instead of lingering until GC (and a persistent one is
+		// deauthenticated). Runs over the SSH access megh already has, so no
+		// Tailscale API credential is needed. Never blocks termination: an
+		// unreachable box just skips it.
 		//
 		// The whole attempt is under a wall-clock deadline. A box with no public
 		// SSH dials its MagicDNS name, and from a control machine that is not on
@@ -65,19 +65,15 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// cover resolution, so without this the terminate step never runs and the
 		// pod keeps billing.
 		//
-		// Skipped entirely on a backend with no tailnet. The box never joined one,
-		// so the logout is a guaranteed no-op that still costs an SSH round trip
-		// and, worse, printed "asked local1 to leave the tailnet" about a box that
-		// was never on it.
-		if prov.Tailnet() {
+		// Skipped on a backend with no mesh, and silent for a box that was on a
+		// mesh-capable backend without ever joining one: the box itself reports
+		// whether it was connected (see meshLeaveMessage).
+		if prov.Mesh().On() {
 			d := dialFor(pod)
-			logout := "timeout 15 tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true"
 			lctx, cancel := context.WithTimeout(ctx, deregisterTimeout)
 			defer cancel()
-			if _, err := sshCaptureCtx(lctx, d.keyFor(cfg.SSHKeyFile), d, logout); err != nil {
-				fmt.Printf("note: could not reach %s to leave the tailnet (terminating anyway)\n", pod.DisplayName())
-			} else {
-				fmt.Printf("asked %s to leave the tailnet\n", pod.DisplayName())
+			if msg := meshLeave(lctx, d, pod.DisplayName()); msg != "" {
+				fmt.Println(msg)
 			}
 		}
 
@@ -89,7 +85,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 		// was already unreachable, which is how nodes go stale in the first place.
 		// Now that the box is definitely gone, remove its node from the control
 		// plane too. Best effort and silent when no API key is configured.
-		if prov.Tailnet() {
+		if prov.Mesh().On() {
 			pruneNodesBestEffort(ctx, prov, pod.DisplayName())
 		}
 		publishPortalBestEffort()

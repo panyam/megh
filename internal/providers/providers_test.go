@@ -11,14 +11,14 @@ import (
 // can be tested without any backend or network.
 type fake struct {
 	name    string
-	tailnet bool
+	mesh    Mesh
 	boxes   []Box
 	vols    []Volume
 	listErr error
 }
 
-func (f *fake) Name() string  { return f.name }
-func (f *fake) Tailnet() bool { return f.tailnet }
+func (f *fake) Name() string { return f.name }
+func (f *fake) Mesh() Mesh   { return f.mesh }
 func (f *fake) List(context.Context) ([]Box, error) {
 	if f.listErr != nil {
 		return nil, f.listErr

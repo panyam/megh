@@ -84,3 +84,21 @@ func TestNotListeningMsgForNonCatalogPort(t *testing.T) {
 		t.Errorf("unexpected message for a non-catalog port:\n%s", msg)
 	}
 }
+
+// A remote probe must dial a box the way every other command dials it. Docker
+// recycles host ports, so a recreated local box behind a recycled port trips a
+// host-key MISMATCH: the probe pinned the key while `megh ssh` did not, so
+// browse and `mesh ls` failed where an interactive session worked.
+func TestSSHCaptureUsesTheSameDialOptions(t *testing.T) {
+	local := strings.Join(sshCaptureArgs("", dial{host: "127.0.0.1", port: 49153}, "bash -s"), " ")
+	if !strings.Contains(local, "UserKnownHostsFile=/dev/null") {
+		t.Errorf("a loopback box must not pin a host key: %s", local)
+	}
+	if !strings.Contains(local, "-p 49153") || !strings.Contains(local, "BatchMode=yes") {
+		t.Errorf("port and non-interactive options lost: %s", local)
+	}
+	remote := strings.Join(sshCaptureArgs("", dial{host: "devbox"}, "bash -s"), " ")
+	if !strings.Contains(remote, "StrictHostKeyChecking=accept-new") {
+		t.Errorf("a remote box keeps the normal host-key policy: %s", remote)
+	}
+}

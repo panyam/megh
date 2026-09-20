@@ -190,7 +190,9 @@ Two things to check FIRST, both cheap and both able to sink the plan:
   every surface bind the box's own `127.0.0.1`, and a docker publish forwards to
   the container's `eth0`, so the host port accepts the connection and has nothing
   to hand it to. `sshd` binding `0.0.0.0` is why 22 alone is publishable, and why
-  `megh browse` tunnels on every backend.
+  `megh browse` tunnels on every backend. A tunnel reaches only the machine that
+  opened it, so a local box a phone can reach needs `providers.docker.mesh:
+  tailscale` plus `megh mesh join <box>`, and then `tailscale serve` for the port.
 - Never bind-mount a directory whose entries are absolute host symlinks. They
   dangle in a container, and the entrypoint REPLACES a dangling symlink rather
   than skipping it: read-only the `ln` fails and kills PID 1 under

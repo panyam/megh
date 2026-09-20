@@ -66,8 +66,6 @@ targets the only box; --local runs on the box itself.`,
 		if err != nil {
 			return err
 		}
-		script := tsops.Script()
-
 		// For setkey, resolve the key to inject: --authkey wins, else TS_AUTHKEY.
 		key := ""
 		if injectKey {
@@ -81,7 +79,7 @@ targets the only box; --local runs on the box itself.`,
 
 		if tsLocal {
 			c := exec.Command("bash", "-s", "--", helper)
-			c.Stdin = bytes.NewReader(script)
+			c.Stdin = bytes.NewReader(tsops.Script())
 			c.Env = os.Environ()
 			if injectKey {
 				c.Env = append(c.Env, "TS_AUTHKEY="+key)
@@ -109,20 +107,38 @@ targets the only box; --local runs on the box itself.`,
 			return err
 		}
 
-		// Pass the tailnet hostname (and, for setkey, the key) to the script via a
-		// stdin preamble, not the command line, so the key never lands in the box's
-		// process list or the ssh argv.
-		var pre strings.Builder
-		fmt.Fprintf(&pre, "export TS_HOSTNAME=%s\n", shQuote(pod.DisplayName()))
-		if injectKey {
-			fmt.Fprintf(&pre, "export TS_AUTHKEY=%s\n", shQuote(key))
-		}
-		stdin := bytes.NewReader(append([]byte(pre.String()), script...))
-
-		sshArgs := append(d.opts(), d.userHost(), "bash -s -- "+helper)
 		fmt.Fprintf(os.Stderr, "megh: ts %s on %s\n", action, pod.DisplayName())
-		return runSSH(d.keyFor(cfg.SSHKeyFile), nil, sshArgs, stdin)
+		return tsBringUp(d, pod.DisplayName(), key, helper)
 	},
+}
+
+// tsBringUp pipes the embedded bring-up script to a box and runs one of its
+// actions. Both callers go through here — `megh doctor ts` and `megh mesh join`
+// — so repair and the routine join can never drift, exactly as boot and repair
+// already share ts-up.sh itself.
+func tsBringUp(d dial, host, key, action string) error {
+	stdin := bytes.NewReader(tsBringUpStdin(host, key))
+	return runSSH(d.keyFor(cfg.SSHKeyFile), nil, tsBringUpArgs(d, action), stdin)
+}
+
+// tsBringUpArgs is the ssh argv for one bring-up action. It carries no secret:
+// see tsBringUpStdin.
+func tsBringUpArgs(d dial, action string) []string {
+	return append(d.opts(), d.userHost(), "bash -s -- "+action)
+}
+
+// tsBringUpStdin prepends the script's inputs as exports, so a node key travels
+// on stdin rather than in the ssh argv, where it would land in the box's process
+// list. An empty key is omitted rather than exported empty: the script then
+// reuses whatever auth the box already has, which is what makes a join
+// re-runnable and what a restarted box relies on.
+func tsBringUpStdin(host, key string) []byte {
+	var pre strings.Builder
+	fmt.Fprintf(&pre, "export TS_HOSTNAME=%s\n", shQuote(host))
+	if key != "" {
+		fmt.Fprintf(&pre, "export TS_AUTHKEY=%s\n", shQuote(key))
+	}
+	return append([]byte(pre.String()), tsops.Script()...)
 }
 
 // shQuote single-quotes s for safe embedding in a shell script.
