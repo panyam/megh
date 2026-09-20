@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -100,5 +102,84 @@ func TestSSHCaptureUsesTheSameDialOptions(t *testing.T) {
 	remote := strings.Join(sshCaptureArgs("", dial{host: "devbox"}, "bash -s"), " ")
 	if !strings.Contains(remote, "StrictHostKeyChecking=accept-new") {
 		t.Errorf("a remote box keeps the normal host-key policy: %s", remote)
+	}
+}
+
+// Every other command takes the box first (megh ssh <box>, megh mesh join
+// <box>), and browse advertised `[port] [box]`. Parsing stays tolerant of
+// either order — a numeric argument is a port, anything else is the box — so
+// old muscle memory keeps working while the help teaches one shape.
+func TestBrowseArgsTakeTheBoxFirstAndSeveralPorts(t *testing.T) {
+	got := parseBrowseArgs([]string{"dev", "5678", "3000"})
+	if got.box != "dev" || !slices.Equal(got.ports, []int{5678, 3000}) {
+		t.Errorf("parsed %+v", got)
+	}
+	if old := parseBrowseArgs([]string{"6080", "dev"}); old.box != "dev" || !slices.Equal(old.ports, []int{6080}) {
+		t.Errorf("the old port-first order must still parse: %+v", old)
+	}
+	if bare := parseBrowseArgs([]string{"3000"}); bare.box != "" || !slices.Equal(bare.ports, []int{3000}) {
+		t.Errorf("a lone port means the sole box: %+v", bare)
+	}
+	if none := parseBrowseArgs(nil); none.box != "" || len(none.ports) != 0 {
+		t.Errorf("no args means every live surface on the sole box: %+v", none)
+	}
+	if !strings.HasPrefix(browseCmd.Use, "browse [box]") {
+		t.Errorf("help still advertises ports first: %q", browseCmd.Use)
+	}
+}
+
+// A backgrounded tunnel needs a handle to close later. ssh's own control socket
+// is that handle, so there is no state file to go stale: if the socket is gone
+// the tunnel is gone.
+func TestBackgroundTunnelIsAddressableByItsControlSocket(t *testing.T) {
+	d := dial{host: "127.0.0.1", port: 49153, boxKey: true}
+	sock := tunnelSocket("docker", "dev")
+	if !strings.Contains(sock, "dev") || !strings.Contains(sock, "docker") {
+		t.Errorf("socket path should name the provider and box: %s", sock)
+	}
+	// Measured: ssh hard-links its master socket into place, and ~/.megh is
+	// persisted onto the work mount, which on a local box is a bind mount from
+	// macOS. Linking there fails with "Bad file descriptor", so a tunnel opened
+	// from a BOX never comes up. Temp is local to the machine.
+	if strings.Contains(sock, ".megh") {
+		t.Errorf("the control socket must not live on the persisted volume: %s", sock)
+	}
+	if !strings.HasPrefix(sock, os.TempDir()) {
+		t.Errorf("socket should be under the temp dir, got %s", sock)
+	}
+	if len(sock) > maxSocketPath {
+		t.Errorf("socket path %s is %d chars; a unix socket path is capped near 104", sock, len(sock))
+	}
+
+	bg := strings.Join(browseSSHArgs(d, []int{5678}, sock), " ")
+	for _, want := range []string{"-f", "-N", "-M", "-S " + sock, "-L 5678:localhost:5678"} {
+		if !strings.Contains(bg, want) {
+			t.Errorf("background tunnel missing %q: %s", want, bg)
+		}
+	}
+
+	fg := strings.Join(browseSSHArgs(d, []int{5678}, ""), " ")
+	if strings.Contains(fg, "-f") || strings.Contains(fg, "-M") {
+		t.Errorf("a foreground tunnel must stay attached: %s", fg)
+	}
+	if !strings.Contains(strings.Join(tunnelStopArgs(d, sock), " "), "-O exit") {
+		t.Error("stopping a tunnel should ask ssh to close its control connection")
+	}
+	if !strings.Contains(strings.Join(tunnelCheckArgs(d, sock), " "), "-O check") {
+		t.Error("a leftover socket file is told from a live tunnel by asking ssh to check it")
+	}
+}
+
+// Naming ports that are not listening should not throw away the ones that are:
+// `megh browse dev 5678 3000` with only 5678 up forwards 5678 and says why 3000
+// is missing.
+func TestRequestedPortsSplitIntoLiveAndDead(t *testing.T) {
+	live, dead := splitRequested([]int{5678, 3000}, []int{7682, 5678})
+	if !slices.Equal(live, []int{5678}) || !slices.Equal(dead, []int{3000}) {
+		t.Errorf("live=%v dead=%v", live, dead)
+	}
+	all, none := splitRequested(nil, []int{7682, 5678})
+	if !slices.Equal(all, []int{7682, 5678}) || len(none) != 0 {
+		t.Errorf("no request means every live port: live=%v dead=%v", all, none)
 	}
 }
