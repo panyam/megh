@@ -92,14 +92,19 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   box that dies hard loses the delta since the last collection. That is a smaller
   window than it sounds, since collection runs on `megh down`, and it buys back a
   standing credential on every box.
-- **A local docker backend, and it deliberately skips the tailnet.** A box can be
-  a container on this machine rather than a rented pod. It earns its place twice:
-  the box contract (the entrypoint, the feature scripts, hydrate) becomes testable
-  without paying a provider, and a container with the real work trees bind-mounted
-  is the containerized-agent setup the cloud boxes only approximate. It joins no
-  tailnet, because over loopback the tailnet buys nothing and skipping it means no
-  key is minted and no node is left behind; `Provider.Tailnet()` is the switch, and
-  `up` and `down` both read it. The provider abstraction earned itself here: adding
+- **A local docker backend, and it joins an overlay network only when asked.** A
+  box can be a container on this machine rather than a rented pod. It earns its
+  place twice: the box contract (the entrypoint, the feature scripts, hydrate)
+  becomes testable without paying a provider, and a container with the real work
+  trees bind-mounted is the containerized-agent setup the cloud boxes only
+  approximate. It joins nothing by default, because over loopback an overlay buys
+  nothing and skipping it means no key is minted and no node is left behind.
+  `providers.docker.mesh` turns one on for the case loopback cannot serve, which
+  is a device that is not this machine. `Provider.Mesh()` carries both the vendor
+  and whether boxes join at BOOT: a pod does, since nothing can SSH to it yet and
+  with `expose_ssh: false` the overlay is the only way in, while a local box is
+  joined afterwards by `megh mesh join`, which keeps its node key out of the
+  container's stored env. The provider abstraction earned itself here: adding
   it was a new package plus one line in the registration list, where before it
   would have been fifteen edited call sites.
 - **megh is stateless; the provider is the source of truth.** No local state file

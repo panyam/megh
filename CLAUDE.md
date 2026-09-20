@@ -38,6 +38,8 @@ megh ssh [name]                   # attaches tmux 'main' (same session webterm s
                                   # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
 megh browse [port]                # tunnel box web surfaces to localhost, print URLs
                                   # any listening port works (a dev server), no box restart
+megh mesh join|leave|ls [box]     # put a box on the overlay named by providers.<p>.mesh
+                                  # a local box joins ONLY when asked; a pod joins at boot
 megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
@@ -97,24 +99,42 @@ rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 `megh up --provider docker <name>` runs a box as a container on this machine.
 `list`, `ssh`, `down`, `enable`, `browse`, `doctor`, `storage` and `sessions` all
 work against it unchanged, because a local box runs sshd and megh reaches it the
-same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` and
-`doctor ts` stay RunPod-only, and say so, because capacity probing and tailnet
-repair have no meaning locally.
+same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` stays
+RunPod-only, and says so, because capacity probing has no meaning locally.
+`doctor ts` works anywhere: it dials the box the same way every other command
+does, so it diagnoses a local box on the mesh exactly as it does a pod.
 
 Four things differ, and each is deliberate.
 
-- **No tailnet, but still a tunnel.** `Provider.Tailnet()` is false, so `up` mints
-  no node key and `down` skips the logout and the node prune. Over loopback the
-  tailnet buys nothing, and a box that never joins leaves nothing behind.
+- **No mesh unless you ask for one, and a tunnel either way.** `Provider.Mesh()`
+  reads `providers.docker.mesh`, so a local box joins no overlay by default:
+  `up` mints no node key and `down` skips the logout and the node prune. Over
+  loopback an overlay buys nothing.
 
-  The web surfaces still need `megh browse`, and **publishing them instead does
-  not work**. C4 makes every surface bind the box's own `127.0.0.1`, and a docker
-  publish forwards to the container's `eth0`, so a published `:7681` accepts the
-  connection on the host and has nothing to forward it to. Measured on a running
-  box: `sshd 0.0.0.0:22`, `ttyd 127.0.0.1:7681`. sshd is the only service that
-  binds the wildcard, which is exactly why 22 is the only publishable port. This
-  was tried, shipped a `up` summary full of URLs that returned nothing, and
-  reverted; `TestRunArgsPublishesOnlyLoopbackSSH` now pins it.
+  Set `mesh: tailscale` and it buys one thing, which is every device that is not
+  this machine. `megh browse` opens an SSH tunnel, and a tunnel only ever reaches
+  the machine that opened it, so a phone has no route to a local box at all.
+  Joining is a separate step (`megh mesh join <box>`) rather than part of `up`,
+  for two reasons. A create that is also a network operation reports a
+  half-success when the tailnet ACL is wrong, and the node key then has to travel
+  in the container's create-time env, where `docker inspect` keeps it for the life
+  of a box that runs agent code. Joining afterwards hands the key to the bring-up
+  script on stdin instead. Then `tailscale serve --bg --https=5173
+  http://localhost:5173` publishes any port to your devices, with no restart and
+  nothing running on the Mac. A box joined this way rejoins after a `docker
+  restart` on its own: the entrypoint brings tailscale up when
+  `/var/lib/tailscale/tailscaled.state` exists, with no key, since the one it used
+  was single-use.
+
+  The web surfaces still need `megh browse` when there is no mesh, and
+  **publishing them instead does not work**. C4 makes every surface bind the box's
+  own `127.0.0.1`, and a docker publish forwards to the container's `eth0`, so a
+  published `:7681` accepts the connection on the host and has nothing to forward
+  it to. Measured on a running box: `sshd 0.0.0.0:22`, `ttyd 127.0.0.1:7681`. sshd
+  is the only service that binds the wildcard, which is exactly why 22 is the only
+  publishable port. This was tried, shipped a `up` summary full of URLs that
+  returned nothing, and reverted; `TestRunArgsPublishesOnlyLoopbackSSH` now pins
+  it.
 - **The work trees are bind mounts, not clones.** `providers.docker.mounts:` maps
   a host path to a box path using the SAME convention as a `symlinks:` target
   (relative to the work mount unless absolute, `:ro` for read-only). Point a mount
