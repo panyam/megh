@@ -5,8 +5,9 @@
 # bridges the surfaces: ttyd :7681, webterm :7682, noVNC :6080, code :8080.
 #
 # Run from the same bytes in two places (both via the megh binary that embeds it):
-#   - at boot, the entrypoint runs `megh doctor ts start --local`
-#   - from your machine, `megh doctor ts <action> [box]` pipes this over SSH
+#   - at boot, the entrypoint runs `megh mesh join --local`
+#   - from your machine, `megh mesh join|status|logs|restart [box]` pipes this
+#     over SSH
 # so boot and repair can never drift.
 #
 # Reads from the environment:
@@ -80,11 +81,11 @@ do_up() {
       echo "[ts] up as $HOST; surfaces served over HTTPS — e.g. https://${fqdn:-$HOST}:7682 (webterm)"
     else
       echo "[ts] up as $HOST; surfaces served over HTTP at http://$HOST:7682 (webterm)."
-      echo "[ts] For mobile copy/paste, enable HTTPS certs on your tailnet (admin > DNS), then: megh doctor ts restart $HOST"
+      echo "[ts] For mobile copy/paste, enable HTTPS certs on your tailnet (admin > DNS), then: megh mesh restart $HOST"
     fi
     ts status 2>/dev/null | head -1
   else
-    echo "[ts] 'tailscale up' failed (expired/invalid key? try: megh doctor ts setkey):"
+    echo "[ts] 'tailscale up' failed (expired/invalid key? try: megh mesh join --authkey):"
     cat "$UPLOG" 2>/dev/null
     return 1
   fi
