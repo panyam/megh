@@ -48,9 +48,11 @@ providers:
   # It is NOT a security sandbox. Anything mounted read-write can be deleted from
   # inside. What it does isolate is the rest of the machine.
   docker:
-    # Built by `make image-local` for this machine's architecture. The published
-    # images are linux/amd64 only, so on an arm64 laptop they would emulate.
-    image: megh-local:arm64
+    # Built by `make image-local-base` (or `-slim`) for this machine's
+    # architecture. The published images are linux/amd64 only, so on an arm64
+    # laptop they would emulate. One tag per flavor, so the two do not overwrite
+    # each other and a box picks its flavor by naming the tag here.
+    image: megh-local-base:arm64
     # The host directory bound at the box's work mount: docker's network volume.
     # Tool logins persist here, separately from the host's own ~/.claude, so one
     # `claude login` in the box survives rebuilds and never touches yours.
