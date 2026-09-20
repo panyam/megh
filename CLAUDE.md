@@ -36,8 +36,9 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
 megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
                                   # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
-megh browse [port]                # tunnel box web surfaces to localhost, print URLs
+megh browse [box] [port...]       # tunnel box ports to localhost, print URLs
                                   # any listening port works (a dev server), no box restart
+                                  # -b backgrounds it; megh browse <box> --stop closes it
 megh mesh join|leave|ls [box]     # put a box on the overlay named by providers.<p>.mesh
                                   # a local box joins ONLY when asked; a pod joins at boot
                                   # join --authkey re-keys a box (this WAS doctor ts setkey)
@@ -594,6 +595,18 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   `internal/registry/oci.go` for `megh registry ls`. So a launch can be gated on a
   variable the launch does not use. Worth remembering before hunting for a
   registry problem that is really a `requires.envs` entry.
+- **An ssh ControlMaster socket cannot live on the work mount, and barely fits
+  in a deep path.** `megh browse -b` backgrounds its tunnel with `ssh -f -M -S`,
+  and ssh creates that socket under a random name and then HARD-LINKS it into
+  place. `~/.megh` is persisted onto the volume, which on a local box is a bind
+  mount from macOS, and linking there fails with `muxserver_listen: link mux
+  listener ... Bad file descriptor` — so a tunnel opened FROM a box never comes
+  up, while the same code works on the Mac. The socket therefore lives in
+  `$TMPDIR/megh-tunnels-<uid>/`, which is local to whatever machine megh runs on.
+  Both measured 2026-09-20 on this box. The second limit is the path length: a
+  unix socket path caps near 104 bytes and ssh's random suffix eats into that, so
+  a socket under a long scratch path dies with `too long for Unix domain socket`.
+  That one is checked and explained rather than passed to ssh.
 - **A shared artifact never encodes one machine's paths — `CONSTRAINTS.md` C6.**
   This is the single disease behind the PATH-clobbering `~/.zshrc`, the
   `~/personal` absolute-symlink mount hazard, the leafless-vs-`/main` `repos:`
