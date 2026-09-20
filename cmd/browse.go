@@ -14,19 +14,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// probeCmd asks the box which surface ports are listening. It wraps the loop in
-// `bash -c` so it does not run under the box's login shell (zsh), which has no
-// /dev/tcp, and ends in `exit 0` so the status reports "the probe ran" rather
-// than "the last port was open".
-var probeCmd = buildProbeCmd()
-
-func buildProbeCmd() string {
-	ports := make([]string, 0, len(providers.Surfaces))
-	for _, p := range providers.SurfacePorts() {
-		ports = append(ports, strconv.Itoa(p))
+// probeCmd asks the box which of the given ports are listening. It wraps the
+// loop in `bash -c` so it does not run under the box's login shell (zsh), which
+// has no /dev/tcp, and ends in `exit 0` so the status reports "the probe ran"
+// rather than "the last port was open".
+//
+// It dials `localhost`, not 127.0.0.1, for the same reason the -L forward does:
+// a dev server that binds ::1 only (Vite on a recent Node) is invisible to a
+// 127.0.0.1 probe, while bash tries every address localhost resolves to.
+func probeCmd(ports []int) string {
+	ps := make([]string, 0, len(ports))
+	for _, p := range ports {
+		ps = append(ps, strconv.Itoa(p))
 	}
-	return `bash -c 'for p in ` + strings.Join(ports, " ") +
-		`; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo $p; done; exit 0'`
+	return `bash -c 'for p in ` + strings.Join(ps, " ") +
+		`; do (exec 3<>/dev/tcp/localhost/$p) 2>/dev/null && echo $p; done; exit 0'`
 }
 
 // notListeningMsg explains a requested port that nothing is serving, and names
@@ -36,7 +38,11 @@ func buildProbeCmd() string {
 func notListeningMsg(want int, live []int, box string) string {
 	s := providers.SurfaceFor(want)
 	var b strings.Builder
-	fmt.Fprintf(&b, "nothing is listening on %d (%s) on %s.\n", want, s.Label, box)
+	if s.Feature == "" && s.Label == "port" {
+		fmt.Fprintf(&b, "nothing is listening on %d on %s.\n", want, box)
+	} else {
+		fmt.Fprintf(&b, "nothing is listening on %d (%s) on %s.\n", want, s.Label, box)
+	}
 	if len(live) == 0 {
 		b.WriteString("  no web surfaces are up at all; is the box still booting?\n")
 	} else {
@@ -62,8 +68,11 @@ print the URLs, and keep the tunnels open until Ctrl-C. No Tailscale needed.
 
   megh browse         forward every live surface (shell/vnc/code), print URLs
   megh browse 6080    forward just that port
+  megh browse 5173    any port works, not only the built-in surfaces (a dev server)
 
-Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels.`,
+Only ports actually listening on the box are forwarded, and nothing on the box
+changes: the tunnel is opened from here, so a port started a minute ago is
+reachable without restarting anything. Ctrl-C closes the tunnels.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		prov, err := resolveProvider(cmd, browseProvider)
@@ -98,7 +107,7 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 
 		// Probe in BOTH cases. Naming a port used to skip this and forward blindly,
 		// which is how you get a URL for a surface that does not exist.
-		live, err := liveSurfaces(boxKey, d)
+		live, err := liveSurfaces(boxKey, d, wantPort)
 		if err != nil {
 			return err
 		}
@@ -130,8 +139,11 @@ Only surfaces actually listening on the box are shown. Ctrl-C closes the tunnels
 	},
 }
 
-// liveSurfaces returns the catalog ports actually listening on the box.
-func liveSurfaces(boxKey string, d dial) ([]int, error) {
+// liveSurfaces returns the ports actually listening on the box: the catalog,
+// plus extra when it is non-zero. extra is how `megh browse 5173` reaches a dev
+// server the catalog has never heard of; probing only the catalog made every
+// such port read as dead.
+func liveSurfaces(boxKey string, d dial, extra int) ([]int, error) {
 	// Run under bash EXPLICITLY. /dev/tcp is a bash feature, and the box's login
 	// shell is zsh, which has no such thing — so this probe silently found
 	// nothing on every box and browse reported "no web surfaces are up" while
@@ -141,7 +153,7 @@ func liveSurfaces(boxKey string, d dial) ([]int, error) {
 	// `exit 0` matters too: without it the loop's status is the LAST port's, so a
 	// box with a live shell but no code-server on :8080 made ssh exit 1 and this
 	// function discard a perfectly good answer.
-	check := probeCmd
+	check := probeCmd(probePorts(extra))
 	out, err := sshCapture(boxKey, d, check)
 	if err != nil {
 		return nil, err
@@ -153,6 +165,15 @@ func liveSurfaces(boxKey string, d dial) ([]int, error) {
 		}
 	}
 	return ports, nil
+}
+
+// probePorts is the catalog plus extra, without repeating a catalog port.
+func probePorts(extra int) []int {
+	ports := providers.SurfacePorts()
+	if extra != 0 && !slices.Contains(ports, extra) {
+		ports = append(ports, extra)
+	}
+	return ports
 }
 
 // sshCapture runs a remote command on the box and returns its stdout.
