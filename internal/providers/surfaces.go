@@ -5,10 +5,9 @@ package providers
 // it (empty when the surface is baked into every image and so cannot be
 // missing).
 //
-// The catalog lives here rather than in cmd/ because two callers need it and a
-// second copy would drift: `megh browse` decides what to offer, and the docker
-// backend decides which ports to publish. A surface added to one and not the
-// other is either unreachable or unadvertised.
+// The catalog is what `megh browse` probes and labels by default. It is not a
+// limit: `megh browse <port>` forwards any listening port, and a port outside
+// the catalog just prints without a label.
 type Surface struct {
 	Port    int
 	Label   string
@@ -17,8 +16,8 @@ type Surface struct {
 }
 
 // Surfaces is every web surface megh knows a box can serve. All of them bind
-// 127.0.0.1 INSIDE the box (CONSTRAINTS.md C4), so reaching one is always
-// either an SSH tunnel or, on a local box, a loopback publish.
+// 127.0.0.1 INSIDE the box (CONSTRAINTS.md C4), so reaching one is always an
+// SSH tunnel or `tailscale serve`, never a publish.
 var Surfaces = []Surface{
 	{7681, "shell", "/", ""},
 	{7682, "webterm", "/", ""},
@@ -37,7 +36,7 @@ func SurfaceFor(port int) Surface {
 	return Surface{Port: port, Label: "port", Path: "/"}
 }
 
-// SurfacePorts is the catalog's ports, for a backend deciding what to publish.
+// SurfacePorts is the catalog's ports, in catalog order.
 func SurfacePorts() []int {
 	out := make([]int, 0, len(Surfaces))
 	for _, s := range Surfaces {

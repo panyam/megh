@@ -47,11 +47,40 @@ func TestNotListeningMsgHandlesNothingUp(t *testing.T) {
 // nothing on every box, so browse reported "no web surfaces are up" while ttyd
 // was plainly listening. It must name bash explicitly.
 func TestProbeDoesNotDependOnTheLoginShell(t *testing.T) {
+	probeCmd := probeCmd(probePorts(0))
 	if strings.Contains(probeCmd, "/dev/tcp") && !strings.HasPrefix(probeCmd, "bash -c") {
 		t.Errorf("probe uses /dev/tcp but does not invoke bash explicitly; zsh will find nothing:\n%s", probeCmd)
 	}
 	if !strings.Contains(probeCmd, "exit 0") {
 		t.Errorf("probe must end in `exit 0`, or a closed last port makes ssh exit 1 "+
 			"and the caller discards a good answer:\n%s", probeCmd)
+	}
+}
+
+// A dev server is not in the catalog. Probing only the catalog made
+// `megh browse 5173` report "nothing is listening" for a server that was up.
+func TestProbeIncludesARequestedNonCatalogPort(t *testing.T) {
+	if !strings.Contains(probeCmd(probePorts(5173)), " 5173") {
+		t.Errorf("requested port 5173 is not probed: %v", probePorts(5173))
+	}
+	if n := len(probePorts(7682)); n != len(probePorts(0)) {
+		t.Errorf("a catalog port must not be probed twice: %v", probePorts(7682))
+	}
+}
+
+// 127.0.0.1 misses a server that binds ::1 only (Vite on a recent Node), which
+// the -L forward to localhost would have reached. Probe and forward must agree.
+func TestProbeDialsLocalhostNotV4Loopback(t *testing.T) {
+	c := probeCmd(probePorts(0))
+	if !strings.Contains(c, "/dev/tcp/localhost/") || strings.Contains(c, "127.0.0.1") {
+		t.Errorf("probe must dial localhost so an IPv6-only listener is found:\n%s", c)
+	}
+}
+
+// An arbitrary port has no catalog label; the message should not call it "(port)".
+func TestNotListeningMsgForNonCatalogPort(t *testing.T) {
+	msg := notListeningMsg(5173, []int{7682}, "devbox")
+	if !strings.Contains(msg, "nothing is listening on 5173 on devbox") || strings.Contains(msg, "megh enable") {
+		t.Errorf("unexpected message for a non-catalog port:\n%s", msg)
 	}
 }
