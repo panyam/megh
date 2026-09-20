@@ -370,9 +370,18 @@ fi
 #    device, so tailscaled runs in userspace mode and `tailscale serve` bridges
 #    the tailnet to the localhost surfaces above. Reach the box by name from any
 #    device on your tailnet (laptop, phone) with nothing exposed publicly.
-#    Skipped when TS_AUTHKEY is unset; then use SSH by ip:port + tunnels.
+#
+#    Two ways in. A key in the env is how a pod joins while booting, since
+#    nothing can SSH to it yet. Stored auth is how a box that was joined LATER
+#    (`megh mesh join`, which hands the key over on stdin and leaves none here)
+#    comes back after a restart: the key it used was single-use and is long
+#    spent, but tailscaled's state is still on disk and `up` reuses it.
+#
+#    Without the second case a restarted local box silently drops off the mesh
+#    and needs a re-join from the control machine. Skipped when there is neither,
+#    and then SSH by ip:port plus tunnels is the way in.
 # ---------------------------------------------------------------------------
-if [ -n "${TS_AUTHKEY:-}" ]; then
+if [ -n "${TS_AUTHKEY:-}" ] || [ -s /var/lib/tailscale/tailscaled.state ]; then
   # Bring Tailscale up via the shared helper baked into the megh binary
   # (internal/tsops/ts-up.sh), so boot and `megh doctor ts` run identical logic
   # and can never drift. TS_HOSTNAME/TS_AUTHKEY are read from this env.
@@ -382,7 +391,7 @@ if [ -n "${TS_AUTHKEY:-}" ]; then
     log "tailscale up failed (see /tmp/tailscale-up.log); 'megh doctor ts logs' shows why, 'megh doctor ts setkey' re-keys; SSH by ip:port still works"
   fi
 else
-  log "TS_AUTHKEY unset; skipping tailscale (use SSH by ip:port + tunnels)"
+  log "no TS_AUTHKEY and no stored tailscale auth; skipping tailscale (use SSH by ip:port + tunnels, or 'megh mesh join')"
 fi
 
 # ---------------------------------------------------------------------------

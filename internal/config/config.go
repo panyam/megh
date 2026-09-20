@@ -36,6 +36,14 @@ type Provider struct {
 	Disk          int    `yaml:"disk"`
 	ExposeSSH     *bool  `yaml:"expose_ssh"` // expose public break-glass SSH; nil -> true
 
+	// Mesh names the overlay network this provider's boxes join, or is empty
+	// for none. It names a VENDOR rather than being a bool because the answer
+	// is not binary for long: "tailscale" is the only supported value today,
+	// and a value megh does not know is an error at load rather than a box that
+	// quietly never joins. Empty lets the backend decide its own default, which
+	// is how RunPod keeps joining at boot without naming it in every config.
+	Mesh string `yaml:"mesh"`
+
 	// The rest are docker-only and inert everywhere else. They live on the same
 	// struct so `providers:` keeps one shape in the file rather than growing a
 	// parallel top-level block for one backend.
@@ -80,6 +88,9 @@ var controlPlaneSecrets = map[string]bool{
 // IsControlPlaneSecret reports whether an env var name is a tailnet
 // control-plane credential, which must never be sent to a box.
 func IsControlPlaneSecret(name string) bool { return controlPlaneSecrets[name] }
+
+// MeshTailscale is the one overlay megh speaks today. See Provider.Mesh.
+const MeshTailscale = "tailscale"
 
 // PublicSSH reports whether public break-glass SSH (22/tcp) is exposed. Default
 // true; set expose_ssh: false to run tailnet-only (zero public ports).
@@ -271,7 +282,22 @@ func Load(explicit string) (Config, string, error) {
 	if err := yaml.Unmarshal(data, &c); err != nil {
 		return c, path, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if err := c.validate(); err != nil {
+		return c, path, fmt.Errorf("%s: %w", path, err)
+	}
 	return c, path, nil
+}
+
+// validate rejects settings that would otherwise fail far from their cause. A
+// box that silently never joins the mesh looks like a Tailscale problem, so the
+// typo is caught here where the file name is still in hand.
+func (c Config) validate() error {
+	for name, p := range c.Providers {
+		if p.Mesh != "" && p.Mesh != MeshTailscale {
+			return fmt.Errorf("providers.%s.mesh: unsupported value %q (supported: %s)", name, p.Mesh, MeshTailscale)
+		}
+	}
+	return nil
 }
 
 func findConfig(explicit string) string {

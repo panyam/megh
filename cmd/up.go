@@ -161,17 +161,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 					upOpts.Name, b.ID, providers.ShortName(upOpts.Name))
 			}
 		}
-		// Mint this box its own Tailscale key, if configured. Best effort: a
-		// failure falls back to the shared static key rather than blocking a
-		// launch, because the tailnet is a convenience layer and public SSH is
-		// the path the control machine actually uses.
-		//
-		// Skipped entirely on a backend with no tailnet: a local box is reached
-		// over loopback, so a minted key would be spent on nothing and would put
-		// a node on the tailnet that never comes up.
-		if prov.Tailnet() {
-			upOpts.TSAuthKey = mintBoxAuthKey(ctx, providers.ShortName(upOpts.Name))
-		}
+		upOpts.TSAuthKey = bootAuthKey(ctx, prov.Mesh(), providers.ShortName(upOpts.Name))
 
 		res, err := prov.Up(ctx, upOpts)
 		if err != nil {
@@ -181,6 +171,23 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		publishPortalBestEffort()
 		return nil
 	},
+}
+
+// bootAuthKey returns the node key to place in the box's create-time env.
+//
+// Only a backend that joins at boot gets one. A local box is joined afterwards
+// over SSH (`megh mesh join`), so minting here would spend a single-use key on
+// nothing and write a credential into the container's stored env, which
+// `docker inspect` then keeps for the life of the box.
+//
+// Best effort even when it does apply: a failure warns and falls back rather
+// than blocking a launch, because the control machine reaches a box over public
+// SSH and the mesh is the convenience layer on top.
+func bootAuthKey(ctx context.Context, m providers.Mesh, box string) string {
+	if !m.AtBoot {
+		return ""
+	}
+	return mintBoxAuthKey(ctx, box)
 }
 
 func init() {
