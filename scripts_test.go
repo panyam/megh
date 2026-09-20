@@ -100,3 +100,22 @@ func TestEntrypointDelegatesBringUpToTheMeshCommand(t *testing.T) {
 		t.Error("entrypoint must bring tailscale up through the embedded helper (C2)")
 	}
 }
+
+// A script's own output is a user interface. `megh doctor ts` still works, but
+// it is hidden and retired, so a box telling you to run it hands you a spelling
+// that is absent from every help page — the worst kind of hint, since the
+// command works and the docs deny it exists.
+func TestShippedScriptsAdvertiseCurrentCommands(t *testing.T) {
+	for _, glob := range []string{"env/base/*.sh", "internal/tsops/*.sh", "internal/features/*.sh"} {
+		paths, _ := filepath.Glob(glob)
+		for _, p := range paths {
+			src, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatalf("read %s: %v", p, err)
+			}
+			if strings.Contains(string(src), "doctor ts") {
+				t.Errorf("%s names the retired `megh doctor ts`; say `megh mesh ...` instead", p)
+			}
+		}
+	}
+}
