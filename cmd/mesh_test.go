@@ -9,6 +9,7 @@ import (
 
 	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/providers"
+	"github.com/spf13/cobra"
 )
 
 // The key is the whole reason a local box is joined after it is up rather than
@@ -115,4 +116,56 @@ func firstLines(s string, n int) string {
 		lines = lines[:n]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// Grouping is the point: every verb that acts on a box's membership lives under
+// `megh mesh`, and `doctor` keeps the cross-cutting health probes. `doctor ts`
+// was the one command grouped by vendor rather than by what it acts on.
+func TestMeshOwnsEveryMembershipVerb(t *testing.T) {
+	got := map[string]bool{}
+	for _, c := range meshCmd.Commands() {
+		got[c.Name()] = true
+	}
+	for _, want := range []string{"join", "leave", "ls", "status", "logs", "restart", "gc"} {
+		if !got[want] {
+			t.Errorf("megh mesh has no %q subcommand", want)
+		}
+	}
+}
+
+// The entrypoint of every already-built image calls `megh doctor ts start
+// --local`, and CLAUDE.md names the command in half a dozen places. It keeps
+// working, out of the help.
+func TestDoctorTsSurvivesAsAHiddenAlias(t *testing.T) {
+	var ts *cobra.Command
+	for _, c := range doctorCmd.Commands() {
+		if c.Name() == "ts" {
+			ts = c
+		}
+	}
+	if ts == nil {
+		t.Fatal("doctor ts was removed; old images call it at boot")
+	}
+	if !ts.Hidden {
+		t.Error("doctor ts should not appear in help now that megh mesh owns these verbs")
+	}
+	if !strings.Contains(ts.Short+ts.Long, "megh mesh") {
+		t.Error("the alias should point at what replaced it")
+	}
+}
+
+// start and setkey were the same action with and without a key, which is why
+// both mapped to the script's `up`. `mesh join` is that one command.
+func TestMeshVerbsMapToBringUpActions(t *testing.T) {
+	for verb, want := range map[string]string{
+		"join": "up", "status": "status", "logs": "logs", "restart": "restart",
+	} {
+		got, err := meshHelperAction(verb)
+		if err != nil || got != want {
+			t.Errorf("%s -> %q (%v), want %q", verb, got, err, want)
+		}
+	}
+	if _, err := meshHelperAction("setkey"); err == nil {
+		t.Error("setkey folded into `join --authkey` and should not resolve")
+	}
 }

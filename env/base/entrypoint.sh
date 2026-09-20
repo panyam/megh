@@ -383,12 +383,12 @@ fi
 # ---------------------------------------------------------------------------
 if [ -n "${TS_AUTHKEY:-}" ] || [ -s /var/lib/tailscale/tailscaled.state ]; then
   # Bring Tailscale up via the shared helper baked into the megh binary
-  # (internal/tsops/ts-up.sh), so boot and `megh doctor ts` run identical logic
+  # (internal/tsops/ts-up.sh), so boot and `megh mesh join` run identical logic
   # and can never drift. TS_HOSTNAME/TS_AUTHKEY are read from this env.
-  if megh doctor ts start --local; then
+  if megh mesh join --local; then
     log "tailscale up as '${TS_HOSTNAME:-megh-box}'; surfaces served on the tailnet"
   else
-    log "tailscale up failed (see /tmp/tailscale-up.log); 'megh doctor ts logs' shows why, 'megh doctor ts setkey' re-keys; SSH by ip:port still works"
+    log "tailscale up failed (see /tmp/tailscale-up.log); 'megh mesh logs' shows why, 'megh mesh join --authkey' re-keys; SSH by ip:port still works"
   fi
 else
   log "no TS_AUTHKEY and no stored tailscale auth; skipping tailscale (use SSH by ip:port + tunnels, or 'megh mesh join')"

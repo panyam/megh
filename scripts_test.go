@@ -86,3 +86,17 @@ func TestEntrypointBringsTailscaleUpFromStoredAuth(t *testing.T) {
 		t.Errorf("entrypoint does not bring tailscale up from stored auth; expected:\n%s", guard)
 	}
 }
+
+// CONSTRAINTS C2: the entrypoint delegates bring-up to the embedded helper
+// rather than reimplementing it. The command it delegates through is now
+// `megh mesh join --local`; `megh doctor ts start --local` is the retired
+// spelling, kept working for images built before the move.
+func TestEntrypointDelegatesBringUpToTheMeshCommand(t *testing.T) {
+	src, err := os.ReadFile("env/base/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("read entrypoint: %v", err)
+	}
+	if !strings.Contains(string(src), "megh mesh join --local") {
+		t.Error("entrypoint must bring tailscale up through the embedded helper (C2)")
+	}
+}

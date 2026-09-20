@@ -111,18 +111,24 @@ func pruneNodesBestEffort(ctx context.Context, prov providers.Provider, box stri
 	}
 }
 
-var tsGCCmd = &cobra.Command{
-	Use:   "gc [name...]",
-	Short: "Delete tailnet nodes left behind by boxes that no longer exist",
-	Long: `Remove stale Tailscale nodes from the control plane.
+// newTSGCCmd builds the node-sweeper. It is a constructor rather than a package
+// var because the same command hangs under two parents: `megh mesh gc`, and the
+// hidden `megh doctor ts gc` that older muscle memory and older images still
+// reach for. A cobra command remembers its parent, so two parents need two
+// values.
+func newTSGCCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "gc [name...]",
+		Short: "Delete tailnet nodes left behind by boxes that no longer exist",
+		Long: `Remove stale Tailscale nodes from the control plane.
 
 A node outlives its box whenever the logout in 'megh down' could not run: the
 box was unreachable, or it was killed outside megh. Tailscale will not reuse a
 name an offline node still holds, so the next box of that name joins as
 <name>-1 and the suffix climbs on every rebuild.
 
-  megh doctor ts gc devbox     delete devbox and its devbox-1/-2/... variants
-  megh doctor ts gc            sweep every stale node with no live box
+  megh mesh gc devbox     delete devbox and its devbox-1/-2/... variants
+  megh mesh gc            sweep every stale node with no live box
 
 Naming a box is the precise form and is what you want for known debris. The
 bare sweep is a best guess: megh keeps no local state, so it cannot prove a node
@@ -131,85 +137,88 @@ only ever considers nodes that are offline and have no matching live box. Narrow
 it with --tag if you mint auth keys with a tag.
 
 A node for a box that is still running is never deleted.`,
-	Args: cobra.ArbitraryArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, tsGCProvider)
-		if err != nil {
-			return err
-		}
-		ctx := context.Background()
-		c, err := tsClient()
-		if err != nil {
-			return err
-		}
-		live, err := liveBoxNames(ctx, prov)
-		if err != nil {
-			return fmt.Errorf("could not list boxes to check against: %w", err)
-		}
-
-		devices, err := c.Devices(ctx)
-		if err != nil {
-			return err
-		}
-		// A tag-scoped credential can only delete devices carrying its tag, so a
-		// bare sweep that offered anything else would list candidates it cannot
-		// actually remove. Default the sweep to the configured tag and say so,
-		// which also means the sweep structurally cannot propose a personal
-		// device. Naming boxes explicitly still bypasses this, since that is how
-		// you clear untagged debris from before tagging existed.
-		tag := tsGCTag
-		if tag == "" && len(args) == 0 && cfg.Tailscale.Tag != "" && !cmd.Flags().Changed("tag") {
-			tag = cfg.Tailscale.Tag
-			fmt.Printf("sweeping only %s devices (pass --tag \"\" to consider every node)\n", tag)
-		}
-		candidates := gcCandidates(devices, args, live, time.Now(), tsGCStale, tag)
-		if len(candidates) == 0 {
-			fmt.Println("no stale tailnet nodes")
-			return nil
-		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tOS\tLAST SEEN\tID")
-		for _, d := range candidates {
-			seen := "unknown"
-			if !d.LastSeen.IsZero() {
-				seen = units(time.Since(d.LastSeen)) + " ago"
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			prov, err := resolveProvider(cmd, tsGCProvider)
+			if err != nil {
+				return err
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", d.BareName(), d.OS, seen, d.ID)
-		}
-		w.Flush()
+			ctx := context.Background()
+			c, err := tsClient()
+			if err != nil {
+				return err
+			}
+			live, err := liveBoxNames(ctx, prov)
+			if err != nil {
+				return fmt.Errorf("could not list boxes to check against: %w", err)
+			}
 
-		if tsGCDryRun {
-			fmt.Printf("\ndry run: %d node(s) would be deleted\n", len(candidates))
-			return nil
-		}
-		if !tsGCYes {
-			fmt.Printf("\ndelete these %d tailnet node(s)? [y/N]: ", len(candidates))
-			var resp string
-			fmt.Scanln(&resp)
-			if !strings.EqualFold(strings.TrimSpace(resp), "y") {
-				fmt.Println("aborted")
+			devices, err := c.Devices(ctx)
+			if err != nil {
+				return err
+			}
+			// A tag-scoped credential can only delete devices carrying its tag, so a
+			// bare sweep that offered anything else would list candidates it cannot
+			// actually remove. Default the sweep to the configured tag and say so,
+			// which also means the sweep structurally cannot propose a personal
+			// device. Naming boxes explicitly still bypasses this, since that is how
+			// you clear untagged debris from before tagging existed.
+			tag := tsGCTag
+			if tag == "" && len(args) == 0 && cfg.Tailscale.Tag != "" && !cmd.Flags().Changed("tag") {
+				tag = cfg.Tailscale.Tag
+				fmt.Printf("sweeping only %s devices (pass --tag \"\" to consider every node)\n", tag)
+			}
+			candidates := gcCandidates(devices, args, live, time.Now(), tsGCStale, tag)
+			if len(candidates) == 0 {
+				fmt.Println("no stale tailnet nodes")
 				return nil
 			}
-		}
-		var failed int
-		for _, d := range candidates {
-			if err := c.Delete(ctx, d.ID); err != nil {
-				fmt.Printf("  %s: %v\n", d.BareName(), err)
-				if isScopeError(err) {
-					fmt.Printf("      the credential is tag-scoped, so it cannot delete an untagged device;\n")
-					fmt.Printf("      remove it in the admin console, or use a credential with wider scope\n")
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+			fmt.Fprintln(w, "NAME\tOS\tLAST SEEN\tID")
+			for _, d := range candidates {
+				seen := "unknown"
+				if !d.LastSeen.IsZero() {
+					seen = units(time.Since(d.LastSeen)) + " ago"
 				}
-				failed++
-				continue
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", d.BareName(), d.OS, seen, d.ID)
 			}
-			fmt.Printf("  deleted %s\n", d.BareName())
-		}
-		if failed > 0 {
-			return fmt.Errorf("%d of %d deletes failed", failed, len(candidates))
-		}
-		return nil
-	},
+			w.Flush()
+
+			if tsGCDryRun {
+				fmt.Printf("\ndry run: %d node(s) would be deleted\n", len(candidates))
+				return nil
+			}
+			if !tsGCYes {
+				fmt.Printf("\ndelete these %d tailnet node(s)? [y/N]: ", len(candidates))
+				var resp string
+				fmt.Scanln(&resp)
+				if !strings.EqualFold(strings.TrimSpace(resp), "y") {
+					fmt.Println("aborted")
+					return nil
+				}
+			}
+			var failed int
+			for _, d := range candidates {
+				if err := c.Delete(ctx, d.ID); err != nil {
+					fmt.Printf("  %s: %v\n", d.BareName(), err)
+					if isScopeError(err) {
+						fmt.Printf("      the credential is tag-scoped, so it cannot delete an untagged device;\n")
+						fmt.Printf("      remove it in the admin console, or use a credential with wider scope\n")
+					}
+					failed++
+					continue
+				}
+				fmt.Printf("  deleted %s\n", d.BareName())
+			}
+			if failed > 0 {
+				return fmt.Errorf("%d of %d deletes failed", failed, len(candidates))
+			}
+			return nil
+		},
+	}
+	gcFlags(c)
+	return c
 }
 
 // gcCandidates picks the nodes to offer for deletion. With names, it matches
@@ -271,7 +280,13 @@ func units(d time.Duration) string {
 }
 
 func init() {
-	f := tsGCCmd.Flags()
+	tsCmd.AddCommand(newTSGCCmd())
+}
+
+// gcFlags binds the sweeper's flags. The values are package vars, which is safe
+// because one command runs per process.
+func gcFlags(c *cobra.Command) {
+	f := c.Flags()
 	f.StringVar(&tsAPIKey, "api-key", "", "Tailscale API access token (default: $MEGH_TAILSCALE_API_KEY)")
 	f.StringVar(&tsTailnet, "tailnet", "", "tailnet to operate on (default: megh.yaml tailnet, else the token's own)")
 	f.BoolVarP(&tsGCYes, "yes", "y", false, "skip the confirmation prompt")
@@ -279,5 +294,4 @@ func init() {
 	f.DurationVar(&tsGCStale, "stale-after", 15*time.Minute, "how long a node must have been offline to be swept (bare sweep only)")
 	f.StringVar(&tsGCTag, "tag", "", "only consider nodes carrying this tag (e.g. tag:megh)")
 	f.StringVar(&tsGCProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	tsCmd.AddCommand(tsGCCmd)
 }

@@ -31,10 +31,10 @@ if command -v tailscale >/dev/null 2>&1; then
     if [ "$state" = "Running" ]; then
       echo "  tailscale : registered as ${name:-?} (${ip:-?})"
     else
-      echo "  tailscale : NOT connected (state=${state}); is TS_AUTHKEY set? see /tmp/tailscale-up.log"
+      echo "  tailscale : NOT connected (state=${state}); see 'megh mesh logs', or join it with 'megh mesh join'"
     fi
   else
-    echo "  tailscale : not up (tailscaled not running / TS_AUTHKEY unset); see /tmp/tailscale-up.log"
+    echo "  tailscale : not up (tailscaled not running / never joined); 'megh mesh join' puts it on, 'megh mesh logs' says why not"
   fi
 else
   echo "  tailscale : binary not installed"
