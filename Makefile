@@ -123,8 +123,6 @@ image-local-base: ## build the FULL local image: Playwright, headed display and 
 image-local-slim: ## build the SLIM local image: no frontend stack, code-server installs at boot
 	$(call build_local_image,$(LOCAL_IMAGE_SLIM),1)
 
-.PHONY: image-local
-image-local: image-local-base ## alias for image-local-base, the flavor a laptop box usually wants
 
 .PHONY: image-watch
 image-watch: ## watch the latest build-env workflow run
