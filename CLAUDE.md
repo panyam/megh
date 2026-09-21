@@ -43,6 +43,7 @@ megh mesh join|leave|ls [box]     # put a box on the overlay named by providers.
                                   # a local box joins ONLY when asked; a pod joins at boot
                                   # join --authkey re-keys a box (this WAS doctor ts setkey)
 megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
+                                  # no feature named: a menu on a terminal, a plain list when piped
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
 megh doctor control-plane         # can THIS machine spawn/reach/hydrate boxes? (the checklist)
@@ -379,6 +380,17 @@ Order does not matter and either can be re-run alone, but nothing is visible
 until both have. Then `DISPLAY=:99 kicad &` over `megh ssh`, or right-click the
 noVNC desktop -> EDA, which `enable eda` fills from the packages' own `.desktop`
 files (so `MEGH_EDA_EXTRA` entries get launchers too).
+
+**Watching a Playwright run is not a GUI question.** UI mode, the trace viewer
+and the HTML report are HTTP servers, so nothing about them needs X. `megh enable
+playwright` installs `pw-ui`, which serves one of them on `127.0.0.1:9323` — the
+`playwright` surface — and `megh browse <box> 9323` forwards it: `pw-ui trace
+<file>`, `pw-ui ui`, `pw-ui report`. The browser under test still runs headless.
+`enable vnc` is for a LIVE headed browser, which is the only part that needs a
+display. `pw-ui` prefers the PROJECT's playwright over the global one (a trace
+opens empty in another version's viewer) and takes its tailnet serve down on
+exit, rather than leaving a proxy aimed at a dead port the way an installed-but-
+idle `:6080` does.
 
 Three things to know. **There is no GPU** — not on a CPU pod, and not on the
 docker backend either, where the Mac's GPU is unreachable from a Linux container

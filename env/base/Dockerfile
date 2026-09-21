@@ -60,6 +60,14 @@ RUN chmod +x /usr/local/bin/megh
 # for boxes launched from older images.
 RUN MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local
 
+# Bake the Playwright viewer launcher (:9323) the same way, in BOTH flavors.
+# internal/features/playwright.sh stays the single source of truth; emit-only
+# writes pw-ui and installs nothing, so slim pays 2 KB and gets a launcher whose
+# one failure mode is a message naming `megh enable playwright`. On full, where
+# provision.sh has already baked the package and chromium, this is what makes the
+# viewer work out of the box rather than after a retrofit.
+RUN MEGH_PLAYWRIGHT_EMIT_ONLY=1 megh enable playwright --local
+
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
 RUN chmod +x /usr/local/bin/megh-entrypoint
 

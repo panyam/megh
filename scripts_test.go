@@ -119,3 +119,18 @@ func TestShippedScriptsAdvertiseCurrentCommands(t *testing.T) {
 		}
 	}
 }
+
+// The image bakes the Playwright viewer launcher the same way it bakes the
+// webterm page: by running the feature's own script from the baked binary, so
+// internal/features/playwright.sh stays the single source of truth. Without this
+// RUN a full box has playwright and chromium from provision.sh but no `pw-ui`,
+// so :9323 never comes up and the surface looks broken rather than absent.
+func TestImageBakesTheViewerLauncher(t *testing.T) {
+	src, err := os.ReadFile("env/base/Dockerfile")
+	if err != nil {
+		t.Fatalf("read Dockerfile: %v", err)
+	}
+	if !strings.Contains(string(src), "MEGH_PLAYWRIGHT_EMIT_ONLY=1 megh enable playwright --local") {
+		t.Error("the Dockerfile does not bake pw-ui; the :9323 surface then needs `megh enable playwright` on every box")
+	}
+}
