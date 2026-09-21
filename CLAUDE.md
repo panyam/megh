@@ -153,7 +153,7 @@ Four things differ, and each is deliberate.
   the same `provision.sh`, using BuildKit's `TARGETARCH`; set
   `providers.docker.image` to the tag the build prints. **One tag per flavor**, so
   building one does not change what a box on the other flavor gets at its next
-  recreate. `image-local` is an alias for the base one.
+  recreate. There is no unflavored target: naming the flavor is the point.
 
 **Never mount a directory whose entries are absolute host symlinks.** `~/personal`
 is one: `helper_functions`, `anchor_pr_files` and `completions` point into
