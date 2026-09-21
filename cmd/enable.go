@@ -1,17 +1,22 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/panyam/megh/internal/features"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/panyam/megh/internal/config"
 )
@@ -50,6 +55,82 @@ func meghEnv() []byte {
 	return b.Bytes()
 }
 
+// isTerminal reports whether f is a terminal rather than a pipe, a file or
+// /dev/null. The os.ModeCharDevice bit is NOT this test: /dev/null is a
+// character device too, so `megh enable </dev/null` prompted at an input that
+// can never answer. x/term asks the tty ioctl, and it is also the part that
+// differs between Linux and the Mac megh runs from.
+func isTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
+}
+
+// chooseFeature resolves an absent feature name. On a terminal it prompts; piped
+// it prints the list and returns "", which the caller treats as "nothing to do"
+// rather than an error — `megh enable` with no arguments has always been the way
+// to ask what exists, and a prompt there would block a `megh enable | grep`.
+func chooseFeature(in *os.File, out io.Writer, names []string) (string, error) {
+	if !isTerminal(in) {
+		printFeatures(out, names)
+		return "", nil
+	}
+	return pickFromList(in, out, names)
+}
+
+// printFeatures is the non-interactive listing.
+func printFeatures(out io.Writer, names []string) {
+	fmt.Fprintln(out, "available features (megh enable <name>):")
+	for _, n := range names {
+		fmt.Fprintf(out, "  %-11s %s\n", n, summarize(features.Describe(n)))
+	}
+}
+
+// pickFromList prints a numbered menu and reads one choice. A number or a name
+// both work, since the name is what every other invocation uses and typing it
+// should not be punished. Enter cancels.
+func pickFromList(in io.Reader, out io.Writer, names []string) (string, error) {
+	fmt.Fprintln(out, "features (megh enable <name> [box]):")
+	for i, n := range names {
+		fmt.Fprintf(out, "  %2d  %-11s %s\n", i+1, n, summarize(features.Describe(n)))
+	}
+	fmt.Fprintf(out, "choose [1-%d, or a name], Enter to cancel: ", len(names))
+
+	sc := bufio.NewScanner(in)
+	if !sc.Scan() {
+		fmt.Fprintln(out, "nothing chosen")
+		return "", nil
+	}
+	answer := strings.TrimSpace(sc.Text())
+	if answer == "" {
+		fmt.Fprintln(out, "nothing chosen")
+		return "", nil
+	}
+	if n, err := strconv.Atoi(answer); err == nil {
+		if n < 1 || n > len(names) {
+			return "", fmt.Errorf("there is no feature %d; pick 1-%d", n, len(names))
+		}
+		return names[n-1], nil
+	}
+	if slices.Contains(names, answer) {
+		return answer, nil
+	}
+	return "", fmt.Errorf("unknown feature %q (run `megh enable` to list)", answer)
+}
+
+// summarize trims a feature's own summary to one chooser row. The scripts are
+// the source of truth and some of them enumerate everything they install, so the
+// clipping belongs here rather than in their headers.
+func summarize(desc string) string {
+	const width = 68
+	if len(desc) <= width {
+		return desc
+	}
+	cut := strings.LastIndex(desc[:width], " ")
+	if cut < width/2 {
+		cut = width
+	}
+	return desc[:cut] + "…"
+}
+
 var enableCmd = &cobra.Command{
 	Use:   "enable [feature] [box]",
 	Short: "Add a capability to a box on demand (start slim, add features later)",
@@ -57,12 +138,14 @@ var enableCmd = &cobra.Command{
 slim flavor and add only what you need. Scripts are embedded in megh, so this
 works against any box (piped over SSH) and needs no image rebuild.
 
-  megh enable             list available features
+  megh enable             choose a feature from a menu (a plain list when piped)
   megh enable webterm     mobile/tablet web terminal + on-screen key bar (:7682)
   megh enable vnc         headed-browser display (noVNC on :6080)
   megh enable eda         KiCad, lepton-eda, gerbv, xschem, ngspice, gtkwave,
                           pcb-rnd, ddd + software GL (draws on 'enable vnc')
-  megh enable playwright  Playwright + Chromium (headed needs 'enable vnc')
+  megh enable playwright  Playwright + Chromium, plus 'pw-ui' to serve UI mode,
+                          the trace viewer or the HTML report on :9323 with no
+                          display (a LIVE headed browser needs 'enable vnc')
   megh enable code        code-server (VS Code on :8080)
   megh enable postgres    PostgreSQL + pgvector on :5433 (one db per project)
   megh enable redis       Redis on :6399
@@ -75,14 +158,18 @@ Runs from the control machine and ssh-es to the box (sole box, or name it as the
 second arg). Use --local when running on the box itself.`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			fmt.Println("available features (megh enable <name>):")
-			for _, n := range features.List() {
-				fmt.Printf("  %s\n", n)
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		} else {
+			// No name: offer the list. On a terminal that is a chooser; piped or
+			// scripted it stays the plain listing it has always been.
+			picked, err := chooseFeature(os.Stdin, os.Stdout, features.List())
+			if err != nil || picked == "" {
+				return err
 			}
-			return nil
+			name = picked
 		}
-		name := args[0]
 		if !featureName.MatchString(name) {
 			return fmt.Errorf("invalid feature name %q", name)
 		}

@@ -23,6 +23,12 @@ var Surfaces = []Surface{
 	{7682, "webterm", "/", ""},
 	{6080, "vnc", "/vnc.html", "vnc"},
 	{8080, "code", "/", "code"},
+	// The Playwright viewer: UI mode, the trace viewer and the HTML report are
+	// all web apps served over HTTP, so watching a run needs no X display and no
+	// vnc. `pw-ui` (installed by `megh enable playwright`) is what serves it, and
+	// it is started per run rather than at boot, so this port is dead most of the
+	// time. That is what the probe is for.
+	{9323, "playwright", "/", "playwright"},
 }
 
 // SurfaceFor describes a port, falling back to a generic entry for one the
