@@ -173,7 +173,7 @@ URLs, and keep them open until Ctrl-C. No mesh needed, and nothing on the box
 changes: the tunnel is opened from here, so a port that started a minute ago is
 reachable without restarting anything.
 
-  megh browse dev              forward every live surface (shell/vnc/code)
+  megh browse dev              forward every live surface (shell/vnc/code/playwright)
   megh browse dev 5678         forward one port (any port, not just the surfaces)
   megh browse dev 5678 3000    forward several
   megh browse dev 5678 -b      background it; close with: megh browse dev --stop

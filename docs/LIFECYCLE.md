@@ -78,6 +78,7 @@ is key-auth only. Nothing but SSH is ever on the public proxy, and only when
 | ttyd web shell (tmux) | 7681 | tunnel → `localhost:7681`, or `http://<box>:7681` on the tailnet |
 | noVNC headed browser | 6080 | tunnel → `localhost:6080/vnc.html`, or `http://<box>:6080/vnc.html` |
 | code-server (VS Code) | 8080 | tunnel → `localhost:8080`, or `http://<box>:8080` on the tailnet; Remote-SSH also works |
+| Playwright viewer (UI mode, trace, report) | 9323 | tunnel → `localhost:9323`, or `http://<box>:9323`; started per run by `pw-ui`, so it is dead until you start one |
 
 `megh browse` forwards the box's live surfaces to your localhost and prints the
 URLs (`megh ssh` is a plain shell). With Tailscale up, the same surfaces are

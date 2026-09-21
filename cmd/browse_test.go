@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/panyam/megh/internal/features"
+	"github.com/panyam/megh/internal/providers"
 )
 
 // The reported case: `megh browse 6080 devbox` on a slim box, which ships no vnc
@@ -181,5 +185,45 @@ func TestRequestedPortsSplitIntoLiveAndDead(t *testing.T) {
 	all, none := splitRequested(nil, []int{7682, 5678})
 	if !slices.Equal(all, []int{7682, 5678}) || len(none) != 0 {
 		t.Errorf("no request means every live port: live=%v dead=%v", all, none)
+	}
+}
+
+// The Playwright viewer is the surface you reach for when you do NOT want a
+// desktop, so asking for it on a box that has not enabled playwright is the
+// common first move. It has to name the port as the viewer and offer the
+// feature, exactly as vnc does — a bare "nothing is listening on 9323" sends
+// you looking at your test config instead.
+func TestNotListeningMsgNamesThePlaywrightViewer(t *testing.T) {
+	msg := notListeningMsg(9323, []int{7681, 8080}, "devbox")
+
+	for _, want := range []string{
+		"nothing is listening on 9323 (playwright)",
+		"megh enable playwright devbox",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message missing %q:\n%s", want, msg)
+		}
+	}
+}
+
+// The catalog and the launcher are two files that have to agree on one number,
+// and nothing else would notice them drifting: browse would tunnel a dead port
+// while the viewer served a live one nobody forwards.
+func TestViewerPortMatchesTheCatalog(t *testing.T) {
+	var port int
+	for _, s := range providers.Surfaces {
+		if s.Label == "playwright" {
+			port = s.Port
+		}
+	}
+	if port == 0 {
+		t.Fatal("no playwright surface in the catalog")
+	}
+	script, err := features.Script("playwright")
+	if err != nil {
+		t.Fatalf("Script: %v", err)
+	}
+	if want := fmt.Sprintf("PW_UI_PORT:-%d", port); !strings.Contains(string(script), want) {
+		t.Errorf("the launcher does not default to the catalog's port (%q not in playwright.sh)", want)
 	}
 }
