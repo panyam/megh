@@ -45,7 +45,7 @@ Four layers, decoupled so the box is disposable and providers are swappable.
     the local docker backend). The platform runs it directly; there is no VM you
     manage. `INSTALL_DOCKER=0` (a container needs no daemon inside it). The file
     names no architecture: BuildKit's `TARGETARCH` feeds provision.sh, so CI
-    publishes amd64 for RunPod and `make image-local-base`/`-slim` build the host's
+    publishes amd64 for RunPod and `make image-local-full`/`-slim` build the host's
     arch, one tag per flavor.
   - **VM image** (`packer/`, later) for VM-native providers (Hetzner, and the
     AWS-AMI shape). The dev environment runs DIRECTLY on the VM, not in a

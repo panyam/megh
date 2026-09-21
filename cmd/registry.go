@@ -42,7 +42,7 @@ var registryTagsRegistry string
 
 var registryTagsCmd = &cobra.Command{
 	Use:   "tags <image>",
-	Short: "List tags for one image (e.g. megh-base)",
+	Short: "List tags for one image (e.g. megh-full)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg, ok := cfg.Find(registryTagsRegistry)
