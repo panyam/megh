@@ -252,7 +252,7 @@ func Default() Config {
 			Username:  env("MEGH_GHCR_USER", "panyam"),
 			TokenEnv:  "GH_MEGH_TOKEN",
 		}},
-		Flavors: []string{"base", "slim"},
+		Flavors: []string{"full", "slim"},
 		Providers: map[string]Provider{
 			"runpod": {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
 		},
