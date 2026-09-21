@@ -49,7 +49,8 @@ and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 ## A box on your own machine
 
 ```sh
-make image-local                       # build the dev-env image for this machine's arch
+make image-local-base                  # build the dev-env image for this machine's arch
+                                       # (image-local-slim drops the frontend stack)
 megh up --provider docker local1
 megh ssh --provider docker local1
 ```

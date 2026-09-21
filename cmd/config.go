@@ -124,7 +124,7 @@ func init() {
 
 func orUnset(v string) string {
 	if v == "" {
-		return "<unset: build one with `make image-local`>"
+		return "<unset: build one with `make image-local-base`>"
 	}
 	return v
 }
