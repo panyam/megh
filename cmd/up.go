@@ -195,7 +195,7 @@ func init() {
 	// Defaults are empty/zero so `Changed` distinguishes an explicit flag from a
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use base for frontend)")
+	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use full for frontend)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
 	f.IntVar(&upOpts.RAMGiB, "ram", 0, "RAM in GiB (default: config, else 8)")
 	f.IntVar(&upOpts.DiskGiB, "disk", 0, "ephemeral container disk in GiB (default: config, else 20)")
