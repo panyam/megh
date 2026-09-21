@@ -18,7 +18,7 @@ ENV := set +u; [ -f $(ENVFILE) ] && source $(ENVFILE);
 # --- overridable configuration ------------------------------------------------
 GHCR_NAMESPACE ?= panyam
 REPO           ?= $(GHCR_NAMESPACE)/megh
-IMAGE          ?= ghcr.io/$(GHCR_NAMESPACE)/megh-base:latest
+IMAGE          ?= ghcr.io/$(GHCR_NAMESPACE)/megh-full:latest
 PUBKEY_FILE    ?= $(HOME)/.ssh/id_ed25519.pub
 VCPU           ?= 4
 RAM            ?= 16
@@ -99,7 +99,7 @@ image: ## push current HEAD to origin to trigger the GHCR image build
 # tag points at then. Two tags let a slim backend box and a full frontend box
 # coexist on one machine.
 LOCAL_ARCH       := $(shell go env GOARCH)
-LOCAL_IMAGE_BASE ?= megh-local-base:$(LOCAL_ARCH)
+LOCAL_IMAGE_FULL ?= megh-local-full:$(LOCAL_ARCH)
 LOCAL_IMAGE_SLIM ?= megh-local-slim:$(LOCAL_ARCH)
 
 # $(1) is the tag, $(2) is MEGH_SLIM. Both flavors build from one recipe for the
@@ -115,9 +115,9 @@ define build_local_image
 	@echo "built $(1); set providers.docker.image to it in megh.yaml"
 endef
 
-.PHONY: image-local-base
-image-local-base: ## build the FULL local image: Playwright, headed display and code-server baked
-	$(call build_local_image,$(LOCAL_IMAGE_BASE),0)
+.PHONY: image-local-full
+image-local-full: ## build the FULL local image: Playwright, headed display and code-server baked
+	$(call build_local_image,$(LOCAL_IMAGE_FULL),0)
 
 .PHONY: image-local-slim
 image-local-slim: ## build the SLIM local image: no frontend stack, code-server installs at boot

@@ -21,7 +21,7 @@ The Makefile sources this file for every recipe that needs a secret.
 
 The image is a build output, never a hand-mutated snapshot. Source of truth is
 `env/base/provision.sh`; the `build-env` GitHub Action builds it for
-`linux/amd64` and pushes to GHCR as `ghcr.io/panyam/megh-base:latest` (private).
+`linux/amd64` and pushes to GHCR as `ghcr.io/panyam/megh-full:latest` (private).
 
 ```
 make image        # git push origin HEAD -> triggers the build (~15 min first time)

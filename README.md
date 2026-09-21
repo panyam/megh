@@ -12,7 +12,7 @@ box costs minutes, not work.
 ## Shape
 
 - **Dev environment** is declared once (`env/base/provision.sh`) and built into
-  two flavors, `base` (full, Playwright and code-server baked) and `slim` (lean
+  two flavors, `full` (Playwright and code-server baked) and `slim` (lean
   and fast to pull), never a hand-mutated snapshot.
 - **Compute** is one backend per provider behind the `megh` CLI: RunPod for
   rented boxes, `docker` for a box that is a container on your own machine, and
@@ -49,7 +49,7 @@ and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 ## A box on your own machine
 
 ```sh
-make image-local-base                  # build the dev-env image for this machine's arch
+make image-local-full                  # build the dev-env image for this machine's arch
                                        # (image-local-slim drops the frontend stack)
 megh up --provider docker local1
 megh ssh --provider docker local1

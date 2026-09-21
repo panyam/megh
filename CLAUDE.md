@@ -66,7 +66,7 @@ image), `make registry`.
 
 `megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
 `$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default
-`slim`, so `ghcr.io/panyam/megh-slim:latest`; use `--flavor base` for frontend);
+`slim`, so `ghcr.io/panyam/megh-slim:latest`; use `--flavor full` for frontend);
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
@@ -149,7 +149,7 @@ Four things differ, and each is deliberate.
   fail, and under `set -euo pipefail` that kills PID 1 and the box never boots.
 - **The image is built locally.** CI publishes `linux/amd64` only (RunPod CPU pods
   are x86_64), so on an arm64 machine the published image emulates. `make
-  image-local-base` and `make image-local-slim` build for this machine's arch from
+  image-local-full` and `make image-local-slim` build for this machine's arch from
   the same `provision.sh`, using BuildKit's `TARGETARCH`; set
   `providers.docker.image` to the tag the build prints. **One tag per flavor**, so
   building one does not change what a box on the other flavor gets at its next

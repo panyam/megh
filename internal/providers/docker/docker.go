@@ -163,7 +163,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 		image = o.Image
 	}
 	if image == "" {
-		return nil, fmt.Errorf("no image: set providers.docker.image in megh.yaml (build one with `make image-local-base`)")
+		return nil, fmt.Errorf("no image: set providers.docker.image in megh.yaml (build one with `make image-local-full`)")
 	}
 	name := providers.PrefixName(o.Name)
 

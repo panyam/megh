@@ -1,6 +1,6 @@
 # megh: first box on RunPod
 
-This gets you a working dev box to play with. It runs the `megh-base` image on a
+This gets you a working dev box to play with. It runs the `megh-full` image on a
 RunPod CPU pod, backed by a network volume for scratch, reachable through a web
 shell, a headed-browser view, and SSH.
 
@@ -14,7 +14,7 @@ If you only want to see what a box IS, the local backend gets you one in a coupl
 of minutes with no account, no key, and no bill:
 
 ```sh
-make image-local-base                  # builds for this machine's arch
+make image-local-full                  # builds for this machine's arch
 megh up   --provider docker local1
 megh ssh  --provider docker local1     # tmux 'main', claude and codex already installed
 megh down --provider docker local1
@@ -24,7 +24,7 @@ It runs the same image and the same entrypoint as a rented box, so everything yo
 learn about persist, symlinks, `megh enable` and `megh browse` transfers. Set
 `providers.docker.image` to the tag the build prints, and declare what to
 bind-mount under `providers.docker.mounts`; `megh.yaml.example` has the shape.
-There are two local tags, one per flavor: `image-local-base` bakes Playwright, the
+There are two local tags, one per flavor: `image-local-full` bakes Playwright, the
 headed display and code-server, `image-local-slim` leaves them out and installs
 code-server at boot.
 
@@ -50,11 +50,11 @@ Create the repo private so your setup stays yours:
 gh repo create <you>/megh --private --source=. --remote=origin --push
 ```
 
-The `build-env` workflow builds `megh-base` for `linux/amd64` and pushes it to
+The `build-env` workflow builds `megh-full` for `linux/amd64` and pushes it to
 GHCR as:
 
 ```
-ghcr.io/<you>/megh-base:latest
+ghcr.io/<you>/megh-full:latest
 ```
 
 A package built from a private repo is **private by default**, which is what you
@@ -81,7 +81,7 @@ same volume at `/workspace`.
 
 Deploy a Pod > CPU. Then:
 
-- Container image: `ghcr.io/<you>/megh-base:latest`
+- Container image: `ghcr.io/<you>/megh-full:latest`
 - Attach the network volume from step 2 (mounts at `/workspace`)
 - Container disk: 100 GB
 - Expose ports: `22/tcp`, `7681/http`, `6080/http`
@@ -109,7 +109,7 @@ Check the image published (needs the PAT to have `read:packages`):
 Then launch:
 
 ```
-export MEGH_IMAGE=ghcr.io/<you>/megh-base:latest
+export MEGH_IMAGE=ghcr.io/<you>/megh-full:latest
 export MEGH_PUBKEY="$(cat ~/.ssh/id_ed25519.pub)"
 export MEGH_VOLUME_ID=<volume-id>
 export MEGH_DC=<data-center-id>

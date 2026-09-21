@@ -13,7 +13,7 @@ by hand on a box and snapshotted.
 flowchart LR
   edit["edit env/base/provision.sh<br>(or entrypoint / Dockerfile)"] --> push["git push main"]
   push -->|"only if env/** changed"| ci["GitHub Action: build-env<br>build-arg MEGH_BUILD_REF = git sha"]
-  ci --> ghcr["ghcr.io/panyam/megh-base latest<br>plus a per-sha tag, private, amd64"]
+  ci --> ghcr["ghcr.io/panyam/megh-full latest<br>plus a per-sha tag, private, amd64"]
   ghcr -.->|"RunPod pulls via<br>Container Registry Auth"| pod["RunPod pod"]
 ```
 
