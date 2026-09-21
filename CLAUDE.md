@@ -696,7 +696,33 @@ confirms reachability, but proving the SSH policy needs a client on the tailnet,
 which this Mac is not. The phone is the natural way to confirm it, which folds
 into the Termux item.
 
-The live-validation debt list is now empty. The one item that never cleared, the
-authenticated session-flush push, was retired rather than validated: it required
-a standing GitHub credential on a box, which is what the control-machine
-collection replaces.
+Sixth pass (2026-09-20) validated the mesh on a LOCAL box, live, on a box that
+was already running — which is the point, since the whole design exists so a
+box does not have to be recreated to reach the network. `megh mesh join dev`
+from the Mac started tailscaled inside the running container, brought it up as
+its bare name, and served 6080/7681/7682/8080. Measured after the join:
+`tailscale serve status` shows all four proxying to `127.0.0.1`, the node is
+`dev`/`100.78.215.117` on `taild311d3.ts.net`, and nothing on the box restarted.
+
+Three findings from that pass, all now in the gotchas or the code:
+
+- **The scheme is decided by the tailnet, not by megh.** With HTTPS certificates
+  off, everything serves plain HTTP, so a phone gets no clipboard API (it needs a
+  secure context). `ts-up.sh` says so and names `megh mesh restart` to re-serve
+  after turning certs on.
+- **`:6080` is served whenever `Xvfb` is installed**, whether or not noVNC is
+  running, so a box without `megh enable vnc` publishes a port that answers with
+  a proxy error. Cosmetic, but it looks like a broken mesh.
+- **An ssh ControlMaster socket cannot live on the work mount** — see the gotcha.
+  Found while proving `megh browse -b`, and it only fails when megh runs FROM a
+  box, which is the case the Mac never exercises.
+
+Still unproven: `megh browse <box> <port> -b` end to end from the Mac (the
+mechanism was proven against this box's own sshd with a throwaway key, but not
+the command); a box REJOINING the mesh by itself after a restart, which needs an
+image built after the entrypoint change; and `megh mesh serve` (issue #66), which
+does not exist yet.
+
+The one item that never cleared, the authenticated session-flush push, was
+retired rather than validated: it required a standing GitHub credential on a box,
+which is what the control-machine collection replaces.
