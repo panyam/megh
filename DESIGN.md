@@ -150,6 +150,11 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   is: edit `versions.env`, `make vendor`, verify, commit — not a URL edit.
 - **noVNC + Xvfb + x11vnc** on `:6080` — headed browser (Playwright) viewable on
   laptop or phone. Chosen over X11 forwarding because a phone has no X server.
+- **The Playwright viewer** on `:9323` — UI mode, the trace viewer or the HTML
+  report, whichever `pw-ui` was asked for. Started per run rather than at boot, so
+  the port is dead most of the time. It exists because only a LIVE headed browser
+  needs a display: the other three views are HTTP servers, and reaching for a
+  whole desktop to read a trace was the tax that shape was paying.
 - **SSH** with agent forwarding — no long-lived git credentials on the box.
 
 ## Control surface (how you drive megh)

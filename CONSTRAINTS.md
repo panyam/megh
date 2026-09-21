@@ -201,6 +201,12 @@ The test scans every embedded feature script for a wildcard bind (`0.0.0.0`,
 `[::]`, or `bind *`) outside a comment and fails the build on a match, so this is
 enforced in CI rather than by review.
 
+The sweep is a NEGATIVE test, so a script that binds nothing recognisable passes
+it. A feature that writes a launcher rather than starting a service therefore
+owes a positive assertion too, naming the loopback address it binds:
+`TestPlaywrightViewerBindsLoopback` is the shape, for the `pw-ui` script inside
+playwright.sh.
+
 ## C5: the Tailscale API key stays on the control machine
 
 megh holds two Tailscale secrets and they are not interchangeable.
