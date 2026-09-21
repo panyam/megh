@@ -200,3 +200,32 @@ Two things to check FIRST, both cheap and both able to sink the plan:
 - A scoped secrets file is only scoped if you read it. `box-envvars` carried a
   live `RUNPOD_API_KEY` for months under a header claiming it held no
   credentials, and `files:` copied it to every box. Check contents, not intent.
+
+## Putting a running box on the mesh (no rebuild)
+
+A local box created before `providers.docker.mesh` existed, or created with it
+unset, joins without being recreated. The bring-up script rides in the CONTROL
+machine's binary and is piped over SSH, so the box's own megh can be any age; it
+needs only bash and the tailscale binaries, which every image has.
+
+On the control machine:
+
+```
+megh mesh ls --provider docker        # the box should read: mesh tailscale, state off
+megh mesh join <box> --provider docker
+```
+
+That starts `tailscaled` in userspace mode inside the running container and
+serves its surfaces. Nothing restarts: tmux sessions, ttyd and code-server are
+untouched. It is re-runnable, and `--authkey` re-keys a box whose key went stale.
+
+Prerequisites on the control machine: `providers.docker.mesh: tailscale` in the
+megh.yaml it actually reads (`megh config` prints the source — three copies
+exist and nothing syncs them), and a Tailscale credential, which
+`megh doctor control-plane` checks.
+
+**A box whose IMAGE predates the entrypoint's stored-auth check does not rejoin
+after a restart.** Its tailscaled state survives on the container disk, but the
+old entrypoint only brings tailscale up when `TS_AUTHKEY` is set, and a local box
+has none. Re-run `megh mesh join <box>` after the restart. A box built from a
+current image comes back on its own.
