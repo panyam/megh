@@ -66,3 +66,38 @@ func Script(name string) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// Describe returns the one-line summary a feature's script carries in its
+// header, so the name a chooser shows and the thing the script actually does
+// cannot drift apart. The convention is the second line onwards:
+//
+//	# Feature: <name> — <summary, which may wrap over the comment lines below>
+//
+// Everything after the dash up to the first sentence end is the summary.
+func Describe(name string) string {
+	b, err := scripts.ReadFile(name + ".sh")
+	if err != nil {
+		return ""
+	}
+	var header []string
+	for i, line := range strings.Split(string(b), "\n") {
+		if i == 0 {
+			continue // shebang
+		}
+		if !strings.HasPrefix(line, "#") || strings.TrimSpace(strings.TrimPrefix(line, "#")) == "" {
+			break
+		}
+		header = append(header, strings.TrimSpace(strings.TrimPrefix(line, "#")))
+	}
+	text := strings.Join(header, " ")
+	_, after, found := strings.Cut(text, "— ")
+	if !found {
+		return ""
+	}
+	// One sentence. A summary that runs on is the script's problem to fix, not
+	// something to wrap across a chooser's rows.
+	if end := strings.Index(after, ". "); end > 0 {
+		after = after[:end]
+	}
+	return strings.TrimSuffix(strings.TrimSpace(after), ".")
+}
