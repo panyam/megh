@@ -143,7 +143,10 @@ Four things differ, and each is deliberate.
   (relative to the work mount unless absolute, `:ro` for read-only). Point a mount
   at the target `symlinks:` already uses and one megh.yaml serves both backends:
   `~/projects` resolves to a hydrated clone on a cloud box and to your actual tree
-  here. `megh hydrate` then has nothing to do for those repos.
+  here. `megh hydrate` then has nothing to do for those repos. Point it ANYWHERE
+  ELSE, which an absolute box path usually does, and the two backends disagree
+  about where that tree lives: the `symlinks:` entry dangles on a local box while
+  the content sits at the other path.
 - **Mounts target the WORK MOUNT, never `/mnt/work`.** `/mnt/work` is a symlink
   the entrypoint creates; bind mounts are applied before the entrypoint runs, so
   pre-creating it as a real directory makes `ln -sfn "${WORK_MOUNT}" /mnt/work`
@@ -155,6 +158,18 @@ Four things differ, and each is deliberate.
   `providers.docker.image` to the tag the build prints. **One tag per flavor**, so
   building one does not change what a box on the other flavor gets at its next
   recreate. There is no unflavored target: naming the flavor is the point.
+
+**A mount is decided when the container is CREATED; the config inside the box is
+not.** Bind mounts are `docker run -v` arguments (`runArgs`), fixed for the life
+of that container, while `files:` re-copies `megh.yaml` onto the volume on every
+`megh ssh` / `hydrate`. So a running box routinely carries a config NEWER than
+its own mounts, and reading the yaml ON the box says nothing about what is
+mounted. `cat /proc/self/mountinfo` answers "is it mounted"; `megh config` on the
+CONTROL machine answers "was it declared"; the two disagreeing means the box
+predates the edit. Adding a mount is therefore `megh down` + `megh up`, never a
+restart. Diagnosed the long way on 2026-09-21: a mount added to megh.yaml never
+appeared, the box had the line in its own copy, and the box turned out to be 26
+minutes older than the commit that added it.
 
 **Never mount a directory whose entries are absolute host symlinks.** `~/personal`
 is one: `helper_functions`, `anchor_pr_files` and `completions` point into
@@ -406,6 +421,12 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Gotchas (things that bit us)
 
+- **`/dev/null` is a character device**, so the `os.ModeCharDevice` test that
+  looks like "is stdin a terminal" answers YES for it. `megh enable </dev/null`
+  then printed a menu and prompted at an input that can only answer EOF, which
+  reads as the command refusing to list. `x/term.IsTerminal` asks the tty ioctl,
+  and is also the part that differs between Linux and the Mac megh runs from.
+  `TestDevNullIsNotATerminal` pins it.
 - **RunPod CPU pods CANNOT run containers.** No `cap_sys_admin`; `docker run`
   dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
   starting. Testcontainers and `docker build` are impossible here. Full evidence
@@ -637,6 +658,21 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   `CONSTRAINTS.md` C1.
 
 ## Live-validation debt
+
+Unproven from the 2026-09-21 session, which ran on a local box with no tailnet:
+
+- **`pw-ui`'s tailnet half has never executed.** `tailscale ip -4` fails on a box
+  that never joined, so the serve and the trap that takes it down on exit are
+  both untested. The viewer itself was proven over loopback: `pw-ui trace` against
+  a real playwright-core project serves 127.0.0.1:9323, `GET /` returns 302 into
+  the viewer, and the port is released on exit.
+- **`megh enable`'s menu has never run at a real terminal.** It was driven through
+  a pty harness (menu renders, Enter cancels, an out-of-range number errors) and
+  piped and `</dev/null`. What a Mac terminal does with the row alignment and the
+  `…` clipping is unseen.
+- **The baked launcher has never come out of an image.** `MEGH_PLAYWRIGHT_EMIT_ONLY=1
+  megh enable playwright --local` was run directly; no image has been rebuilt since,
+  so the Dockerfile `RUN` is proven only by the test that reads it.
 
 Validated on a live RunPod box (2026-07-26): Tailscale userspace `up --ssh` +
 `serve --http`, the box joining the tailnet as its bare `<name>` (the `megh-`
