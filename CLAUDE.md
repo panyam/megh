@@ -191,6 +191,14 @@ recreated. Measured 2026-09-12 on `~/personal/box-envvars`, whose mount had been
 dead since the Mac last edited it. Mount the parent directory and reference the
 file inside it; a directory's inode survives its children being rewritten.
 
+**A box lives in ONE docker daemon; pin it with `providers.docker.context`.**
+With colima and Docker Desktop both installed there are two daemons, and megh
+shells out to plain `docker`, so without the key it asks whichever context the
+shell last selected. The box then vanishes: `megh list` says `no boxes` and
+`ssh`/`down` cannot find it, while it runs fine in the other daemon. Seen
+2026-09-25 with `dev` on Desktop and `colima` active. `docker context ls` shows
+the `*`; the image must be built into the pinned daemon too.
+
 **A local box is not a security sandbox.** Anything mounted read-write can be
 deleted from inside it. What it isolates is the rest of the machine.
 

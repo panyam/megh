@@ -53,6 +53,13 @@ providers:
     # laptop they would emulate. One tag per flavor, so the two do not overwrite
     # each other and a box picks its flavor by naming the tag here.
     image: megh-local-full:arm64
+    # The docker context (daemon) megh talks to: `docker context ls` names them.
+    # Absent follows the shell's active context, which is fine with one daemon.
+    # With two (colima and Docker Desktop), pin it: a box lives in ONE daemon,
+    # and asking the other one makes it vanish from list/ssh/down. The image
+    # must be built into the same daemon (`docker context use <it>` before
+    # `make image-local-*`).
+    # context: colima
     # The host directory bound at the box's work mount: docker's network volume.
     # Tool logins persist here, separately from the host's own ~/.claude, so one
     # `claude login` in the box survives rebuilds and never touches yours.
