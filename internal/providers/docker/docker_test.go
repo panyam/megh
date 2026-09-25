@@ -138,6 +138,48 @@ func TestMeshFollowsConfigAndNeverJoinsAtBoot(t *testing.T) {
 	}
 }
 
+// A machine with colima and Docker Desktop has two daemons, and a box lives in
+// one. Every docker call must name the configured context, or list/ssh/down ask
+// whichever daemon the shell last selected and the box vanishes. A fake docker
+// on PATH records the argv it was given.
+func TestEveryDockerCallCarriesTheConfiguredContext(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "argv")
+	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	cfgWith := func(ctx string) func() config.Config {
+		return func() config.Config {
+			return config.Config{Providers: map[string]config.Provider{"docker": {Context: ctx}}}
+		}
+	}
+	for _, tc := range []struct{ ctx, want string }{
+		{"colima", "--context colima ps -a"},
+		{"", "ps -a"},
+	} {
+		os.Remove(log)
+		if _, err := New(cfgWith(tc.ctx)).List(t.Context()); err != nil {
+			t.Fatalf("context %q: List: %v", tc.ctx, err)
+		}
+		b, _ := os.ReadFile(log)
+		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+		if len(lines) < 2 {
+			t.Fatalf("context %q: want info + ps, got %q", tc.ctx, lines)
+		}
+		for _, l := range lines {
+			if (tc.ctx != "") != strings.HasPrefix(l, "--context "+tc.ctx+" ") {
+				t.Errorf("context %q: call %q", tc.ctx, l)
+			}
+		}
+		if !strings.HasPrefix(lines[len(lines)-1], tc.want) {
+			t.Errorf("context %q: last call %q, want prefix %q", tc.ctx, lines[len(lines)-1], tc.want)
+		}
+	}
+}
+
 // CONSTRAINTS C3, extended to mounts: a bind mount is a channel to a box just
 // like pod env and files:, and a wider one, because it exposes a live host path
 // rather than a copied value. Every -v must trace to the config allowlist or be
