@@ -54,6 +54,11 @@ type Provider struct {
 	// WorkDir is the host directory bound at the box's work mount: docker's
 	// answer to a network volume. Default ~/.megh/volumes/local.
 	WorkDir string `yaml:"work_dir"`
+	// Context is the docker context every docker call uses, e.g. "colima" or
+	// "desktop-linux". Empty follows the shell's active context or DOCKER_HOST,
+	// which on a machine with two daemons is whichever one ran last, so a box
+	// on the other daemon silently vanishes from list/ssh/down.
+	Context string `yaml:"context"`
 	// VolumeRoot is where `megh storage` creates and lists local volumes.
 	// Default ~/.megh/volumes.
 	VolumeRoot string `yaml:"volume_root"`
