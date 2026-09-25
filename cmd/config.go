@@ -53,6 +53,7 @@ var configCmd = &cobra.Command{
 		if d, ok := cfg.Providers["docker"]; ok {
 			fmt.Println("\n  docker (local):")
 			fmt.Printf("    image:       %s\n", orUnset(d.Image))
+			fmt.Printf("    context:     %s\n", orDefaulted(d.Context, "active docker context"))
 			fmt.Printf("    work_dir:    %s\n", orDefaulted(d.WorkDir, "~/.megh/volumes/local"))
 			fmt.Printf("    volume_root: %s\n", orDefaulted(d.VolumeRoot, "~/.megh/volumes"))
 			if len(d.Mounts) == 0 {

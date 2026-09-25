@@ -60,6 +60,7 @@ type settings struct {
 	volumeRoot string
 	mounts     map[string]string
 	mesh       string
+	context    string
 }
 
 // Provider is the local docker backend.
@@ -86,6 +87,7 @@ func (p *Provider) settings() settings {
 		volumeRoot: orDefault(c.VolumeRoot, "~/.megh/volumes"),
 		mounts:     c.Mounts,
 		mesh:       c.Mesh,
+		context:    c.Context,
 	}
 }
 
@@ -176,7 +178,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	if err != nil {
 		return nil, err
 	}
-	out, err := run(ctx, args...)
+	out, err := p.run(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +282,7 @@ func (p *Provider) List(ctx context.Context) ([]providers.Box, error) {
 	if err := p.check(ctx); err != nil {
 		return nil, err
 	}
-	out, err := run(ctx, "ps", "-a", "--filter", "label="+managedLabel+"=1", "--format", "{{.ID}}")
+	out, err := p.run(ctx, "ps", "-a", "--filter", "label="+managedLabel+"=1", "--format", "{{.ID}}")
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +303,7 @@ func (p *Provider) Terminate(ctx context.Context, id string) error {
 	if err := p.check(ctx); err != nil {
 		return err
 	}
-	_, err := run(ctx, "rm", "-f", id)
+	_, err := p.run(ctx, "rm", "-f", id)
 	return err
 }
 
@@ -327,7 +329,7 @@ type inspectOut struct {
 }
 
 func (p *Provider) inspect(ctx context.Context, id string) (*providers.Box, error) {
-	out, err := run(ctx, "inspect", id)
+	out, err := p.run(ctx, "inspect", id)
 	if err != nil {
 		return nil, err
 	}
@@ -375,15 +377,21 @@ func (p *Provider) check(ctx context.Context) error {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return fmt.Errorf("docker is not on PATH (the local backend needs Docker Desktop or a docker CLI)")
 	}
-	if _, err := run(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
+	if _, err := p.run(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
 		return fmt.Errorf("the docker daemon is not reachable: %w", err)
 	}
 	return nil
 }
 
 // run executes docker and returns stdout, folding stderr into the error so a
-// failure says what docker actually complained about.
-func run(ctx context.Context, args ...string) (string, error) {
+// failure says what docker actually complained about. A configured context is
+// passed on every call, so megh reaches the same daemon whatever the shell's
+// active context or DOCKER_HOST says.
+func (p *Provider) run(ctx context.Context, args ...string) (string, error) {
+	verb := args[0]
+	if c := p.settings().context; c != "" {
+		args = append([]string{"--context", c}, args...)
+	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -393,7 +401,7 @@ func run(ctx context.Context, args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("docker %s: %s", args[0], msg)
+		return "", fmt.Errorf("docker %s: %s", verb, msg)
 	}
 	return string(out), nil
 }
