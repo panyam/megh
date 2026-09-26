@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+type dynamicProfilesDoc struct {
+	Profiles []map[string]any `json:"Profiles"`
+}
+
 // StorePath is a saved dynamic-profile JSON file under the megh config tree.
 type StorePath struct {
 	Name string // iTerm profile name (Profiles[0].Name)
