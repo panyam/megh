@@ -30,6 +30,7 @@ func init() {
 // activeProfile is the resolved profile, if one exists.
 var (
 	cfg           config.Config
+	cfgSourcePath string
 	cfgFlag       string
 	profileFlag   string
 	activeProfile *profile.Profile
@@ -58,11 +59,12 @@ the system level. Secrets are never stored in the repo.`,
 			}
 			activeProfile = p
 		}
-		c, _, err := config.Load(cfgFlag)
+		c, path, err := config.Load(cfgFlag)
 		if err != nil {
 			return err
 		}
 		cfg = c
+		cfgSourcePath = path
 		if activeProfile != nil {
 			cfg.SSHKeyFile = activeProfile.BoxKeyFile()
 			cfg.SSHPubKeyFile = activeProfile.BoxPubKeyFile()

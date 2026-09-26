@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -244,9 +245,13 @@ switch windows with ctrl-b <number>.`,
 		if err != nil {
 			return err
 		}
+		if sshNoITerm {
+			os.Setenv("MEGH_ITERM", "0")
+		}
 		return connectToBox(context.Background(), prov, args[1:], connectOpts{
-			session:     args[0],
-			controlMode: controlMode,
+			session:      args[0],
+			controlMode:  controlMode,
+			itermProfile: sshITermProfile,
 		})
 	},
 }
@@ -256,6 +261,8 @@ func init() {
 	tmuxAttachSubCmd.Flags().StringVar(&tmuxProvider, "provider", "", "provider (default: config default_provider, else runpod)")
 	tmuxAttachSubCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
 	tmuxAttachSubCmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "force a normal attach, overriding $MEGH_SSH_CC")
+	tmuxAttachSubCmd.Flags().BoolVar(&sshNoITerm, "no-iterm", false, "do not reopen in the iTerm2 profile")
+	tmuxAttachSubCmd.Flags().StringVar(&sshITermProfile, "iterm-profile", "", "iTerm2 profile for this attach")
 	tmuxCmd.AddCommand(tmuxLsCmd, tmuxAttachSubCmd)
 	rootCmd.AddCommand(tmuxCmd)
 }

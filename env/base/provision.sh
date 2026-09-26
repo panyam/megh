@@ -190,5 +190,12 @@ if [ "${MEGH_SLIM}" != "1" ]; then
   npx --yes playwright install --with-deps chromium
 fi
 
+# --- tmux checkpoint (tmux-resurrect) --------------------------------------
+# Baked so SIGTERM on a local box can flush tmux to the scratch volume before
+# exit; restore runs on the next boot/start.
+mkdir -p /opt/megh/tmux-plugins
+git clone --depth 1 https://github.com/tmux-plugins/tmux-resurrect.git \
+  /opt/megh/tmux-plugins/tmux-resurrect
+
 echo "provision: dev environment ready (arch=${TARGET_ARCH}, docker=${INSTALL_DOCKER}, slim=${MEGH_SLIM})"
 echo "provision: $(/usr/local/bin/go version), plus gopls goimports dlv staticcheck in /usr/local/bin"

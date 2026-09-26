@@ -45,6 +45,12 @@ func TestRunArgsCarriesTheBoxContract(t *testing.T) {
 	if !hasPair(args, "--label", "megh.managed=1") {
 		t.Error("no megh.managed label; List filters on it")
 	}
+	if !hasPair(args, "--restart", "unless-stopped") {
+		t.Error("local boxes should restart after a colima/docker daemon recycle")
+	}
+	if !hasPair(args, "--stop-timeout", "45") {
+		t.Error("local boxes need stop grace for tmux warn + checkpoint on SIGTERM")
+	}
 	if !hasPair(args, "-v", "/host/work:/workspace") {
 		t.Error("the work dir is not bound at the work mount")
 	}

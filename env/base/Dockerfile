@@ -69,6 +69,7 @@ RUN MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local
 RUN MEGH_PLAYWRIGHT_EMIT_ONLY=1 megh enable playwright --local
 
 COPY entrypoint.sh /usr/local/bin/megh-entrypoint
-RUN chmod +x /usr/local/bin/megh-entrypoint
+COPY tmux-checkpoint.sh /usr/local/bin/megh-tmux-checkpoint
+RUN chmod +x /usr/local/bin/megh-entrypoint /usr/local/bin/megh-tmux-checkpoint
 
 ENTRYPOINT ["/usr/local/bin/megh-entrypoint"]

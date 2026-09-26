@@ -131,6 +131,64 @@ type Sessions struct {
 	Repo string `yaml:"repo"`
 }
 
+// ITerm configures macOS iTerm2 integration for interactive `megh ssh`. Ignored
+// on other platforms. Defaults are chosen so a fresh install gets a usable
+// profile without editing anything; every field is optional.
+type ITerm struct {
+	// Profile is the default iTerm2 profile name for `megh ssh`. Default "megh".
+	Profile string `yaml:"profile"`
+	// Auto, when false, keeps the current terminal instead of opening the profile.
+	// Env MEGH_ITERM=0 and `megh ssh --no-iterm` override the same way.
+	Auto *bool `yaml:"auto"`
+	// Dir holds saved iTerm profile JSON (megh iterm save/load). Relative paths
+	// are resolved against the directory containing megh.yaml.
+	Dir string `yaml:"dir"`
+}
+
+// ITermProfilesDir returns where megh stores exported iTerm profiles on disk.
+func (c Config) ITermProfilesDir(configPath string) string {
+	configPath = resolveConfigPath(configPath)
+	if c.ITerm.Dir != "" {
+		if filepath.IsAbs(c.ITerm.Dir) {
+			return c.ITerm.Dir
+		}
+		if configPath != "" {
+			return filepath.Join(filepath.Dir(configPath), c.ITerm.Dir)
+		}
+		return ExpandPath(c.ITerm.Dir)
+	}
+	if configPath != "" {
+		return filepath.Join(filepath.Dir(configPath), "iterm", "profiles")
+	}
+	return ExpandPath("~/.config/megh/iterm/profiles")
+}
+
+func resolveConfigPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	return path
+}
+
+// ITermProfile returns the iTerm2 profile name to use.
+func (c Config) ITermProfile() string {
+	if c.ITerm.Profile != "" {
+		return c.ITerm.Profile
+	}
+	return "megh"
+}
+
+// ITermAuto reports whether ssh should open the configured iTerm profile.
+func (c Config) ITermAuto() bool {
+	if c.ITerm.Auto == nil {
+		return true
+	}
+	return *c.ITerm.Auto
+}
+
 // Config is the resolved megh configuration. It contains settings and pointers
 // to secrets, never secret values.
 type Config struct {
@@ -147,6 +205,7 @@ type Config struct {
 	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
 	Requires        Requires            `yaml:"requires"`
 	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. tailXXXX.ts.net); for portal surface URLs
+	ITerm           ITerm               `yaml:"iterm"`
 	Portal          Portal              `yaml:"portal"`
 	Persist         []string            `yaml:"persist"`  // home dirs symlinked to the volume so their state survives rebuilds
 	Symlinks        map[string]string   `yaml:"symlinks"` // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
