@@ -39,10 +39,6 @@ func InMeghProfile(name string) bool {
 	return os.Getenv("ITERM_SESSION_ID") != "" && os.Getenv("ITERM_PROFILE") == name
 }
 
-type dynamicProfilesDoc struct {
-	Profiles []map[string]any `json:"Profiles"`
-}
-
 func profileSpec(name string) map[string]any {
 	// Keys match iTerm2 "Save Profile as JSON". Parent inherits colors/font; we set
 	// session behavior that matters for cloud boxes.
