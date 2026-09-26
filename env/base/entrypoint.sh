@@ -228,6 +228,13 @@ set -g default-terminal 'screen-256color'
 set -g set-clipboard on
 set -ag terminal-overrides ',xterm*:Ms=\E]52;%p1%s;%p2%s\007'
 TMUXCONF
+mkdir -p "${WORK_MOUNT}/state/tmux-resurrect"
+cat >> /etc/tmux.conf <<EOF
+
+# Checkpoint to the scratch volume on container stop (see megh-tmux-checkpoint).
+set -g @resurrect-dir '${WORK_MOUNT}/state/tmux-resurrect'
+set -g @resurrect-process 'true'
+EOF
 
 # `pbcopy`, so copying out of the box works the same way it does on the Mac.
 #
@@ -330,6 +337,16 @@ fi
 # 5. Web shell: ttyd serving a persistent tmux session on :7681.
 # ---------------------------------------------------------------------------
 cd /mnt/work
+if command -v megh-tmux-checkpoint >/dev/null 2>&1; then
+  _ckpt="${WORK_MOUNT}/state/tmux-resurrect"
+  if [ -e "${_ckpt}/last" ] || [ -n "$(ls -A "${_ckpt}" 2>/dev/null | head -1 || true)" ]; then
+    if megh-tmux-checkpoint restore; then
+      log "restored tmux from ${_ckpt}"
+    else
+      log "tmux restore failed (see /tmp/tmux-restore.log)"
+    fi
+  fi
+fi
 # Bind to 127.0.0.1: no public listener. Reached via Tailscale or SSH tunnel.
 ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh tmux new -A -s main >/tmp/ttyd.log 2>&1 &
 log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
@@ -404,8 +421,20 @@ fi
 # node-side opposite of `tailscale up`). Best-effort; complements `megh down` and
 # covers terminations megh can't SSH for (tailnet-only boxes, console kills). Only
 # fires if RunPod delivers SIGTERM with grace; a hard SIGKILL relies on ephemeral GC.
+# MEGH_SHUTDOWN_GRACE (seconds, default 15) is how long on_term waits after wall/tmux
+# banners before checkpoint; docker --stop-timeout must exceed that plus save time.
 ts_logout() { tailscale --socket=/var/run/tailscale/tailscaled.sock logout >/dev/null 2>&1 || true; }
-on_term() { log "shutdown signal: leaving tailnet"; ts_logout; exit 0; }
+on_term() {
+  log "shutdown signal: notifying sessions"
+  if command -v megh-tmux-checkpoint >/dev/null 2>&1; then
+    megh-tmux-checkpoint warn
+    log "shutdown signal: checkpointing tmux"
+    megh-tmux-checkpoint save || log "tmux checkpoint failed (see /tmp/tmux-save.log)"
+  fi
+  log "shutdown signal: leaving tailnet"
+  ts_logout
+  exit 0
+}
 trap on_term TERM INT
 
 cat <<EOF

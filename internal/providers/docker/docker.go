@@ -191,6 +191,31 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	return &Result{ID: id, Name: providers.ShortName(name), SSHPort: box.SSHPort, Mesh: set.mesh}, nil
 }
 
+// StartStopped runs `docker start` on an existing container. The work mount,
+// bind mounts, and published SSH port are whatever the container was created
+// with; megh.yaml edits since then do not apply until down+up.
+func (p *Provider) StartStopped(ctx context.Context, id string) (providers.Result, error) {
+	if err := p.check(ctx); err != nil {
+		return nil, err
+	}
+	if _, err := p.run(ctx, "start", id); err != nil {
+		return nil, err
+	}
+	box, err := p.inspect(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	set := p.settings()
+	return &Result{
+		ID:      id,
+		Name:    providers.ShortName(box.Name),
+		SSHPort: box.SSHPort,
+		Mesh:    set.mesh,
+	}, nil
+}
+
+var _ providers.StoppedBoxStarter = (*Provider)(nil)
+
 // runArgs builds the full `docker run` argv. Split out from Up so it can be
 // asserted without a daemon: what this backend does to a box IS its argv, and a
 // test that cannot read the argv cannot check C3.
@@ -199,6 +224,8 @@ func runArgs(set settings, name, image, work string, o providers.Options) ([]str
 		"run", "-d",
 		"--name", name,
 		"--hostname", providers.ShortName(name),
+		"--restart", "unless-stopped",
+		"--stop-timeout", "45",
 		"--label", managedLabel + "=1",
 		// Everything is published on 127.0.0.1 ONLY, so a box is never on the
 		// machine's network interfaces (CONSTRAINTS.md C4). Docker picks each host
@@ -303,7 +330,10 @@ func (p *Provider) Terminate(ctx context.Context, id string) error {
 	if err := p.check(ctx); err != nil {
 		return err
 	}
-	_, err := p.run(ctx, "rm", "-f", id)
+	// Stop with grace so the entrypoint SIGTERM handler can flush tmux to the
+	// volume; rm -f alone often SIGKILLs before that trap runs.
+	_, _ = p.run(ctx, "stop", "-t", "45", id)
+	_, err := p.run(ctx, "rm", id)
 	return err
 }
 

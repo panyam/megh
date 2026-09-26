@@ -1,15 +1,21 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/panyam/megh/internal/iterm"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // awaitSSHReady polls for a box's public SSH endpoint when it isn't mapped yet
@@ -19,6 +25,7 @@ import (
 // pod; gives up after ~30s (a genuinely tailnet-only box never gets a port), and
 // the caller then falls back to the tailnet with a clear message.
 func awaitSSHReady(ctx context.Context, prov providers.Provider, pod *providers.Box) *providers.Box {
+	pod = startStoppedBox(ctx, prov, pod)
 	if pod.SSHReady() {
 		return pod
 	}
@@ -30,6 +37,33 @@ func awaitSSHReady(ctx context.Context, prov providers.Provider, pod *providers.
 		}
 	}
 	return pod
+}
+
+// startStoppedBox brings back a local container that exited (Colima sleep, a
+// daemon stop, etc.) without down+up. Cloud backends are no-ops here.
+func startStoppedBox(ctx context.Context, prov providers.Provider, pod *providers.Box) *providers.Box {
+	starter, ok := prov.(providers.StoppedBoxStarter)
+	if !ok || !boxStopped(pod.Status) {
+		return pod
+	}
+	fmt.Fprintf(os.Stderr, "megh: %s is %s; starting existing container…\n", pod.DisplayName(), strings.ToLower(pod.Status))
+	if _, err := starter.StartStopped(ctx, pod.ID); err != nil {
+		fmt.Fprintf(os.Stderr, "megh: could not start %s: %v\n", pod.DisplayName(), err)
+		return pod
+	}
+	if p, err := providers.Find(ctx, prov, pod.ID); err == nil {
+		return p
+	}
+	return pod
+}
+
+func boxStopped(status string) bool {
+	switch status {
+	case "EXITED", "CREATED", "PAUSED", "DEAD":
+		return true
+	default:
+		return false
+	}
 }
 
 // dial describes how to reach a box over SSH.
@@ -125,6 +159,56 @@ func (d dial) keyFor(boxKey string) string {
 		return boxKey
 	}
 	return ""
+}
+
+// runInteractiveSSH is runSSH for an attached shell (megh ssh / tmux attach). On
+// an unexpected disconnect it waits for Enter on /dev/tty so iTerm2 (and other
+// terminals set to close when the command exits) keep scrollback visible.
+func runInteractiveSSH(boxKey string, fwdKeys []string, sshArgs []string) error {
+	err := runSSH(boxKey, fwdKeys, sshArgs, nil)
+	if err != nil {
+		sshStayOpenAfterDisconnect(err)
+	}
+	return err
+}
+
+func itermSettings(profileOverride string) iterm.Settings {
+	p := cfg.ITermProfile()
+	if profileOverride != "" {
+		p = profileOverride
+	}
+	return iterm.Settings{
+		Profile:  p,
+		Auto:     cfg.ITermAuto(),
+		StoreDir: cfg.ITermProfilesDir(cfgSourcePath),
+	}
+}
+
+func sshStayOpenAfterDisconnect(err error) {
+	if err == nil {
+		return
+	}
+	v := strings.TrimSpace(os.Getenv("MEGH_SSH_STAY_OPEN"))
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return
+	}
+	code := 1
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	}
+	fmt.Fprintf(os.Stderr, "\nmegh: ssh ended unexpectedly (exit %d).\n", code)
+	fmt.Fprint(os.Stderr, "Scrollback stays in this tab. Press Enter to return to your shell.\n")
+	tty, openErr := os.Open("/dev/tty")
+	if openErr != nil {
+		return
+	}
+	defer tty.Close()
+	_, _ = bufio.NewReader(tty).ReadString('\n')
 }
 
 // resolveProvider applies the SAME precedence to --provider that `up` applies:

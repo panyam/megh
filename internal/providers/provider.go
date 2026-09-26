@@ -84,3 +84,9 @@ type Provider interface {
 	CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*Volume, error)
 	DeleteVolume(ctx context.Context, id string) error
 }
+
+// StoppedBoxStarter starts a box that still exists but is not running. Only the
+// docker backend implements this; a stopped cloud pod is replaced with Up.
+type StoppedBoxStarter interface {
+	StartStopped(ctx context.Context, id string) (Result, error)
+}

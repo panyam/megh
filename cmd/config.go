@@ -28,6 +28,8 @@ var configCmd = &cobra.Command{
 		if cfg.Sessions.Repo != "" {
 			fmt.Printf("sessions_repo:    %s\n", cfg.Sessions.Repo)
 		}
+		fmt.Printf("iterm profile:    %s (auto=%v)\n", cfg.ITermProfile(), cfg.ITermAuto())
+		fmt.Printf("iterm store:      %s\n", cfg.ITermProfilesDir(cfgSourcePath))
 
 		fmt.Println("\nproviders:")
 		names := make([]string, 0, len(cfg.Providers))

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/panyam/megh/internal/iterm"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +16,9 @@ var (
 	sshNoTmux   bool
 	sshSession  string
 	sshCC       bool
-	sshNoCC     bool
+	sshNoCC          bool
+	sshNoITerm       bool
+	sshITermProfile  string
 )
 
 // defaultTmuxSession is the session `megh ssh` attaches, and it matches the one
@@ -154,6 +157,14 @@ shell config and out of megh.yaml, which is shared with devices (Termux) that
 cannot render control mode: there, tmux would read your keystrokes as tmux
 COMMANDS rather than shell input, so you would get no shell at all.
 
+After an unexpected disconnect (container stop, network drop), megh waits for
+Enter before exiting so iTerm2 tabs keep their scrollback. Set MEGH_SSH_STAY_OPEN=0
+to skip that pause.
+
+On macOS with iTerm2, interactive ssh opens in the configured iTerm profile
+(megh iterm load, default from megh.yaml iterm.profile). Use --iterm-profile for
+another saved profile. Set MEGH_ITERM=0 or --no-iterm to stay in the current terminal.
+
 For browser access to the box's web surfaces, use 'megh browse' (localhost
 tunnels) or Tailscale.
 
@@ -173,10 +184,14 @@ argument it connects to the only box.`,
 		if sshNoTmux && controlMode && cmd.Flags().Changed("cc") {
 			return fmt.Errorf("--cc and --no-tmux are opposites: --cc attaches tmux in control mode, --no-tmux attaches no tmux at all")
 		}
+		if sshNoITerm {
+			os.Setenv("MEGH_ITERM", "0")
+		}
 		return connectToBox(context.Background(), prov, args, connectOpts{
-			session:     resolveTmuxSession(sshSession),
-			controlMode: controlMode,
-			noTmux:      sshNoTmux,
+			session:      resolveTmuxSession(sshSession),
+			controlMode:  controlMode,
+			noTmux:       sshNoTmux,
+			itermProfile: sshITermProfile,
 		})
 	},
 }
@@ -186,14 +201,18 @@ argument it connects to the only box.`,
 // first with the session named positionally, and duplicating fifty lines of key
 // forwarding and file pushing to say that would guarantee they drift.
 type connectOpts struct {
-	session     string
-	controlMode bool
-	noTmux      bool
+	session      string
+	controlMode  bool
+	noTmux       bool
+	itermProfile string
 }
 
 // connectToBox resolves the box, sets up git identity forwarding, pushes the
 // megh.yaml `files:`, and execs ssh.
 func connectToBox(ctx context.Context, prov providers.Provider, args []string, o connectOpts) error {
+	if iterm.TryDelegate(os.Args, itermSettings(o.itermProfile)) {
+		return nil
+	}
 	pod, err := providers.FindOrSole(ctx, prov, args)
 	if err != nil {
 		return err
@@ -232,7 +251,7 @@ func connectToBox(ctx context.Context, prov providers.Provider, args []string, o
 	if o.noTmux {
 		sshArgs := append(d.opts("-A"), d.userHost())
 		fmt.Fprintf(os.Stderr, "megh: ssh %s (plain shell; browser access: megh browse)\n", d.userHost())
-		return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
+		return runInteractiveSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs)
 	}
 	if err := validTmuxSession(o.session); err != nil {
 		return err
@@ -247,7 +266,7 @@ func connectToBox(ctx context.Context, prov providers.Provider, args []string, o
 		fmt.Fprintf(os.Stderr, "megh: ssh %s (tmux %q; detach with ctrl-b d, --no-tmux for a plain shell)\n",
 			d.userHost(), o.session)
 	}
-	return runSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs, nil)
+	return runInteractiveSSH(d.keyFor(cfg.SSHKeyFile), fwdKeys, sshArgs)
 }
 
 func init() {
@@ -256,5 +275,7 @@ func init() {
 	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
 	sshCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
 	sshCmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "force a normal attach, overriding $MEGH_SSH_CC")
+	sshCmd.Flags().BoolVar(&sshNoITerm, "no-iterm", false, "do not reopen in the iTerm2 megh profile (same as MEGH_ITERM=0 for this command)")
+	sshCmd.Flags().StringVar(&sshITermProfile, "iterm-profile", "", "iTerm2 profile name for this ssh (from `megh iterm load`; default: megh.yaml iterm.profile)")
 	rootCmd.AddCommand(sshCmd)
 }

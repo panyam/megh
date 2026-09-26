@@ -9,6 +9,15 @@
 #
 # Precedence for `megh up`: flag > env var > this file > built-in default.
 
+# macOS + iTerm2 only: default profile for interactive `megh ssh` / `megh tmux attach`.
+# megh installs it under ~/Library/Application Support/iTerm2/DynamicProfiles/
+# on first use (`megh iterm install`). Override or disable here; env MEGH_ITERM=0
+# and `megh ssh --no-iterm` also skip opening that profile.
+# iterm:
+#   profile: megh          # default for megh ssh; override with --iterm-profile
+#   auto: true
+#   dir: iterm/profiles    # relative to this file; JSON from `megh iterm save`
+
 # Which provider `megh up` targets when --provider/$MEGH_PROVIDER are unset.
 default_provider: runpod
 

@@ -155,11 +155,26 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		if err != nil {
 			return err
 		}
+		wantName := providers.PrefixName(upOpts.Name)
 		for _, b := range providers.Managed(boxes) {
-			if b.Name == upOpts.Name {
-				return fmt.Errorf("a box named %q already exists (id %s); pick another name or `megh down %s` first",
-					upOpts.Name, b.ID, providers.ShortName(upOpts.Name))
+			if b.Name != wantName && b.DisplayName() != upOpts.Name {
+				continue
 			}
+			if b.Status == "RUNNING" {
+				return fmt.Errorf("box %q is already running (id %s); use `megh ssh %s`",
+					upOpts.Name, b.ID, upOpts.Name)
+			}
+			if starter, ok := prov.(providers.StoppedBoxStarter); ok && boxStopped(b.Status) {
+				res, err := starter.StartStopped(ctx, b.ID)
+				if err != nil {
+					return err
+				}
+				fmt.Print(res.Summary())
+				publishPortalBestEffort()
+				return nil
+			}
+			return fmt.Errorf("a box named %q already exists (id %s, status %s); pick another name or `megh down %s` first",
+				upOpts.Name, b.ID, b.Status, upOpts.Name)
 		}
 		upOpts.TSAuthKey = bootAuthKey(ctx, prov.Mesh(), providers.ShortName(upOpts.Name))
 
