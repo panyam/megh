@@ -193,7 +193,12 @@ func sshStayOpenAfterDisconnect(err error) {
 	case "0", "false", "no", "off":
 		return
 	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	tty, openErr := os.Open("/dev/tty")
+	if openErr != nil {
+		return
+	}
+	defer tty.Close()
+	if !term.IsTerminal(int(tty.Fd())) {
 		return
 	}
 	code := 1
@@ -203,11 +208,6 @@ func sshStayOpenAfterDisconnect(err error) {
 	}
 	fmt.Fprintf(os.Stderr, "\nmegh: ssh ended unexpectedly (exit %d).\n", code)
 	fmt.Fprint(os.Stderr, "Scrollback stays in this tab. Press Enter to return to your shell.\n")
-	tty, openErr := os.Open("/dev/tty")
-	if openErr != nil {
-		return
-	}
-	defer tty.Close()
 	_, _ = bufio.NewReader(tty).ReadString('\n')
 }
 

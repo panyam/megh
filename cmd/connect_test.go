@@ -24,8 +24,8 @@ func TestSSHStayOpenHonorsOptOut(t *testing.T) {
 }
 
 func TestSSHStayOpenSkipsNonTTY(t *testing.T) {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		t.Skip("stdin is a tty")
+	if sessionTTYAvailable() {
+		t.Skip("session has a tty")
 	}
 	done := make(chan struct{})
 	go func() {
@@ -37,4 +37,13 @@ func TestSSHStayOpenSkipsNonTTY(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("sshStayOpenAfterDisconnect blocked without a tty")
 	}
+}
+
+func sessionTTYAvailable() bool {
+	f, err := os.Open("/dev/tty")
+	if err != nil {
+		return term.IsTerminal(int(os.Stdin.Fd()))
+	}
+	defer f.Close()
+	return term.IsTerminal(int(f.Fd()))
 }

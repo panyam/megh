@@ -59,4 +59,7 @@ func TestBuildReexecShellWrapsLoginZsh(t *testing.T) {
 	if !strings.Contains(cmd, "/opt/megh/bin/megh") {
 		t.Fatal("missing megh path")
 	}
+	if strings.Contains(cmd, "exec \"$megh\"") {
+		t.Fatal("should not exec megh away from zsh (iTerm session end)")
+	}
 }
