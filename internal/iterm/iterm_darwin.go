@@ -150,11 +150,14 @@ func buildReexecShell(meghBin string, args []string) string {
 	var inner strings.Builder
 	inner.WriteString("export MEGH_ITERM_REEXEC=1; megh=")
 	inner.WriteString(shellQuote(meghBin))
-	inner.WriteString(`; [ -x "$megh" ] || megh="$(command -v megh)"; exec "$megh"`)
+	inner.WriteString(`; [ -x "$megh" ] || megh="$(command -v megh)"; "$megh"`)
 	for _, a := range args {
 		inner.WriteByte(' ')
 		inner.WriteString(shellQuote(a))
 	}
+	// Do not exec megh: keep zsh as the session leader so iTerm honors
+	// "Close Sessions On End: Never" and scrollback survives ssh ending.
+	inner.WriteString(`; _rc=$?; exit $_rc`)
 	return "/bin/zsh -lic " + shellQuote(inner.String())
 }
 
