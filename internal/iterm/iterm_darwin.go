@@ -106,8 +106,9 @@ func TryDelegate(argv []string, set Settings) bool {
 		}
 	}
 
-	megh, err := os.Executable()
+	megh, err := resolveMeghBinary()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "megh: iTerm delegate: %v\n", err)
 		return false
 	}
 	shellCmd := buildReexecShell(megh, argv[1:])
@@ -118,15 +119,43 @@ func TryDelegate(argv []string, set Settings) bool {
 	return true
 }
 
-func buildReexecShell(meghBin string, args []string) string {
-	var b strings.Builder
-	b.WriteString("export MEGH_ITERM_REEXEC=1; exec ")
-	b.WriteString(shellQuote(meghBin))
-	for _, a := range args {
-		b.WriteByte(' ')
-		b.WriteString(shellQuote(a))
+// resolveMeghBinary is the megh we re-exec in iTerm. os.Executable can point at
+// a moved or removed path; fall back to PATH via LookPath before opening a tab.
+func resolveMeghBinary() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
 	}
-	return b.String()
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	if st, err := os.Stat(exe); err == nil && !st.IsDir() {
+		return exe, nil
+	}
+	if p, err := exec.LookPath("megh"); err == nil {
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			p = resolved
+		}
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("megh binary not found at %q (run make install)", exe)
+}
+
+// buildReexecShell returns a command iTerm can exec. Profile "command" is not
+// run under a shell unless we wrap it; a bare "export …; exec …" line fails
+// with execvp errno 2 because iTerm tries to execute the first token as the binary.
+func buildReexecShell(meghBin string, args []string) string {
+	var inner strings.Builder
+	inner.WriteString("export MEGH_ITERM_REEXEC=1; megh=")
+	inner.WriteString(shellQuote(meghBin))
+	inner.WriteString(`; [ -x "$megh" ] || megh="$(command -v megh)"; exec "$megh"`)
+	for _, a := range args {
+		inner.WriteByte(' ')
+		inner.WriteString(shellQuote(a))
+	}
+	return "/bin/zsh -lic " + shellQuote(inner.String())
 }
 
 func shellQuote(s string) string {
