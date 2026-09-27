@@ -21,6 +21,7 @@ DynamicProfiles folder so iTerm picks them up immediately.
   megh iterm save megh     # iTerm UI → megh store (git-friendly)
   megh iterm load          # megh store → iTerm
   megh iterm load megh     # one profile
+  megh iterm unload megh   # drop DynamicProfiles export (git store unchanged)
   megh iterm install       # seed default template if missing, then load default
 
 Interactive ssh uses megh.yaml iterm.profile, or --iterm-profile on megh ssh.`,
@@ -69,7 +70,12 @@ var itermSaveCmd = &cobra.Command{
 var itermListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List profiles in the megh store and whether they are loaded in iTerm",
+	Short:   "List profiles in the megh store and iTerm DynamicProfiles export state",
+	Long: `The store (iterm.dir) is git-backed JSON; it stays listed until you remove
+those files from dotfiles. "DynamicProfiles export" is the file megh copies into
+~/Library/Application Support/iTerm2/DynamicProfiles/. Deleting a profile in iTerm
+Settings often leaves that file on disk, so megh also reports whether the name
+still appears in iTerm's profile list.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := itermStoreDir()
 		fmt.Printf("store: %s\n", dir)
@@ -87,12 +93,47 @@ var itermListCmd = &cobra.Command{
 		}
 		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 		for _, s := range list {
-			state := "store only"
-			if iterm.ProfileLoaded(s.Name) {
-				state = "loaded in iTerm"
-			}
-			fmt.Printf("  %s\t%s\n", s.Name, state)
+			fmt.Printf("  %s\t%s\n", s.Name, itermListState(s.Name))
 		}
+		return nil
+	},
+}
+
+func itermListState(name string) string {
+	export := iterm.ProfileLoaded(name)
+	inPrefs := iterm.ProfileInITerm(name)
+	switch {
+	case export && inPrefs:
+		return "DynamicProfiles export · in iTerm Settings"
+	case export && !inPrefs:
+		return "DynamicProfiles export only (removed in Settings; `megh iterm unload " + name + "` to drop file)"
+	case !export && inPrefs:
+		return "in iTerm Settings only (not exported by megh; `megh iterm load " + name + "` to sync store)"
+	default:
+		return "store only (`megh iterm load " + name + "`)"
+	}
+}
+
+var itermUnloadCmd = &cobra.Command{
+	Use:   "unload [profile-name...]",
+	Short: "Remove megh DynamicProfiles export file(s); the git store is unchanged",
+	Long: `Deletes megh's JSON under iTerm's DynamicProfiles folder. Use this after
+removing a profile in iTerm Settings, or to stop megh from re-publishing a profile.
+The files under iterm.dir in dotfiles are not touched.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS != "darwin" {
+			return fmt.Errorf("iTerm2 integration is macOS only")
+		}
+		removed, err := iterm.Unload(args...)
+		if err != nil {
+			return err
+		}
+		if len(removed) == 0 {
+			fmt.Println("no DynamicProfiles exports removed")
+			return nil
+		}
+		sort.Strings(removed)
+		fmt.Printf("removed DynamicProfiles export: %s\n", strings.Join(removed, ", "))
 		return nil
 	},
 }
@@ -130,12 +171,13 @@ var itermStatusCmd = &cobra.Command{
 			fmt.Printf("this session:    ITERM_PROFILE=%q\n", os.Getenv("ITERM_PROFILE"))
 		}
 		name := cfg.ITermProfile()
-		fmt.Printf("default loaded:  %v\n", iterm.ProfileLoaded(name))
+		fmt.Printf("default export:  %v (DynamicProfiles file)\n", iterm.ProfileLoaded(name))
+		fmt.Printf("in Settings:     %v\n", iterm.ProfileInITerm(name))
 		return nil
 	},
 }
 
 func init() {
-	itermCmd.AddCommand(itermLoadCmd, itermSaveCmd, itermListCmd, itermInstallCmd, itermStatusCmd)
+	itermCmd.AddCommand(itermLoadCmd, itermSaveCmd, itermUnloadCmd, itermListCmd, itermInstallCmd, itermStatusCmd)
 	rootCmd.AddCommand(itermCmd)
 }

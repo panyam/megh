@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Load pushes one or more saved profiles from storeDir into iTerm DynamicProfiles.
@@ -61,14 +62,66 @@ func copyToDynamicProfiles(storePath, profileName string) error {
 	return os.WriteFile(dest, b, 0o644)
 }
 
-// ProfileLoaded reports whether name is present in megh's DynamicProfiles export.
+// DynamicExportPath is the JSON file megh writes under iTerm's DynamicProfiles dir.
+func DynamicExportPath(name string) string {
+	return filepath.Join(dynamicProfilesDir(), dynamicProfileDestName(name))
+}
+
+// ProfileLoaded reports whether megh's DynamicProfiles export file exists on disk.
+// iTerm reloads profiles from that folder; deleting a profile in Settings often
+// does not remove this file, so list also checks ProfileInITerm.
 func ProfileLoaded(name string) bool {
-	path := filepath.Join(dynamicProfilesDir(), dynamicProfileDestName(name))
+	path := DynamicExportPath(name)
 	if _, err := os.Stat(path); err != nil {
 		return false
 	}
 	names, err := profileNamesInFile(path)
 	return err == nil && len(names) > 0 && names[0] == name
+}
+
+// ProfileInITerm reports whether iTerm's preferences currently list the profile.
+func ProfileInITerm(name string) bool {
+	_, err := ReadITermProfile(name)
+	return err == nil
+}
+
+// Unload removes megh's DynamicProfiles export(s). The git-backed store is unchanged.
+func Unload(names ...string) ([]string, error) {
+	var targets []string
+	if len(names) == 0 {
+		entries, err := os.ReadDir(dynamicProfilesDir())
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "megh-") || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			path := filepath.Join(dynamicProfilesDir(), e.Name())
+			pns, err := profileNamesInFile(path)
+			if err != nil || len(pns) == 0 {
+				continue
+			}
+			targets = append(targets, pns[0])
+		}
+	} else {
+		targets = append(targets, names...)
+	}
+	var removed []string
+	for _, name := range targets {
+		path := DynamicExportPath(name)
+		if err := os.Remove(path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return removed, fmt.Errorf("remove %s: %w", path, err)
+		}
+		removed = append(removed, name)
+	}
+	return removed, nil
 }
 
 // SeedDefaultStore writes the built-in megh profile template when the store has no file for name.

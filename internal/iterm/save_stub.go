@@ -14,6 +14,12 @@ func Load(string, ...string) ([]string, error) {
 
 func ProfileLoaded(string) bool { return false }
 
+func ProfileInITerm(string) bool { return false }
+
+func DynamicExportPath(name string) string { return "" }
+
+func Unload(...string) ([]string, error) { return nil, errUnavailable }
+
 func SeedDefaultStore(string, string) (string, error) {
 	return "", errUnavailable
 }
