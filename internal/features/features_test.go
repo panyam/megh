@@ -161,7 +161,7 @@ func TestEDAInstallsAppsWithRecommends(t *testing.T) {
 // in it ships and fails on the box, at the moment someone wants the viewer. Parse
 // the generated file too.
 func TestGeneratedLaunchersParse(t *testing.T) {
-	for name, delim := range map[string]string{"playwright": "PWUI"} {
+	for name, delim := range map[string]string{"playwright": "PWUI", "java": "JDK"} {
 		t.Run(name, func(t *testing.T) {
 			script, err := Script(name)
 			if err != nil {
@@ -261,5 +261,78 @@ func TestEveryFeatureDescribesItself(t *testing.T) {
 			t.Errorf("%s: summary spans lines, so a chooser row cannot hold it: %q", name, desc)
 		}
 		t.Logf("%-11s %s", name, desc)
+	}
+}
+
+func javaScript(t *testing.T) string {
+	t.Helper()
+	script, err := Script("java")
+	if err != nil {
+		t.Fatalf("Script(java): %v", err)
+	}
+	return string(script)
+}
+
+// A JDK on the container disk is downloaded again by every box. On the volume a
+// rebuilt box only re-checks it; a box with no writable volume still works.
+func TestJavaKeepsTheJDKOnTheVolume(t *testing.T) {
+	s := javaScript(t)
+	if !strings.Contains(s, `root="/mnt/work/cache/${ARCH_TAG:-$(uname -m)}/java"`) {
+		t.Error("the JDK root is not on the volume, per arch")
+	}
+	if !strings.Contains(s, `if [ -d /mnt/work ] && [ -w /mnt/work ]; then`) {
+		t.Error("no fallback for a box without a writable volume")
+	}
+}
+
+// Every arch and major the script offers has a pinned checksum, and the tarball
+// is checked before it is unpacked.
+func TestJavaPinsAChecksumPerArch(t *testing.T) {
+	s := javaScript(t)
+	for _, pin := range []string{"17:x64", "17:aarch64", "21:x64", "21:aarch64"} {
+		if !regexp.MustCompile(regexp.QuoteMeta(pin) + `\)\s+build="[^"]+"; sha256="[0-9a-f]{64}"`).MatchString(s) {
+			t.Errorf("no build and sha256 pinned for %s", pin)
+		}
+	}
+	check, untar := strings.Index(s, "sha256sum -c"), strings.Index(s, "tar -xzf")
+	if check < 0 || untar < 0 || check > untar {
+		t.Error("the tarball is not checked against its sha256 before it is unpacked")
+	}
+}
+
+// Updating a major must not leave the previous build on the volume.
+func TestJavaRemovesTheBuildItReplaces(t *testing.T) {
+	s := javaScript(t)
+	if !strings.Contains(s, `for old in "${root}/jdk/temurin-${major}."*; do`) || !strings.Contains(s, `rm -rf "${old}"`) {
+		t.Error("an update does not remove the replaced build of the same major")
+	}
+	for _, sub := range []string{"ls)", "use)", "rm)", "prune)", "clean-caches)"} {
+		if !strings.Contains(s, sub) {
+			t.Errorf("the jdk helper has no %q command", strings.TrimSuffix(sub, ")"))
+		}
+	}
+}
+
+// Build caches are written by every build, so each box keeps its own: two boxes
+// writing one Gradle or Maven cache over the shared volume corrupt it.
+func TestJavaCachesArePerBox(t *testing.T) {
+	s := javaScript(t)
+	if !strings.Contains(s, `caches="${root}/caches/${box}"`) {
+		t.Error("build caches are not per box")
+	}
+	for _, env := range []string{`GRADLE_USER_HOME=\"${caches}/gradle\"`, `-Dmaven.repo.local=${caches}/m2`} {
+		if !strings.Contains(s, env) {
+			t.Errorf("profile.d does not set %s", env)
+		}
+	}
+}
+
+// "ready" is printed only after the installed javac compiled a program and the
+// installed java ran it and reported the pinned version.
+func TestJavaVerifiesByCompiling(t *testing.T) {
+	s := javaScript(t)
+	compile, run, ready := strings.Index(s, `"${dir}/bin/javac" -d`), strings.Index(s, `"${dir}/bin/java" -cp`), strings.LastIndex(s, " ready on ")
+	if compile < 0 || run < 0 || ready < 0 || !(compile < run && run < ready) {
+		t.Error("the script does not compile and run a program before reporting ready")
 	}
 }
