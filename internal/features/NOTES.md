@@ -348,3 +348,33 @@ translation, not something this config sets.
 
 Re-enabling on a second box took seconds rather than minutes: the binaries were
 already on the volume, which is the point of installing there.
+
+## java
+
+Added 2026-10-01 for Declaire's Java work (panyam/declaire#66, #79). Validated
+on a local docker box (aarch64) only; the x64 pins were checked by downloading
+both tarballs and comparing sha256, not by running them.
+
+**The JDK lives on the volume, the build caches live per box.** A Temurin JDK is
+~330 MB unpacked and read-only once installed, so boxes sharing a volume can
+share it, the same reasoning as playwright's browsers. Gradle and Maven caches
+are written by every build, and two boxes writing one cache over a shared mount
+is how those caches get corrupted (the postgres reasoning), so each box gets
+`caches/<hostname>/`. A rebuilt box with the same name finds its cache again;
+`jdk ls` shows the ones whose box is gone, and `jdk clean-caches <box>` removes
+them.
+
+**Updating never leaves the old build behind.** Each major has one pin (build
+plus sha256 per arch) in `java.sh`. Bumping it makes the next `megh enable
+java` install the new build beside the old, move the `<major>` symlink, then
+delete the replaced build. `JAVA_HOME` is `jdk/default`, a symlink to a major,
+so `jdk use` and updates never rewrite profile.d.
+
+**Interrupted installs are left for `jdk prune`.** The tarball unpacks into
+`jdk/.tmp-*` and is renamed into place, so a killed run never leaves a
+directory the version check would trust. The installer does not delete other
+`.tmp-*` directories, since one may be another box's install in progress;
+`jdk ls` lists them.
+
+Measured on the local box: first install 2m36s (almost all download), a
+re-run 0.45s, and declaire-bench's `./gradlew test` 71s cold and 2s warm.
