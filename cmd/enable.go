@@ -146,9 +146,6 @@ works against any box (piped over SSH) and needs no image rebuild.
   megh enable playwright  Playwright + Chromium, plus 'pw-ui' to serve UI mode,
                           the trace viewer or the HTML report on :9323 with no
                           display (a LIVE headed browser needs 'enable vnc')
-  megh enable java        Temurin JDK 17 on the volume (MEGH_JAVA_VERSION=21 for
-                          21), per-box Gradle and Maven caches, and 'jdk' to
-                          list, switch and remove JDKs and caches
   megh enable code        code-server (VS Code on :8080)
   megh enable postgres    PostgreSQL + pgvector on :5433 (one db per project)
   megh enable redis       Redis on :6399
