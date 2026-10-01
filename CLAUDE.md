@@ -42,7 +42,7 @@ megh browse [box] [port...]       # tunnel box ports to localhost, print URLs
 megh mesh join|leave|ls [box]     # put a box on the overlay named by providers.<p>.mesh
                                   # a local box joins ONLY when asked; a pod joins at boot
                                   # join --authkey re-keys a box (this WAS doctor ts setkey)
-megh enable [feature]             # add webterm/vnc/eda/playwright/java/code/lgtm to a box on demand
+megh enable [feature]             # add webterm/vnc/eda/playwright/code/lgtm to a box on demand
                                   # no feature named: a menu on a terminal, a plain list when piped
 megh down [name] [-y]             # terminate a box (volume survives; leaves the tailnet first)
 megh doctor [name]                # health probe: tailscale registered? surfaces up? scratch ok?
