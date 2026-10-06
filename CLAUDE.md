@@ -440,6 +440,13 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Gotchas (things that bit us)
 
+- **Termux can hand megh its own path as the first argument.** Android forbids
+  executing app-data files, so termux-exec runs a binary as `/system/bin/linker64
+  <path> args...`, and every command then failed with `unknown command
+  "/data/data/com.termux/files/usr/bin/megh"`. `stripLinkerArg` (`cmd/argv.go`)
+  drops that argument before cobra sees it. Seen 2026-10-06 on the first phone
+  bootstrap.
+
 - **`/dev/null` is a character device**, so the `os.ModeCharDevice` test that
   looks like "is stdin a terminal" answers YES for it. `megh enable </dev/null`
   then printed a menu and prompted at an input that can only answer EOF, which
