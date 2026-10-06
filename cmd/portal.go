@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,9 +92,23 @@ func renderPortal(pods []providers.Box) string {
 		for _, s := range surfaces {
 			fmt.Fprintf(&b, "- [%s](%s://%s:%d%s)\n", s.label, scheme, host, s.port, s.path)
 		}
+		// The tailnet links above are useless to a machine that is not on the
+		// tailnet; public SSH is its way in, with any key in extra_pubkeys. A
+		// local box's endpoint is this machine's loopback, so it is left out.
+		if p.SSHReady() && !isLoopback(p.PublicIP) {
+			fmt.Fprintf(&b, "- ssh: `ssh -p %d root@%s`\n", p.SSHPort, p.PublicIP)
+			fmt.Fprintf(&b, "- webterm off-tailnet: `ssh -p %d -L 7682:127.0.0.1:7682 root@%s` then http://localhost:7682\n",
+				p.SSHPort, p.PublicIP)
+		}
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// isLoopback reports whether an endpoint only means something on this machine.
+func isLoopback(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
 // pushPortal force-pushes PORTAL.md to portal.branch of portal.repo via a throwaway

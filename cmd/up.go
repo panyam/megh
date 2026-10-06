@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -83,6 +84,56 @@ Give it one of:
 	return strings.TrimSpace(string(b)), nil
 }
 
+// withExtraPubKeys appends megh.yaml's extra_pubkeys to the launching machine's
+// key, one per line, which is what the entrypoint writes to authorized_keys.
+// Duplicates (same key body) are dropped. An entry that is not a public key is
+// an error rather than a skip: the likeliest mistake is pasting the PRIVATE half,
+// and that must never ride along into a box's env.
+func withExtraPubKeys(primary string, extra []string) (string, error) {
+	keys := []string{}
+	seen := map[string]bool{}
+	add := func(k string) {
+		f := strings.Fields(k)
+		if len(f) < 2 || seen[f[1]] {
+			return
+		}
+		seen[f[1]] = true
+		keys = append(keys, strings.TrimSpace(k))
+	}
+	for _, line := range strings.Split(primary, "\n") {
+		add(line)
+	}
+	for i, k := range extra {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if !looksLikePubKey(k) {
+			return "", fmt.Errorf("megh.yaml extra_pubkeys[%d] is not an SSH public key (want e.g. \"ssh-ed25519 AAAA... comment\"); never put a private key here", i)
+		}
+		add(k)
+	}
+	return strings.Join(keys, "\n"), nil
+}
+
+// looksLikePubKey is a shape check, not a parse: a known key type, then a
+// base64 blob, and nothing that says PRIVATE.
+func looksLikePubKey(k string) bool {
+	if strings.Contains(k, "PRIVATE") || strings.Contains(k, "\n") {
+		return false
+	}
+	f := strings.Fields(k)
+	if len(f) < 2 {
+		return false
+	}
+	t := f[0]
+	if !strings.HasPrefix(t, "ssh-") && !strings.HasPrefix(t, "ecdsa-sha2-") && !strings.HasPrefix(t, "sk-") {
+		return false
+	}
+	_, err := base64.StdEncoding.DecodeString(f[1])
+	return err == nil
+}
+
 var upCmd = &cobra.Command{
 	Use:   "up <name>",
 	Short: "Launch a dev box on a provider",
@@ -109,6 +160,9 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		upOpts.Image = resolve(cmd, "image", upOpts.Image, "MEGH_IMAGE", "", cfg.DefaultImage(upFlavor))
 		upOpts.PubKey, err = resolvePubKey(cmd, upOpts.PubKey, cfg.SSHPubKeyFile)
 		if err != nil {
+			return err
+		}
+		if upOpts.PubKey, err = withExtraPubKeys(upOpts.PubKey, cfg.ExtraPubKeys); err != nil {
 			return err
 		}
 		upOpts.VCPU = resolveInt(cmd, "vcpu", upOpts.VCPU, p.VCPU, 2)

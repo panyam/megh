@@ -207,9 +207,10 @@ type Config struct {
 	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. tailXXXX.ts.net); for portal surface URLs
 	ITerm           ITerm               `yaml:"iterm"`
 	Portal          Portal              `yaml:"portal"`
-	Persist         []string            `yaml:"persist"`  // home dirs symlinked to the volume so their state survives rebuilds
-	Symlinks        map[string]string   `yaml:"symlinks"` // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
-	Files           map[string]string   `yaml:"files"`    // local path -> box path; copied over SSH (secrets/rc files not in a repo)
+	Persist         []string            `yaml:"persist"`       // home dirs symlinked to the volume so their state survives rebuilds
+	Symlinks        map[string]string   `yaml:"symlinks"`      // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
+	Files           map[string]string   `yaml:"files"`         // local path -> box path; copied over SSH (secrets/rc files not in a repo)
+	ExtraPubKeys    []string            `yaml:"extra_pubkeys"` // public keys authorized on every box beside the launcher's own (e.g. a Bitwarden SSH-agent key)
 }
 
 // Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)

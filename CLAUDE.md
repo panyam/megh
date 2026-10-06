@@ -284,6 +284,17 @@ you mean — `providers.docker.mounts:` for local boxes, which the cloud backend
 never read — and keep it out of `box-envvars`. Split of concerns: versioned dotfiles
 -> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
+**`extra_pubkeys:` is how a box is shared across machines without sharing a
+launcher.** `megh up` authorizes the launching machine's key plus every key in
+this list (one per line in `PUBLIC_KEY`, which the entrypoint appends to
+`authorized_keys`). The intended entry is a key living in Bitwarden desktop's SSH
+agent: any machine with that app signed in can then `ssh` into a box the phone
+started, with no profile, provider key or tailnet on that machine, finding the
+box's `ssh -p <port> root@<ip>` line in the portal (which omits loopback
+endpoints). It is read only at CREATE, so adding a key does not reach a running
+box. `up` rejects any entry that is not a public key, because the likely mistake
+is pasting the private half into what becomes pod env.
+
 ## Profiles (`~/.megh/profiles/<name>/`)
 
 A profile is a self-contained context so megh depends on nothing system-level.
