@@ -147,8 +147,8 @@ hardware you physically hold rather than on rented compute. A phone is enough:
 megh is a static Go binary and Termux runs it fine.
 
 The split it buys you is that spawning is rare and privileged while working is
-constant and unprivileged, so they belong on different machines. `megh up`
-refuses to run on a box for exactly this reason (`CONSTRAINTS.md` C3).
+constant and unprivileged, so they belong on different machines. No box is
+elevated (`CONSTRAINTS.md` C3), so no box can spawn.
 
 **Nothing is copied from your laptop.** Every credential here is re-mintable from
 its own console in a browser on the phone, and re-minting beats copying because
@@ -234,7 +234,17 @@ They live in `~/.megh/profiles/phone/secrets.env`, mode 0600, outside any repo.
 | `MEGH_TAILSCALE_CLIENT_ID` / `_SECRET` | Tailscale > Settings > Trust credentials, scoped `tag:megh` |
 | `GH_MEGH_TOKEN` | GitHub PAT, `read:packages`; only for `megh registry ls` |
 
-`megh config` shows which are set without printing values.
+`megh config` shows which are set without printing values. `GH_MEGH_TOKEN` is
+needed even though `up` never reads it, because `requires.envs` gates the launch
+on it.
+
+**Keep the master copy in a Bitwarden secure note**, and make the note the whole
+bootstrap: a script that writes itself to `~/megh-bootstrap.sh` via a heredoc and
+then runs it, so §6.1–6.5 are one copy and one paste in Termux. Write-then-run
+matters: pasted line by line, `gh auth login` reads the following pasted lines
+as its answers. The script should `set +o history`, `trap` its own deletion
+(it holds the values), write `secrets.env` under `umask 077`, and skip steps
+already done so re-pasting is also the upgrade and rotation path.
 
 ### 6.6 Launch
 
@@ -244,6 +254,17 @@ megh regions probe --dc US-CA-2 --first -y   # capacity flaps; a probe costs a f
 megh up devbox
 megh ssh devbox                              # lands in tmux `main`
 ```
+
+### 6.7 Reaching a phone-launched box from other machines
+
+A box trusts the launcher's key plus every key in `extra_pubkeys:` in
+`megh.yaml`. Keep one SSH key item in Bitwarden, put its public half there, and
+enable Bitwarden desktop's SSH agent (Settings > Enable SSH agent; point
+`SSH_AUTH_SOCK` at its socket) on any machine you want in from. That machine
+needs no megh, profile, provider key or tailnet: open the portal, copy the box's
+`ssh -p <port> root@<ip>` line (or the `-L 7682:...` one for webterm), and
+Bitwarden asks to approve each use. Tailnet members can use `ssh root@<box>`
+instead. `extra_pubkeys` is read at create, so a new key reaches only new boxes.
 
 ### The surprise worth knowing first
 
