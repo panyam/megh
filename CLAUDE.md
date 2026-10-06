@@ -685,6 +685,17 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Live-validation debt
 
+Unproven from the 2026-10-06 session (phone-as-launcher), all code merged:
+
+- **A two-line `PUBLIC_KEY` through RunPod's REST env map** (`extra_pubkeys`,
+  #79). Docker passes it as an argv `-e`, which is fine; RunPod is unseen. The
+  first `megh up` with `extra_pubkeys` set should show both lines in
+  `~/.ssh/authorized_keys`.
+- **The Termux linker-argv fix** (#80) on a real phone, and the Bitwarden
+  bootstrap note (SETUP.md §6.5) end to end.
+- **Bitwarden desktop's SSH agent** reaching a box via the portal's ssh line
+  (SETUP.md §6.7).
+
 Unproven from the 2026-09-21 session, which ran on a local box with no tailnet:
 
 - **`pw-ui`'s tailnet half has never executed.** `tailscale ip -4` fails on a box
