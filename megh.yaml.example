@@ -27,6 +27,14 @@ default_flavor: full
 # SSH public key injected into boxes (its private key auths you in).
 ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 
+# Extra PUBLIC keys every box `megh up` creates will also accept, whichever
+# machine launched it. Use it for a key held in a password manager's SSH agent
+# (e.g. Bitwarden desktop), so any machine with that app can reach a box the
+# phone started. The box's public ip:port is listed in the portal. Public keys
+# only: `up` refuses anything that is not one.
+# extra_pubkeys:
+#   - ssh-ed25519 AAAA... megh-access (bitwarden)
+
 # OCI registries megh inspects / pulls dev-env images from. The first is the
 # default. token_env NAMES the env var holding a read:packages token.
 registries:
