@@ -76,6 +76,7 @@ the system level. Secrets are never stored in the repo.`,
 
 // Execute runs the root command.
 func Execute() {
+	os.Args = stripLinkerArg(os.Args)
 	cfg = config.Default()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "megh:", err)
