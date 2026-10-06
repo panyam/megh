@@ -304,14 +304,33 @@ log "sshd up on :22 (key auth only)"
 # ---------------------------------------------------------------------------
 # Present only on the full flavor; slim skips the whole frontend display stack.
 if command -v Xvfb >/dev/null 2>&1; then
+  export DISPLAY=:99
+  rm -f /tmp/.X99-lock
   Xvfb :99 -screen 0 1920x1080x24 >/tmp/xvfb.log 2>&1 &
-  sleep 1
-  fluxbox >/tmp/fluxbox.log 2>&1 &
-  # -localhost + a localhost websockify bind: these listen only on 127.0.0.1 and
-  # are reached via Tailscale (or an SSH tunnel), never the public proxy.
-  x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -bg -o /tmp/x11vnc.log
-  websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
-  log "noVNC up on 127.0.0.1:6080 (headed display :99)"
+  # x11vnc exits non-zero if :99 is not ready yet; with set -e that used to
+  # kill PID 1 and, under --restart unless-stopped, thrash die/start forever.
+  _xvfb_ok=0
+  for _i in $(seq 1 50); do
+    if [ -S /tmp/.X11-unix/X99 ] 2>/dev/null; then
+      _xvfb_ok=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [ "${_xvfb_ok}" != 1 ]; then
+    log "Xvfb :99 did not start (see /tmp/xvfb.log); skipping noVNC for this boot"
+  else
+    fluxbox >/tmp/fluxbox.log 2>&1 &
+    # -localhost + a localhost websockify bind: these listen only on 127.0.0.1 and
+    # are reached via Tailscale (or an SSH tunnel), never the public proxy.
+    if x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -bg -o /tmp/x11vnc.log; then
+      websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+      log "noVNC up on 127.0.0.1:6080 (headed display :99)"
+    else
+      log "x11vnc failed (see /tmp/x11vnc.log); skipping noVNC for this boot"
+    fi
+  fi
+  unset _xvfb_ok _i
 else
   log "no headed-browser display (slim); run 'megh enable vnc' (or 'megh enable' to list) to add it"
 fi
