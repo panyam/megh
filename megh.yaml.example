@@ -145,12 +145,6 @@ tailscale:
 #   branch: portal
 #   scheme: http
 
-# Optional: durable, searchable agent history. repo is a private git repo;
-# token_env NAMES a fine-grained PAT with contents:write on ONLY that repo.
-sessions:
-  repo: YOUR_GH_NAMESPACE/megh-sessions
-  # No token: the control machine collects and pushes; boxes hold no credential.
-
 # Home dirs symlinked onto the scratch volume so their state survives box rebuilds
 # (log in once, stay logged in on the next box that mounts the same volume). Add a
 # tool's config/auth dir to bake its sign-in in. Defaults to ~/.claude, ~/.codex.
