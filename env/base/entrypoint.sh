@@ -431,10 +431,8 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Shutdown. Agent transcripts are NOT pushed from here: doing so needed a
-#    long-lived GitHub credential on the box, because a background timer cannot
-#    use SSH agent forwarding. They live on the volume and are collected by the
-#    control machine instead (see DESIGN.md, "Agent session history").
+# 7. Shutdown. Agent transcripts are NOT pushed from here: they stay on the
+#    volume (see DESIGN.md, "Agent session history").
 # ---------------------------------------------------------------------------
 # Leave the tailnet on shutdown so an ephemeral node is removed immediately (the
 # node-side opposite of `tailscale up`). Best-effort; complements `megh down` and
