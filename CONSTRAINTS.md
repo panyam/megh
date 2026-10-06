@@ -182,6 +182,13 @@ never configures ssh `SendEnv`, so the calling shell's environment is not forwar
 to a box. Confirm that with `grep -rn 'SendEnv' cmd/ internal/`, which must return
 nothing.
 
+**Current practice (2026-10-06): no box is elevated.** The phone is the launcher
+(SETUP.md §6), the local `dev` box's `~/personal/control` mount was removed, and
+other machines reach boxes with a key in `extra_pubkeys:` rather than by holding
+megh credentials. The elevation rules above still describe what is sanctioned;
+nothing currently uses them. If a box must launch for a while, the keys go in a
+RAM-only file (`/dev/shm`), never on the volume, and die with the box.
+
 Tailnet control-plane credentials are a separate and stricter case: they are
 denied by name regardless of elevation. See C5.
 
