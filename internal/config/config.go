@@ -123,14 +123,6 @@ type Tailscale struct {
 	MintKeys bool `yaml:"mint_keys"`
 }
 
-// Sessions configures the durable, searchable agent-history repo. There is no
-// token here on purpose: transcripts are collected by the CONTROL machine and
-// pushed with the GitHub identity it already has, so no credential for this
-// repo ever lives on a box. See DESIGN.md.
-type Sessions struct {
-	Repo string `yaml:"repo"`
-}
-
 // ITerm configures macOS iTerm2 integration for interactive `megh ssh`. Ignored
 // on other platforms. Defaults are chosen so a fresh install gets a usable
 // profile without editing anything; every field is optional.
@@ -200,7 +192,6 @@ type Config struct {
 	Flavors         []string            `yaml:"flavors"`
 	Providers       map[string]Provider `yaml:"providers"`
 	Tailscale       Tailscale           `yaml:"tailscale"`
-	Sessions        Sessions            `yaml:"sessions"`
 	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
 	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
 	Requires        Requires            `yaml:"requires"`
