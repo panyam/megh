@@ -25,9 +25,6 @@ var configCmd = &cobra.Command{
 		fmt.Printf("default_flavor:   %s\n", cfg.DefaultFlavor)
 		fmt.Printf("default_image:    %s\n", cfg.DefaultImage(cfg.DefaultFlavor))
 		fmt.Printf("ssh_pubkey_file:  %s\n", cfg.SSHPubKeyFile)
-		if cfg.Sessions.Repo != "" {
-			fmt.Printf("sessions_repo:    %s\n", cfg.Sessions.Repo)
-		}
 		fmt.Printf("iterm profile:    %s (auto=%v)\n", cfg.ITermProfile(), cfg.ITermAuto())
 		fmt.Printf("iterm store:      %s\n", cfg.ITermProfilesDir(cfgSourcePath))
 

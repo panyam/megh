@@ -40,12 +40,11 @@ sequenceDiagram
   participant RunPod
   participant VM as Box
   participant GitHub
-  participant Sessions as megh-sessions repo
 
   Note over Mac: megh up
   Mac->>RunPod: create pod with image, pod env, and box pubkey
   RunPod->>VM: pull image and boot
-  VM->>VM: entrypoint mounts volume, starts tailscale and web surfaces, arms flush timer
+  VM->>VM: entrypoint mounts volume, starts tailscale and web surfaces
 
   Note over Mac: megh hydrate
   Mac->>VM: forward gh keys and write ssh config aliases
@@ -55,9 +54,6 @@ sequenceDiagram
   Note over Mac: megh ssh
   Mac->>VM: connect with box key, forward gh keys, tunnel surfaces
   VM->>GitHub: git push and pull with forwarded key
-
-  Note over VM: timer and shutdown
-  VM->>Sessions: flush transcripts
 
   Note over Mac: megh down
   Mac->>RunPod: delete pod, volume survives
@@ -131,15 +127,16 @@ flowchart TB
 ```mermaid
 flowchart LR
   repos["/workspace/repos<br>(working copies)"] -->|"git push"| gh["git remotes"]
-  state["/workspace/state claude+codex<br>(transcripts)"] -->|"flush-sessions.sh<br>(timer + shutdown)"| sess["megh-sessions repo"]
   gh -.->|"megh hydrate"| repos
-  sess -.->|"git clone"| state
   vol[("network volume<br>/mnt/work")]
+  state["/workspace/state claude+codex<br>(logins, transcripts)"] -.->|"lives on"| vol
   vol -.->|"survives"| destroy["box destroyed"]
 ```
 
-The volume is fast scratch, not the source of truth: code lives in git, agent
-history in the sessions repo, and both rehydrate onto a fresh volume.
+The volume is fast scratch, and for code not the source of truth: code lives in
+git and rehydrates onto a fresh volume. Agent transcripts and tool state live
+only on the volume; what is worth keeping from a session is checkpointed into
+the repo.
 
 On the local backend the volume is a host directory (`providers.docker.work_dir`)
 and the repos under it are bind mounts of your real trees, so `megh hydrate` has

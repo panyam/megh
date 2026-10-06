@@ -9,13 +9,11 @@ that are settled so they do not get relitigated. Rationale lives next to each.
 Four layers, decoupled so the box is disposable and providers are swappable.
 
 1. **Canonical state (portable, crosses everything).** Repos live in git
-   (GitHub / GitLab / self-hosted Forgejo). Agent session *transcripts* are
-   pushed to a private git repo (`megh-sessions`) so history is durable and
-   searchable; auth tokens are re-mintable and deliberately not persisted. This
-   is the only layer that follows the user across providers, dedicated boxes,
-   and GPU hardware. (This supersedes the earlier restic-to-S3 plan:
-   transcripts-in-git is greppable where a restic backup is not, and everything
-   else is re-mintable, so restic is no longer needed.)
+   (GitHub / GitLab / self-hosted Forgejo), and what a session learned is
+   checkpointed into those repos (`CLAUDE.md`, `NEXTSTEPS.md`). Auth tokens are
+   re-mintable and deliberately not persisted. This is the only layer that
+   follows the user across providers, dedicated boxes, and GPU hardware. Raw
+   agent transcripts stay on the volume (see "Agent session history" below).
 2. **Config (portable).** The dev environment is declared once in
    `env/<flavor>/provision.sh` and built into two artifacts (a container image
    and a VM image) from that same script. Tooling changes are commits here,
@@ -75,10 +73,16 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 - **Registry consolidation (target state).** The always-on box runs Forgejo (git
   remote) + Headscale (mesh coordinator) + Forgejo's OCI registry (dev-env
   images). One small box, self-hosted control plane, constraint-2 clean.
-- **Agent session history is persisted to git, not restic. LOCKED.** Claude/Codex
-  store sessions as JSONL transcripts. They go to a private `megh-sessions` repo,
-  so history is durable and `git grep`-searchable across every provider and
-  laptop. That destination is the locked part and has not changed.
+- **Agent session history stays on the volume. Collection RETIRED 2026-10-06.**
+  Transcripts live under `state/` on the network volume, which already survives
+  every box rebuild (so `claude --resume` keeps working), and the volume
+  migration runbook copies `state/`. What a session learned that is worth
+  keeping goes into the repo by checkpoint, not into a transcript archive. The
+  `megh-sessions` repo and `megh sessions collect` were removed: collection was
+  manual, so it captured nothing unless remembered, and every way to automate
+  it needed a GitHub write credential on a box. History below is kept for why
+  it was built.
+  **Previously LOCKED: transcripts to a private `megh-sessions` repo.**
   **What changed (2026-08-21): the push direction.** It used to run ON the box, a
   timer plus shutdown hook (`flush-sessions.sh`) pushing with a fine-grained PAT
   in the pod env, which was written up here as a deliberate narrow exception to
@@ -220,10 +224,11 @@ them is not durability, it is ceremony.
 
 **What is actually irreplaceable: agent transcripts and memory.**
 `state/claude/projects` and `state/codex/sessions` are the only things on the
-volume that no console can re-issue and no repo already holds. They go to the
-private `megh-sessions` repo, so history is durable and `git grep`-searchable
-across every provider and laptop. That destination is the LOCKED part of this
-decision and has not changed.
+volume that no console can re-issue and no repo already holds. **As of
+2026-10-06 they stay there**: the volume is their durability, and the parts
+worth keeping are checkpointed into the repo. Losing a volume loses raw
+transcripts, which is accepted. The rest of this section is the history of the
+retired `megh-sessions` collection.
 
 **What changed (2026-08-21) is the push direction.** It used to run ON the box, a
 timer plus shutdown hook pushing with a fine-grained PAT in the pod env, written
@@ -347,8 +352,8 @@ box holds nothing precious. Beyond cloning the repo and `make install`, you carr
    pubkey re-enrolled (GitHub + `MEGH_PUBKEY`).
 
 Everything else is remote or reconstructible: volumes/boxes/image live on the
-provider (`megh list`, `megh storage list`); code is in git; agent history is in
-`megh-sessions`; there is no local config or state file. In the strongest form
+provider (`megh list`, `megh storage list`); code and checkpoints are in git;
+there is no local config or state file. In the strongest form
 you carry nothing physical and just re-authenticate three services.
 
 ## Constraints carried from the handoff

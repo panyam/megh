@@ -57,7 +57,6 @@ megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
 megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; READ-ONLY (ssh would create one)
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
-megh sessions collect [name]      # pull a box's agent transcripts -> the sessions repo (pushed from HERE, not the box)
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 ```
 
@@ -80,10 +79,8 @@ with the word `window` on each line, because tmux auto-names a session created
 without `-s` by NUMBER, and a session called `3` beside window indices that are
 also small numbers is otherwise unreadable.
 
-**"Session" means two different things in this CLI.** `megh sessions collect`
-is AGENT TRANSCRIPT history (Claude/Codex JSONL, pushed to the sessions repo);
-`megh tmux ls` is TMUX sessions on a box. They are unrelated, which is why the
-tmux one is not a subcommand of `sessions`. `megh tmux ls` exists because
+**In this CLI "session" means a TMUX session.** (`megh sessions collect`, which
+meant agent transcripts, was retired 2026-10-06.) `megh tmux ls` exists because
 `megh ssh` runs `tmux new -A`, so it cannot report what is running without
 possibly creating it: there was no read-only way to look.
 
@@ -342,9 +339,9 @@ persisted so this survives rebuilds. Check the whole set with
   delete ANY node on the tailnet including your laptop's, while a credential
   scoped to `tag:megh` can only touch megh boxes. That is the main argument for
   the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
-- Agent transcripts need NO secret. `megh sessions collect` pulls them from a box
-  over the SSH megh already has and pushes them to `sessions.repo` with the
-  profile's GitHub identity, so nothing for that repo ever lives on a box.
+- Agent transcripts need NO secret: they stay on the volume. `megh sessions
+  collect` and the `megh-sessions` repo were retired 2026-10-06 (DESIGN.md,
+  "Agent session history"); checkpoint into the repo instead.
 
 ## Architecture (one-liners; see DESIGN.md)
 
@@ -357,7 +354,7 @@ persisted so this survives rebuilds. Check the whole set with
   (`internal/providers/runpod`); its Terraform provider is too flaky.
 - megh is **stateless**: the provider is the source of truth. No local state file.
   Managed resources identified by a `megh-` **name prefix** (RunPod has no tags).
-- Canonical state = git (code) + `megh-sessions` git repo (agent transcripts).
+- Canonical state = git (code + checkpoints). Transcripts stay on the volume.
   No restic. Scratch = per-provider network volume at `/mnt/work`, DC-pinned,
   shareable by multiple boxes in the same DC.
 
@@ -561,8 +558,6 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   by default, so it would be a command that mostly hangs. The last mile is a
   per-terminal preference megh cannot set: iTerm2 needs *Applications in terminal
   may access clipboard*.
-- **Session flush needs a credential on the box** (background timer can't use SSH
-  agent forwarding). Use a fine-grained PAT scoped to only `megh-sessions`.
 - **"Box not on the tailnet" is usually not a code bug.** Tailscale comes up
   ~1-2 min after the pod is RUNNING (image pull, then `tailscale up`), so a check
   in the first minute sees nothing. `megh down` deregisters the node immediately

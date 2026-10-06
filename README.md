@@ -22,10 +22,9 @@ box costs minutes, not work.
   a datacenter and shareable by boxes in it. Per-provider by design; it does not
   migrate. On the local backend it is a host directory, so the same layout is a
   path you can open in an editor.
-- **Canonical state** is git: your code in its own repos, agent transcripts
-  pulled off a box by `megh sessions collect` and pushed from the control
-  machine, so nothing on a box can write your history. That is the only layer
-  that crosses providers.
+- **Canonical state** is git: your code in its own repos, and what a session
+  learned checkpointed into those repos (`CLAUDE.md`, `NEXTSTEPS.md`). That is the
+  only layer that crosses providers. Raw agent transcripts stay on the volume.
 - **Reachability** is two paths, and both are required. Public SSH on 22/tcp
   with key auth is how the laptop drives a box (`ssh`, `browse`, `hydrate`,
   `doctor`). Tailscale, in userspace mode with `tailscale serve`, is how a phone
