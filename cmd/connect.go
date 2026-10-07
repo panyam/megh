@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/panyam/megh/internal/iterm"
+	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -43,7 +44,7 @@ func awaitSSHReady(ctx context.Context, prov providers.Provider, pod *providers.
 // daemon stop, etc.) without down+up. Cloud backends are no-ops here.
 func startStoppedBox(ctx context.Context, prov providers.Provider, pod *providers.Box) *providers.Box {
 	starter, ok := prov.(providers.StoppedBoxStarter)
-	if !ok || !boxStopped(pod.Status) {
+	if !ok || !lifecycle.BoxStopped(pod.Status) {
 		return pod
 	}
 	fmt.Fprintf(os.Stderr, "megh: %s is %s; starting existing container…\n", pod.DisplayName(), strings.ToLower(pod.Status))
@@ -55,15 +56,6 @@ func startStoppedBox(ctx context.Context, prov providers.Provider, pod *provider
 		return p
 	}
 	return pod
-}
-
-func boxStopped(status string) bool {
-	switch status {
-	case "EXITED", "CREATED", "PAUSED", "DEAD":
-		return true
-	default:
-		return false
-	}
 }
 
 // dial describes how to reach a box over SSH.

@@ -41,7 +41,7 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 // Up creates a CPU pod from a megh image, attaches the network volume, and
 // exposes the web shell / noVNC / SSH ports.
 func up(ctx context.Context, o providers.Options) (*Result, error) {
-	apiKey := os.Getenv("RUNPOD_API_KEY")
+	apiKey := keyFor(ctx)
 	if apiKey == "" {
 		return nil, fmt.Errorf("RUNPOD_API_KEY is not set")
 	}
