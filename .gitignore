@@ -13,7 +13,7 @@ env/base/megh
 env/base/megh.yaml
 
 # Local secrets — NEVER commit. Keep values in the environment (e.g.
-# ~/personal/envvars), never in the repo; git history is permanent. The
+# ~/.config/megh/secrets.env), never in the repo; git history is permanent. The
 # *.example templates are safe and stay tracked.
 secrets.env
 *.secret.env
@@ -30,7 +30,7 @@ HANDOFF*.md
 # Playwright MCP scratch output (screenshots, console logs, snapshots).
 .playwright-mcp/
 
-# Real config lives in the private dotfiles repo (megh/megh.yaml) and is
+# Real config lives in your private config repo (megh/megh.yaml) and is
 # installed to ~/.config/megh/megh.yaml. The tracked template is
 # megh.yaml.example, which holds no repo names or account identifiers.
 megh.yaml

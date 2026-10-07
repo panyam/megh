@@ -144,8 +144,8 @@ hardcoded) AND a feature, not one flag. Unverified: whether a RunPod GPU pod
 exposes `/dev/nvidia*` and the EGL ICD to an unprivileged container. That needs
 a real rent to answer.
 
-**The docker backend cannot reach the Mac's GPU.** Measured on a live local box
-(2026-09-12, Apple Silicon):
+**The docker backend cannot reach a macOS host's GPU.** Measured on a live local box
+(Apple Silicon):
 
     /dev/dri          No such file or directory
     /dev/nvidia*      no matches
@@ -161,10 +161,10 @@ driver is right there with no device to drive. Docker Desktop's own
 GPU-accelerated feature (Model Runner) runs as a host-side macOS process for
 exactly this reason.
 
-What the local box has instead is better than it sounds: 14 cores feeding
-llvmpipe against a CPU pod's 4, and a loopback transport, so the rasteriser is
+What the local box has instead is better than it sounds: all the host's cores feeding
+llvmpipe (14 on the machine measured) against a CPU pod's 4, and a loopback transport, so the rasteriser is
 the only limit rather than the wire. And its bind mounts mean a project file in
-the box IS the file on the Mac, so the answer for interactive KiCad on a local
+the box IS the file on the host, so the answer for interactive KiCad on a local
 box is to run KiCad natively on macOS, where it has Metal, and leave the box the
 batch half (`kicad-cli` ERC, DRC, gerbers, renders) on the identical tree.
 
@@ -266,7 +266,7 @@ project's own DSN with the distance still correct.
 - **Redis uses RDB snapshots, not AOF.** The data dir defaults to the NFS volume,
   where AOF's per-write fsync is the pathological case, and a dev cache does not
   need per-operation durability.
-- Neither is reachable from the Mac without an SSH tunnel, by design.
+- Neither is reachable from your own machine without an SSH tunnel, by design.
 
 ### Unverified
 
@@ -352,7 +352,7 @@ already on the volume, which is the point of installing there.
 ## java (not a feature)
 
 `megh enable java` existed briefly (panyam/megh#75) and was moved to the box's
-dotfiles as `setup_java` (panyam/dotfiles#1). A JDK is a personal toolchain
+dotfiles as a `setup_java` function. A JDK is a personal toolchain
 choice and needs no system services, so it belongs with whoever's dotfiles are
 on the box. The reason it left matters for any future feature that only
 installs files: megh#75 put the JDK on the volume but its wiring in

@@ -70,42 +70,27 @@ Four layers, decoupled so the box is disposable and providers are swappable.
 - **Config changes regenerate images, they never snapshot a mutated box.** A new
   tool is a commit that rebuilds `go-dev-env` / `ts-dev-env` / combos and rolls
   to the providers that carry that flavor.
-- **Registry consolidation (target state).** The always-on box runs Forgejo (git
-  remote) + Headscale (mesh coordinator) + Forgejo's OCI registry (dev-env
-  images). One small box, self-hosted control plane, constraint-2 clean.
-- **Agent session history stays on the volume. Collection RETIRED 2026-10-06.**
-  Transcripts live under `state/` on the network volume, which already survives
-  every box rebuild (so `claude --resume` keeps working), and the volume
-  migration runbook copies `state/`. What a session learned that is worth
-  keeping goes into the repo by checkpoint, not into a transcript archive. The
-  `megh-sessions` repo and `megh sessions collect` were removed: collection was
-  manual, so it captured nothing unless remembered, and every way to automate
-  it needed a GitHub write credential on a box. History below is kept for why
-  it was built.
-  **Previously LOCKED: transcripts to a private `megh-sessions` repo.**
-  **What changed (2026-08-21): the push direction.** It used to run ON the box, a
-  timer plus shutdown hook (`flush-sessions.sh`) pushing with a fine-grained PAT
-  in the pod env, which was written up here as a deliberate narrow exception to
-  "no long-lived credentials on the box" because a background timer cannot use
-  SSH agent forwarding. The exception is no longer needed. Transcripts live on
-  the volume under `state/`, and the CONTROL machine collects them over the SSH
-  it already has and pushes with the GitHub identity in the active profile. Same
-  repo, same searchability, and now nothing on a box can write your history.
-  The exception was also never actually load-bearing: the token was never set in
-  practice, so the on-box push never once ran. The cost is that history is
-  captured when the control machine collects rather than every five minutes, so a
-  box that dies hard loses the delta since the last collection. That is a smaller
-  window than it sounds, since collection runs on `megh down`, and it buys back a
-  standing credential on every box.
+- **Registry consolidation (possible target).** An optional always-on box could
+  run Forgejo (git remote) + Headscale (mesh coordinator) + Forgejo's OCI
+  registry (dev-env images). One small box, self-hosted control plane,
+  constraint-2 clean.
+- **Agent session history stays on the volume.** Transcripts live under `state/`
+  on the network volume, which already survives every box rebuild (so
+  `claude --resume` keeps working), and the volume migration runbook copies
+  `state/`. What a session learned that is worth keeping goes into the repo by
+  checkpoint, not into a transcript archive. An earlier design pushed
+  transcripts to a private git repo; it was removed because collection was
+  manual, so it captured nothing unless remembered, and every way to automate it
+  needed a GitHub write credential on a box.
 - **A local docker backend, and it joins an overlay network only when asked.** A
-  box can be a container on this machine rather than a rented pod. It earns its
+  box can be a container on your own machine rather than a rented pod. It earns its
   place twice: the box contract (the entrypoint, the feature scripts, hydrate)
   becomes testable without paying a provider, and a container with the real work
   trees bind-mounted is the containerized-agent setup the cloud boxes only
   approximate. It joins nothing by default, because over loopback an overlay buys
   nothing and skipping it means no key is minted and no node is left behind.
   `providers.docker.mesh` turns one on for the case loopback cannot serve, which
-  is a device that is not this machine. `Provider.Mesh()` carries both the vendor
+  is a device that is not that machine. `Provider.Mesh()` carries both the vendor
   and whether boxes join at BOOT: a pod does, since nothing can SSH to it yet and
   with `expose_ssh: false` the overlay is the only way in, while a local box is
   joined afterwards by `megh mesh join`, which keeps its node key out of the
@@ -182,7 +167,10 @@ Hosting the phone-facing control panel, two options:
   Only worth it if you need to launch boxes without the mesh, which the mesh
   itself removes the need for.
 
-Leaning mesh-hosted. Not built yet; the CLI is the first surface.
+The App Engine option was built as meghplane (`cmd/meghplane`, SETUP.md §7),
+with the exposure narrowed: IAP plus an in-app check of IAP's signed header, and
+keys either sent by the browser per request or held as one Secret Manager secret
+read only by the app's runtime account. The CLI remains the primary surface.
 
 ## Volume durability
 
@@ -218,43 +206,27 @@ with reality. A general `state/` backup was designed here first, then most of it
 contents turned out not to need it. `.credentials.json` holds a refresh token
 that dies in about 3.5 days, so an archive restored a week later contains a dead
 credential. `~/.config/gh` is a token, re-minted in one command. `~/.claude.json`
-is onboarding state. `state/personal/envvars` is re-pushed by `files:` on any
+is onboarding state. An env file under `state/` is re-pushed by `files:` on any
 connect. Backing up credentials that expire faster than you would notice losing
 them is not durability, it is ceremony.
 
 **What is actually irreplaceable: agent transcripts and memory.**
 `state/claude/projects` and `state/codex/sessions` are the only things on the
-volume that no console can re-issue and no repo already holds. **As of
-2026-10-06 they stay there**: the volume is their durability, and the parts
-worth keeping are checkpointed into the repo. Losing a volume loses raw
-transcripts, which is accepted. The rest of this section is the history of the
-retired `megh-sessions` collection.
-
-**What changed (2026-08-21) is the push direction.** It used to run ON the box, a
-timer plus shutdown hook pushing with a fine-grained PAT in the pod env, written
-up as a deliberate narrow exception to "no long-lived credentials on the box"
-because a background timer cannot use SSH agent forwarding. The exception is no
-longer needed: `megh sessions collect` pulls the transcripts over the SSH megh
-already has and pushes them with the GitHub identity in the active profile. Same
-repo, same searchability, and nothing on a box can write your history. The
-exception was never load-bearing either, since the token was never set and the
-on-box push never once ran.
-
-The cost is that history is captured when you collect rather than every five
-minutes, so a box that dies hard loses the delta since the last collection. That
-is a smaller window than it sounds, and it buys back a standing credential on
-every box.
+volume that no console can re-issue and no repo already holds. **They stay
+there**: the volume is their durability, and the parts worth keeping are
+checkpointed into the repo. Losing a volume loses raw transcripts, which is
+accepted.
 
 ## Open, not yet committed
 
 - **Remote access. DECIDED.** Security comes from SSH (key auth) plus binding the
   web surfaces to localhost, not from any mesh. RunPod's public proxy is open and
   unauthenticated, so ttyd/noVNC bind to `127.0.0.1` and only `22/tcp` is public.
-  The Mac uses `megh ssh` (auto ip:port + localhost tunnels of 7681/6080),
+  A laptop uses `megh ssh` (auto ip:port + localhost tunnels of 7681/6080),
   nothing to install. Tailscale is an OPTIONAL convenience layer for
   phone/tablet browser access, enabled only when `TS_AUTHKEY` is set; on RunPod
   it runs userspace mode + `tailscale serve` because the container has no TUN
-  device. Headscale (self-hosted coordinator on the always-on box) stays the
+  device. Headscale (a self-hosted coordinator, e.g. on an always-on box) stays the
   constraint-2-pure upgrade if the hosted coordinator ever bothers us. Plain
   WireGuard rejected: clunky for a phone and for disposable boxes.
 - **Tailscale keys are minted per box, not shared. DESIGNED, off by default.**
@@ -271,11 +243,11 @@ every box.
   are reachable over public SSH regardless, so the tailnet is never on the
   critical path for a launch.
 - **Default architecture** for VM providers. RunPod forces x86_64. For Hetzner,
-  the tie-breaker is the user's Mac arch: match it for tightest local/remote
+  the tie-breaker is the control machine's arch: match it for tightest local/remote
   parity, unless the deploy target's arch outweighs that.
 - **GPU.** Deferred. A separate explicitly-invoked flow, not this box.
 - **RunPod DinD. SETTLED: NO, and not fixable by configuration** (measured on a
-  live CPU pod, 2026-08-12). The pod holds 13 capabilities and `cap_sys_admin` is
+  live CPU pod). The pod holds 13 capabilities and `cap_sys_admin` is
   not among them (`CapEff=00000000a80405fb`); `mount` and `iptables` are denied
   and `/dev/fuse`, `/dev/net/tun`, `/dev/kmsg`, `/dev/loop0` are all absent.
   Default `dockerd` fails creating the DOCKER NAT chain. The near-miss to be wary
@@ -292,7 +264,7 @@ every box.
   memory is not, so isolation stays clean without N instances. Caveat: apt gives
   pg16 where the repos' compose files pin `pgvector/pgvector:pg18`, so anything
   depending on pg18 behaviour is a genuine gap.
-- **Vertical over horizontal scaling. SETTLED** (measured 2026-08-12). RunPod CPU
+- **Vertical over horizontal scaling. SETTLED** (prices as of 2026-08). RunPod CPU
   pricing is exactly linear: $0.04/vCPU-hr and $0.01/GB-hr, with 2/8, 4/16 and
   8/32 billing 0.080, 0.160 and 0.320. Two small boxes cost precisely what one
   double-sized box costs, so there is no cost argument for splitting. One box
@@ -302,20 +274,20 @@ every box.
   disposable boxes also means sizing is a PER-SESSION choice, not a standing one:
   run 4/16 for ordinary work and launch 8/32 for a demo day. Duty cycle dominates
   the cost model (8h/day at 4/16 is ~$28/mo against ~$117 always-on). Shared
-  services migrate to the always-on box if and when that exists.
+  services could migrate to an optional always-on box, if one exists.
 
 ## Profiles (self-contained key + secrets per context)
 
 A profile (`~/.megh/profiles/<name>/`, override `MEGH_HOME`) makes megh depend on
 nothing at the system level, no reliance on `~/.ssh` or a shared agent that also
-holds a corporate key. LOCKED decisions:
+holds keys for other accounts. LOCKED decisions:
 
 - **One box key, N GitHub keys.** The box key (single) SSHes into VMs; its pubkey
   is injected. GitHub identity keys (`gh/<name>`) are separate and plural: you
   work on repos from different accounts in the SAME box.
 - **Scoped agent forwards ONLY the profile's keys.** megh spins up a throwaway
-  ssh-agent holding exactly the profile's GitHub keys and forwards that, so a
-  corporate key sitting in your normal agent never reaches a third-party VM. The
+  ssh-agent holding exactly the profile's GitHub keys and forwards that, so any
+  other key sitting in your normal agent never reaches a third-party VM. The
   box is connected to with `-i box.key -o IdentitiesOnly=yes`.
 - **Multi-identity in one box via Host aliases.** On connect, megh writes the GH
   *public* keys plus a `~/.ssh/config` Host alias per identity (`gh-<name>`,
@@ -345,7 +317,7 @@ A fresh laptop needs almost nothing, because megh holds no local state and the
 box holds nothing precious. Beyond cloning the repo and `make install`, you carry
 (or re-mint) exactly two things:
 
-1. **Secrets** (`~/personal/envvars`): `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` (GHCR
+1. **Secrets** (your secrets file, or the profile's `secrets.env`): `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` (GHCR
    pull), and `MEGH_TAILSCALE_CLIENT_ID` / `MEGH_TAILSCALE_CLIENT_SECRET` (the
    tailnet trust credential). All regenerate from their consoles in a minute.
 2. **An SSH keypair** for box access + git push. Can be freshly generated and its

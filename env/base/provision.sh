@@ -117,7 +117,7 @@ rm -rf /var/lib/apt/lists/*
 #   - /etc/profile.d/megh-path.sh is read by LOGIN shells only, so a `megh ssh
 #     <box> <cmd>` or any script does not see it, and a dotfiles ~/.zshrc
 #     arriving via mounts:/symlinks: typically SETS PATH rather than appending,
-#     replacing whatever we put there with the Mac's list.
+#     replacing whatever we put there with the host machine's list.
 # The symlinks are what make `go` work regardless, since /usr/local/bin is in
 # every one of those PATHs. Without them the box looks like it has no Go and the
 # next move is `apt install golang-go`, which installs an OLDER toolchain beside

@@ -60,7 +60,7 @@ func meghEnv() []byte {
 // /dev/null. The os.ModeCharDevice bit is NOT this test: /dev/null is a
 // character device too, so `megh enable </dev/null` prompted at an input that
 // can never answer. x/term asks the tty ioctl, and it is also the part that
-// differs between Linux and the Mac megh runs from.
+// differs between Linux and macOS.
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }

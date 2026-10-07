@@ -169,7 +169,7 @@ func checkScript(c config.Config) string {
 		`if [ -d "/mnt/work/repos/$d/.git" ]; then echo "  present     $d"; ` +
 		`else echo "  MISSING     $d"; fi; done` + "\n")
 	b.WriteString(`echo "== on the volume, not declared =="` + "\n")
-	// Declared dests are multi-segment (newstack/oneauth/main), so a one-level
+	// Declared dests are multi-segment (group/repo/main), so a one-level
 	// scan of repos/*/ can never match them: it reports every GROUP dir as
 	// undeclared and misses a real stray nested below. Walk for actual clones
 	// instead (a dir holding .git), prune at each one so submodules and vendored

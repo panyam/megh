@@ -32,7 +32,7 @@ APPS_DEFAULT="kicad kicad-libraries kicad-demos gerbv xschem lepton-eda pcb-rnd 
 # mesa's llvmpipe software rasteriser, which is what libgl1-mesa-dri carries;
 # without it KiCad's GL canvas has nothing to fall back to. glxinfo (mesa-utils)
 # and xdpyinfo (x11-utils) are here to make "is the display actually usable"
-# answerable on the box rather than by guessing from the Mac.
+# answerable on the box rather than by guessing from the control machine.
 SUPPORT="libgl1-mesa-dri libglu1-mesa mesa-utils x11-utils fonts-liberation dbus-x11"
 
 apps="${MEGH_EDA_PKGS:-${APPS_DEFAULT}}"
