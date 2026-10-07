@@ -93,7 +93,7 @@ func cfg() config.Config {
 
 func opts(vcpu, ram, disk int) providers.Options {
 	return providers.Options{Name: "dev", Image: "ghcr.io/acme/megh-slim:latest", VolumeID: "b1",
-		VCPU: vcpu, RAMGiB: ram, DiskGiB: disk, PubKey: "ssh-ed25519 AAAA a", ExposeSSH: true}
+		VCPU: vcpu, RAMGiB: ram, DiskGiB: disk, PubKey: "ssh-ed25519 AAAA a", ExposeSSH: true, PullToken: "ghp_pull"}
 }
 
 func TestPickPlanIsTheCheapestIPv4CPUPlanInTheRegionThatFits(t *testing.T) {
@@ -258,5 +258,27 @@ func TestNewWithKeyPrefersItsOwnKey(t *testing.T) {
 		if sent != "Bearer "+want {
 			t.Errorf("key %q: sent %q", key, sent)
 		}
+	}
+}
+
+// The pull token comes from the caller, never this process's environment, so
+// a server with no GH_MEGH_TOKEN of its own can still launch a private image.
+func TestUpLogsInWithTheCallersPullTokenOnly(t *testing.T) {
+	userData := func(token string) string {
+		f := newFake(t)
+		p := testProvider(t, f, cfg())
+		o := opts(2, 4, 50)
+		o.PullToken = token
+		if _, err := p.Up(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+		ud, _ := base64.StdEncoding.DecodeString(f.instance["user_data"].(string))
+		return string(ud)
+	}
+	if ud := userData("from-request"); !strings.Contains(ud, "'from-request'") || !strings.Contains(ud, "docker login 'ghcr.io' -u 'acme'") {
+		t.Errorf("no login with the caller's token:\n%s", ud)
+	}
+	if ud := userData(""); strings.Contains(ud, "docker login") || strings.Contains(ud, "ghp_pull") {
+		t.Errorf("logged in with the environment's token:\n%s", ud)
 	}
 }

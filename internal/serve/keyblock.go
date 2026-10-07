@@ -2,13 +2,22 @@ package serve
 
 import "strings"
 
+// DefaultRegistryEnv is the note's name for the registry pull token when
+// megh.yaml's registries[0].token_env names none.
+const DefaultRegistryEnv = "GH_MEGH_TOKEN"
+
 // ParseKeyBlock reads a control-plane note: KEY=value assignments, several to
 // a line or one per line, with or without "export", quotes or comments. Only
-// RUNPOD_API_KEY, HCLOUD_TOKEN, VULTR_API_KEY and the two
-// MEGH_TAILSCALE_CLIENT_* names are kept. It follows
+// RUNPOD_API_KEY, HCLOUD_TOKEN, VULTR_API_KEY, the two MEGH_TAILSCALE_CLIENT_*
+// names and registryEnv (the registry pull token, under whatever name
+// registries[0].token_env gives it, so the note matches the secrets file) are
+// kept. An empty registryEnv means DefaultRegistryEnv. It follows
 // the same rules as the page's parseKeys (web/app.js); both are tested against
 // testdata/keyblock_cases.json so they cannot drift.
-func ParseKeyBlock(text string) Keys {
+func ParseKeyBlock(text, registryEnv string) Keys {
+	if registryEnv == "" {
+		registryEnv = DefaultRegistryEnv
+	}
 	var k Keys
 	for _, line := range strings.Split(text, "\n") {
 		for _, w := range shellWords(strings.TrimRight(line, "\r")) {
@@ -16,7 +25,12 @@ func ParseKeyBlock(text string) Keys {
 			if eq < 1 {
 				continue
 			}
-			switch v := w[eq+1:]; w[:eq] {
+			name, v := w[:eq], w[eq+1:]
+			if name == registryEnv {
+				k.Registry = v
+				continue
+			}
+			switch name {
 			case "RUNPOD_API_KEY":
 				k.RunPod = v
 			case "HCLOUD_TOKEN":

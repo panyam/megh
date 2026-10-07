@@ -279,9 +279,11 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 		env[k] = v
 	}
 	spec := vmhost.Spec{Image: o.Image, Volume: vmhost.Volume{BlockSizeGB: vol.SizeGB}, Env: env, ExposeSSH: o.ExposeSSH}
-	if regs := p.cfg().Registries; len(regs) > 0 && regs[0].TokenEnv != "" {
-		spec.PullUser = cmp.Or(regs[0].Username, regs[0].Namespace)
-		spec.PullToken = os.Getenv(regs[0].TokenEnv)
+	if o.PullToken != "" {
+		spec.PullToken = o.PullToken
+		if regs := p.cfg().Registries; len(regs) > 0 {
+			spec.PullUser = cmp.Or(regs[0].Username, regs[0].Namespace)
+		}
 	}
 
 	var ir struct {

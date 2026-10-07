@@ -49,6 +49,14 @@ type Options struct {
 	// which is the shared static key. Only a backend whose Mesh().AtBoot is true
 	// receives it; the rest are joined afterwards, over SSH.
 	TSAuthKey string
+	// PullToken is the registry token a VM backend (Hetzner, Vultr) logs in
+	// with to pull Image on first boot, as registries[0]'s user. Empty means
+	// no login, which is enough for a public image. The caller supplies it
+	// (the CLI from registries[0].token_env, the web control plane from the
+	// request), so a backend never reads it from its own environment. RunPod
+	// ignores it, since its pull credential lives in the RunPod console, and
+	// so does docker, which pulls with the host's own login.
+	PullToken string
 }
 
 // Result is a successful launch. Only the human-facing summary is shared: what

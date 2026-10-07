@@ -11,6 +11,8 @@ type keyCase struct {
 	Name string            `json:"name"`
 	In   string            `json:"in"`
 	Want map[string]string `json:"want"`
+	// RegistryEnv is the registry token's name for this case ("" = the default).
+	RegistryEnv string `json:"registryEnv"`
 }
 
 func loadKeyCases(t *testing.T) []keyCase {
@@ -30,8 +32,8 @@ func loadKeyCases(t *testing.T) []keyCase {
 // page uses for a pasted one.
 func TestParseKeyBlockMatchesTheSharedCases(t *testing.T) {
 	for _, c := range loadKeyCases(t) {
-		got := ParseKeyBlock(c.In)
-		want := Keys{RunPod: c.Want["runpod"], Hetzner: c.Want["hcloud"], Vultr: c.Want["vultr"], TSClientID: c.Want["tsid"], TSClientSecret: c.Want["tssecret"]}
+		got := ParseKeyBlock(c.In, c.RegistryEnv)
+		want := Keys{RunPod: c.Want["runpod"], Hetzner: c.Want["hcloud"], Vultr: c.Want["vultr"], TSClientID: c.Want["tsid"], TSClientSecret: c.Want["tssecret"], Registry: c.Want["registry"]}
 		if got != want {
 			t.Errorf("%s: got %+v, want %+v", c.Name, got, want)
 		}

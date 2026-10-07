@@ -124,6 +124,9 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 			PubKey:     pub,
 			BoxEnv:     cfg.BoxEnv(),
 		}
+		if len(cfg.Registries) > 0 {
+			req.PullToken = cfg.Registries[0].Token()
+		}
 		if cmd.Flags().Changed("expose-ssh") {
 			req.ExposeSSH = &upExposeSSH
 		}

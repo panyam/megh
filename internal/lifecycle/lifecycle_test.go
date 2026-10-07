@@ -233,3 +233,21 @@ func TestVolumesSkipsUnconfiguredBackendsButReportsRealErrors(t *testing.T) {
 		t.Errorf("errs = %v", errs)
 	}
 }
+
+// lifecycle reads no environment: the pull token reaches the backend only
+// when the caller passes it.
+func TestUpPassesThePullTokenThroughAndReadsNoneItself(t *testing.T) {
+	t.Setenv("GH_MEGH_TOKEN", "from-env")
+	f := &fake{name: "runpod"}
+	if _, err := svc(f, config.Default()).Up(context.Background(), UpRequest{Name: "a", PubKey: key, PullToken: "from-request"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.upOpts.PullToken != "from-request" {
+		t.Errorf("pull token = %q", f.upOpts.PullToken)
+	}
+	g := &fake{name: "runpod"}
+	svc(g, config.Default()).Up(context.Background(), UpRequest{Name: "b", PubKey: key})
+	if g.upOpts.PullToken != "" {
+		t.Errorf("read the environment: %q", g.upOpts.PullToken)
+	}
+}

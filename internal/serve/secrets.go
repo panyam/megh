@@ -32,6 +32,9 @@ type GCPSecret struct {
 	// Name is the secret's resource name, or a short name resolved in Project.
 	Name    string
 	Project string
+	// RegistryEnv is the note's name for the registry pull token; see
+	// ParseKeyBlock. Empty means DefaultRegistryEnv.
+	RegistryEnv string
 
 	HTTPClient *http.Client
 	TokenURL   string // default metadataTokenURL
@@ -114,7 +117,7 @@ func (g *GCPSecret) fetch(ctx context.Context) (Keys, error) {
 	if err != nil {
 		return Keys{}, fmt.Errorf("secret %s: payload: %w", g.Name, err)
 	}
-	return ParseKeyBlock(string(raw)), nil
+	return ParseKeyBlock(string(raw), g.RegistryEnv), nil
 }
 
 func (g *GCPSecret) token(ctx context.Context) (string, error) {

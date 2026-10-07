@@ -335,7 +335,9 @@ persisted so this survives rebuilds. Check the whole set with
 
 - `RUNPOD_API_KEY` — provider access
 - `GH_MEGH_TOKEN` — GHCR pull (classic PAT, `read:packages`); also set in RunPod
-  console as the ghcr.io Container Registry Auth
+  console as the ghcr.io Container Registry Auth. A Hetzner/Vultr VM logs in
+  with it on first boot, handed over as `UpRequest.PullToken` (from env on the
+  CLI, from the pasted note on meghplane); no backend reads it from env itself
 - `TS_AUTHKEY` — optional, Tailscale NODE key (phone/tablet only); reusable +
   ephemeral. Goes to the box, which is how it joins the tailnet.
 - `MEGH_TAILSCALE_CLIENT_ID` + `MEGH_TAILSCALE_CLIENT_SECRET` — optional,
@@ -688,12 +690,12 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   control machine with no Tailscale credential fails on a name that is perfectly
   correct. `dial.preflight` now does the lookup first and says so; if you see the
   raw ssh error again, something bypassed it.
-- **`megh up` never reads `GH_MEGH_TOKEN`, but `requires:` blocks on it.** The
+- **A RunPod launch never uses `GH_MEGH_TOKEN`, but `requires:` blocks on it.** The
   RunPod path resolves the console-configured registry credential through the API
-  and passes `containerRegistryAuthId`; the token is only used by
-  `internal/registry/oci.go` for `megh registry ls`. So a launch can be gated on a
-  variable the launch does not use. Worth remembering before hunting for a
-  registry problem that is really a `requires.envs` entry.
+  and passes `containerRegistryAuthId`. Only the Hetzner/Vultr boot login and
+  `megh registry ls` use the token. So a RunPod launch can be gated on a variable
+  it does not use. Worth remembering before hunting for a registry problem that
+  is really a `requires.envs` entry.
 - **An ssh ControlMaster socket cannot live on the work mount, and barely fits
   in a deep path.** `megh browse -b` backgrounds its tunnel with `ssh -f -M -S`,
   and ssh creates that socket under a random name and then HARD-LINKS it into
