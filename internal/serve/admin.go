@@ -25,8 +25,12 @@ type Prober interface {
 // backend is the named provider, or the request's default one for "", as a
 // 400 when the request holds no key for it.
 func (s *Server) backend(svc *lifecycle.Service, name string) (providers.Provider, error) {
-	prov, err := svc.Provider(cmp.Or(name, s.defaultProvider(svc)))
+	name = cmp.Or(name, s.defaultProvider(svc))
+	prov, err := svc.Provider(name)
 	if err != nil {
+		if env := keyVar(name); env != "" {
+			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("no %s key on the server or in this tab: add %s under Keys", name, env)}
+		}
 		return nil, &apiError{http.StatusBadRequest, err.Error()}
 	}
 	return prov, nil

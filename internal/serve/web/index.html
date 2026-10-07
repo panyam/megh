@@ -16,15 +16,17 @@
   </div>
 </header>
 
-<section id="keys" hidden>
-  <h2>Keys for this tab</h2>
-  <p>Paste your control-plane note. Keys stay in this tab's session storage
-  and go to the server only as headers on each request; closing the tab
-  forgets them.</p>
+<details id="keys">
+  <summary>Keys</summary>
+  <ul id="keystatus"></ul>
+  <p>Paste your control-plane note, or just the lines to add. Each one adds
+  to or replaces that key for this tab, and a key the server holds wins over
+  the tab's. Keys stay in this tab's session storage and go to the server only
+  as headers on each request; closing the tab forgets them.</p>
   <textarea id="keyblock" rows="5" spellcheck="false" autocomplete="off"
     placeholder="RUNPOD_API_KEY=...&#10;HCLOUD_TOKEN=...&#10;VULTR_API_KEY=...&#10;GH_MEGH_TOKEN=...&#10;MEGH_TAILSCALE_CLIENT_ID=...&#10;MEGH_TAILSCALE_CLIENT_SECRET=..."></textarea>
   <button id="savekeys" type="button">Use these keys</button>
-</section>
+</details>
 
 <main id="app" hidden>
   <section>

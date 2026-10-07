@@ -232,3 +232,27 @@ func TestDeleteVolumeGoesToItsOwnBackend(t *testing.T) {
 		t.Errorf("code=%d vultr=%q runpod=%q", w.Code, v.deleted, rp.deleted)
 	}
 }
+
+// The page lists every provider it could use, keyed or not, before any key is
+// pasted, with the variable that unlocks each.
+func TestKeysListsEveryProviderWithItsVariable(t *testing.T) {
+	s, _, _ := testServer(&fake{})
+	body := do(t, s.Handler(), "GET", "/api/keys", "", nil).Body.String()
+	want := `"providers":[{"env":"RUNPOD_API_KEY","name":"runpod"},{"env":"HCLOUD_TOKEN","name":"hetzner"},{"env":"VULTR_API_KEY","name":"vultr"}]`
+	if !strings.Contains(body, want) {
+		t.Errorf("/api/keys = %s", body)
+	}
+}
+
+// Asking for a known provider the request has no key for says which key to add.
+func TestAKnownProviderWithNoKeyNamesItsVariable(t *testing.T) {
+	s, _, _ := testServer(&fake{})
+	h := s.Handler()
+	w := do(t, h, "POST", "/api/volumes", `{"provider":"vultr","name":"megh-x","sizeGB":50,"dc":"ewr"}`, withKey)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "add VULTR_API_KEY") {
+		t.Errorf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if w := do(t, h, "GET", "/api/regions?provider=nope", "", withKey); w.Code != http.StatusBadRequest || strings.Contains(w.Body.String(), "add ") {
+		t.Errorf("unknown provider: code=%d body=%s", w.Code, w.Body.String())
+	}
+}
