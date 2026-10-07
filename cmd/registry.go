@@ -20,6 +20,10 @@ var registryLsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		for _, reg := range cfg.Registries {
+			if reg.Namespace == "" {
+				fmt.Printf("%s  (%s, no namespace: set it in megh.yaml or MEGH_GHCR_NAMESPACE)\n", reg.Name, reg.Host)
+				continue
+			}
 			fmt.Printf("%s  (%s/%s)\n", reg.Name, reg.Host, reg.Namespace)
 			for _, flavor := range cfg.Flavors {
 				image := "megh-" + flavor

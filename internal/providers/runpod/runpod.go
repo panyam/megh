@@ -46,7 +46,7 @@ func up(ctx context.Context, o providers.Options) (*Result, error) {
 		return nil, fmt.Errorf("RUNPOD_API_KEY is not set")
 	}
 	if o.Image == "" {
-		return nil, fmt.Errorf("image is required (--image or $MEGH_IMAGE)")
+		return nil, fmt.Errorf("no image: set registries[0].namespace in megh.yaml (or $MEGH_GHCR_NAMESPACE) to the owner of your megh images, or pass --image")
 	}
 	if o.DataCenter == "" {
 		return nil, fmt.Errorf("data center is required (--dc or $MEGH_DC)")

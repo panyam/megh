@@ -44,3 +44,25 @@ func TestUnknownMeshVendorIsRejectedAtLoad(t *testing.T) {
 		}
 	}
 }
+
+// No account is baked in: without a namespace from megh.yaml or the
+// environment there is no default image, rather than someone else's.
+func TestDefaultImageNeedsAConfiguredNamespace(t *testing.T) {
+	t.Setenv("MEGH_GHCR_NAMESPACE", "")
+	t.Setenv("MEGH_GHCR_USER", "")
+	c := Default()
+	if got := c.DefaultImage("slim"); got != "" {
+		t.Errorf("no namespace configured, got default image %q", got)
+	}
+	if c.Registries[0].Username != "" {
+		t.Errorf("no user configured, got %q", c.Registries[0].Username)
+	}
+	t.Setenv("MEGH_GHCR_NAMESPACE", "acme")
+	c = Default()
+	if got := c.DefaultImage("full"); got != "ghcr.io/acme/megh-full:latest" {
+		t.Errorf("got %q", got)
+	}
+	if c.Registries[0].Username != "acme" {
+		t.Errorf("user should default to the namespace, got %q", c.Registries[0].Username)
+	}
+}
