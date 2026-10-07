@@ -296,13 +296,59 @@ then verifies IAP's signed header itself (audience, issuer, signature, expiry,
 via oneauth) and admits only the emails in `serve.allowed_emails`. With that
 list empty, or IAP's keys unreachable, it refuses to start.
 
-**One-time setup, in the console for the project:**
+**One-time setup.** This is the sequence that worked on the live `meghplane`
+project (2026-10-07), on a personal Google account with no Workspace org.
 
-1. App Engine app created (any region; it cannot change later).
-2. Security > Identity-Aware Proxy: configure the OAuth consent screen, turn
-   IAP on for App Engine, and add your account as **IAP-secured Web App User**.
-3. Billing > Budgets: a $1 alert. Nothing here should cost money (one F1
+1. **App Engine app** created (any region; it cannot change later).
+2. **Let the deploy build.** Cloud Build runs as the app's service account, and
+   one you created starts with no build rights. Without them the deploy dies at
+   `invalid bucket "staging.<project>.appspot.com"; service account ... does not
+   have access to the bucket`:
+   ```sh
+   SA=<the-app-service-account>
+   gcloud projects add-iam-policy-binding <project> --member=serviceAccount:$SA --role=roles/cloudbuild.builds.builder
+   gcloud projects add-iam-policy-binding <project> --member=serviceAccount:$SA --role=roles/logging.logWriter
+   gcloud storage buckets add-iam-policy-binding gs://staging.<project>.appspot.com --member=serviceAccount:$SA --role=roles/storage.objectAdmin
+   ```
+3. **OAuth consent screen** (Google Auth Platform > Audience): External, left in
+   **Testing**, with each person under **Test users**. Testing mode is a free
+   extra allowlist, so leave it there.
+4. **An OAuth client for IAP.** Google only provides one automatically inside a
+   Workspace org; a personal project gets `Empty Google Account OAuth client
+   ID(s)/secret(s)` until you supply your own. Create a Web application client
+   (Google Auth Platform > Clients), add the redirect URI
+   `https://iap.googleapis.com/v1/oauth/clientIds/<CLIENT_ID>:handleRedirect`,
+   keep the secret in Bitwarden, then:
+   ```sh
+   gcloud iap web enable --resource-type=app-engine --project=<project> \
+     --oauth2-client-id=<CLIENT_ID> --oauth2-client-secret=<CLIENT_SECRET>
+   ```
+5. **IAP access**, per person (project ownership does not count):
+   ```sh
+   gcloud iap web add-iam-policy-binding --resource-type=app-engine --project=<project> \
+     --member=user:<email> --role=roles/iap.httpsResourceAccessor
+   ```
+6. Billing > Budgets: a $1 alert. Nothing here should cost money (one F1
    instance, max), so the alert is how a mistake gets noticed.
+
+**Adding a person means three lists and a redeploy**: an OAuth test user (3),
+an IAP grant (5), and `serve.allowed_emails` in `megh.yaml`, which the app reads
+only at startup and so needs a redeploy.
+
+**Signing out**: the page's Sign out button forgets the keys and loads
+`/?gcp-iap-mode=CLEAR_LOGIN_COOKIE`, IAP's own sign-out. Google itself stays
+signed in, so IAP will sign the same account straight back in.
+
+**Every refusal looks different, which is how you find it:**
+
+| Symptom | Cause |
+|---|---|
+| `503 Service Unavailable` | The app exited at startup. `gcloud app logs read` names why: an empty allowlist, unreachable IAP keys, or the project number lookup |
+| Log: `serve.allowed_emails is empty` with `config from /workspace/megh.yaml` | The file arrived but `serve:` is not at the top level. A key indented under another block is silently ignored |
+| `Empty Google Account OAuth client ID(s)/secret(s)` | Step 4 |
+| `Access blocked` / `Error 403: access_denied` at sign-in | Not an OAuth test user (step 3) |
+| Google's "You don't have access" page | No IAP grant (step 5), or it has not propagated yet (minutes) |
+| Plain `not authorized` | Past IAP, refused by the app: not in `serve.allowed_emails`. The log names the email |
 
 **Deploy** from a checkout with your private `megh.yaml` at the repo root
 (gitignored, but `.gcloudignore` uploads it) holding `serve.allowed_emails`:
