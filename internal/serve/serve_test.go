@@ -22,6 +22,7 @@ type fake struct {
 	listErr error
 	upOpts  *providers.Options
 	upErr   error
+	vols    []providers.Volume
 	killed  string
 }
 
@@ -42,7 +43,7 @@ func (f *fake) Up(_ context.Context, o providers.Options) (providers.Result, err
 	return result("launched " + o.Name), nil
 }
 func (f *fake) Terminate(_ context.Context, id string) error        { f.killed = id; return nil }
-func (f *fake) Volumes(context.Context) ([]providers.Volume, error) { return nil, nil }
+func (f *fake) Volumes(context.Context) ([]providers.Volume, error) { return f.vols, nil }
 func (f *fake) CreateVolume(context.Context, string, int, string) (*providers.Volume, error) {
 	return nil, nil
 }
