@@ -285,7 +285,8 @@ you hand it, so a new control device is a re-mint rather than a recovery.
 
 `cmd/meghplane` is the page `megh serve` runs locally, hosted on App Engine
 standard behind IAP, so any device with a browser can list, launch and
-terminate boxes. **It stores no keys.** You paste your control-plane note into
+terminate boxes. **By default it stores no keys** (§7.1 covers keeping them on
+the server instead). You paste your control-plane note into
 the page; the browser keeps it in session storage for that tab and sends the
 keys as headers on each request, and the server drops them when the request
 ends. Closing the tab forgets them.
@@ -315,6 +316,45 @@ The app reads its defaults (data center, volume, `extra_pubkeys`, tailnet)
 from that file. Boxes it launches carry only `extra_pubkeys`, since the
 server has no key of its own, so that list must hold a key you can actually
 use (SETUP §6.7).
+
+### 7.1 Keys on the server (optional)
+
+Pasting keys into a page means trusting every extension that page runs
+beside, and a work-managed browser can force-install extensions you cannot
+remove. For those, keep the keys in Secret Manager instead and the page stops
+asking for them.
+
+1. Store the same note you keep in Bitwarden as **one** secret (one active
+   version, inside the six that are free every month), in a single region:
+   ```sh
+   gcloud secrets create megh-control --project meghplane \
+     --replication-policy=user-managed --locations=us-central1 --data-file=-
+   # paste the note, then Ctrl-D
+   ```
+2. Let only the app's **runtime** service account read it, on that secret alone:
+   ```sh
+   gcloud secrets add-iam-policy-binding megh-control --project meghplane \
+     --member=serviceAccount:<runtime-sa> --role=roles/secretmanager.secretAccessor
+   ```
+3. Add `secret: megh-control` under `serve:` in `megh.yaml` and redeploy. The
+   startup log reports `secret megh-control holds runpod=true tailscale=true`,
+   names only.
+
+**Rotating** means `gcloud secrets versions add megh-control --data-file=-`,
+then **destroying** the old version (`gcloud secrets versions destroy <n>`).
+A disabled version still counts against the free six. The app re-reads the
+secret every 10 minutes, so a rotation lands without a redeploy.
+
+**Split the build account from the runtime account once a secret is in play.**
+If one service account both runs Cloud Build and reads the secret, anything
+that can trigger a build can reach your keys. Give the build roles
+(`cloudbuild.builds.builder`, `logging.logWriter`, the staging bucket) to a
+build-only account, and leave the runtime account with `secretAccessor` on
+`megh-control` and nothing else.
+
+What it costs you is the second factor. With the keys on the server, getting
+past IAP and `serve.allowed_emails` is enough to launch and terminate boxes, so
+your Google account's 2FA is now the whole lock.
 
 **Old deploy images pile up.** Each deploy stores a build image; add a cleanup
 policy in Artifact Registry keeping the last few so storage stays free.
