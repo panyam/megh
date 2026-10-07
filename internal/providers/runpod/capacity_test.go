@@ -42,6 +42,15 @@ func TestCreateErrorAtTheSmallestSizePointsElsewhere(t *testing.T) {
 	}
 }
 
+// A probe that hit a full data center must still read as "no capacity" now that
+// createError rewrites RunPod's wording.
+func TestProbeTreatsErrNoCapacityAsADryRegion(t *testing.T) {
+	r := ProbeResult{DC: "US-IL-1", Err: createError(500, noCapacityBody, providers.Options{VCPU: 2, DataCenter: "US-IL-1"})}
+	if !r.OutOfCapacity() || r.Reason() != "no capacity" {
+		t.Errorf("OutOfCapacity=%v Reason=%q", r.OutOfCapacity(), r.Reason())
+	}
+}
+
 func TestCreateErrorKeepsOtherFailuresRaw(t *testing.T) {
 	err := createError(401, []byte(`{"error":"unauthorized"}`), providers.Options{VCPU: 4})
 	if errors.Is(err, ErrNoCapacity) || !strings.Contains(err.Error(), "HTTP 401") || !strings.Contains(err.Error(), "unauthorized") {

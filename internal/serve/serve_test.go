@@ -24,6 +24,8 @@ type fake struct {
 	upErr   error
 	vols    []providers.Volume
 	killed  string
+	created *providers.Volume
+	deleted string
 }
 
 type result string
@@ -44,10 +46,12 @@ func (f *fake) Up(_ context.Context, o providers.Options) (providers.Result, err
 }
 func (f *fake) Terminate(_ context.Context, id string) error        { f.killed = id; return nil }
 func (f *fake) Volumes(context.Context) ([]providers.Volume, error) { return f.vols, nil }
-func (f *fake) CreateVolume(context.Context, string, int, string) (*providers.Volume, error) {
-	return nil, nil
+func (f *fake) CreateVolume(_ context.Context, name string, size int, dc string) (*providers.Volume, error) {
+	v := providers.Volume{Provider: "runpod", ID: "vol-new", Name: name, DataCenter: dc, Size: size}
+	f.created = &v
+	return &v, nil
 }
-func (f *fake) DeleteVolume(context.Context, string) error { return nil }
+func (f *fake) DeleteVolume(_ context.Context, id string) error { f.deleted = id; return nil }
 
 // testServer returns a server whose backends are f, recording the keys each
 // request carried, and the buffer its log goes to.

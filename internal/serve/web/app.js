@@ -151,7 +151,138 @@ function render(boxes) {
     li.append(links);
     if (b.ssh) li.append(copyable("ssh", b.ssh));
     if (b.tunnel) li.append(copyable("webterm tunnel", b.tunnel));
+    li.append(setupPanel());
     ul.append(li);
+  }
+}
+
+// setupPanel is hydrate for the web: the server has no SSH into boxes, so it
+// shows the in-box bootstrap (SETUP.md 7.2) to run in the box's terminal.
+const SETUP_STEPS = [
+  ["sign in to GitHub (once per volume)", "gh auth login -h github.com -p https -w"],
+  ["fetch your megh.yaml", "megh config pull"],
+  ["clone your repos", "megh hydrate"],
+  ["reload the shell", "exec zsh"],
+];
+function setupPanel() {
+  const d = el("details", "", "setup");
+  d.append(el("summary", "Set up this box"));
+  d.append(el("p", "Run these in the box's terminal (webterm, or Tailscale's browser SSH). Then paste your box env file to the path your files: entry maps it to.", "muted"));
+  for (const [label, cmd] of SETUP_STEPS) d.append(copyable(label, cmd));
+  return d;
+}
+
+// --- Volumes and regions -----------------------------------------------------
+
+let regionList = [];
+
+async function loadAdmin() {
+  try {
+    const all = $("allregions").checked ? "?all=1" : "";
+    const [rv, rr] = await Promise.all([call("GET", "/api/volumes"), call("GET", "/api/regions" + all)]);
+    const vols = (rv.data && rv.data.volumes) || [];
+    const ul = $("volumes");
+    ul.replaceChildren();
+    for (const v of vols) {
+      const li = el("li", "", "row");
+      li.append(el("strong", v.name), el("span", v.dc, "muted"), el("span", v.sizeGB + " GB", "muted"));
+      if (v.id === rv.data.default) li.append(el("span", "default", "status"));
+      const del = el("button", "Delete", "danger");
+      del.type = "button";
+      del.addEventListener("click", () => deleteVolume(v));
+      li.append(del);
+      ul.append(li);
+    }
+    regionList = (rr.data && rr.data.dcs) || [];
+    const dc = $("voldc");
+    const keep = dc.value;
+    dc.replaceChildren();
+    for (const d of regionList) {
+      const o = el("option", d);
+      o.value = d;
+      dc.append(o);
+    }
+    dc.value = keep || (rr.data && rr.data.default) || "";
+  } catch (e) {
+    showLog(e.message, true);
+  }
+}
+
+async function createVolume(name, sizeGB, dc) {
+  const r = await call("POST", "/api/volumes", { name, sizeGB, dc });
+  await Promise.all([loadAdmin(), loadVolumes()]);
+  return r.data;
+}
+
+async function deleteVolume(v) {
+  const typed = prompt("Deleting a volume destroys everything on it and cannot be undone.\nType " + v.name + " to delete it.");
+  if (typed === null) return;
+  try {
+    await call("POST", "/api/volumes/delete", { id: v.id, confirm: typed });
+    showLog("deleted volume " + v.name, false);
+    await Promise.all([loadAdmin(), loadVolumes()]);
+  } catch (e) {
+    showLog(e.message, true);
+  }
+}
+
+function probeRow(text, cls) {
+  const li = el("li", text, cls);
+  $("probes").append(li);
+  return li;
+}
+
+// sweep probes data centers one request at a time, so progress shows as it
+// goes and no request is long. With stopAtFirst it returns the first rentable
+// one, which is what placing a volume wants.
+async function sweep(stopAtFirst) {
+  $("probes").replaceChildren();
+  const vcpu = Number($("size").value) || 0;
+  for (const dc of regionList) {
+    const row = probeRow(dc + " … probing", "muted");
+    try {
+      const r = await call("POST", "/api/regions/probe", { dc, vcpu });
+      const p = r.data;
+      row.textContent = p.dc + ": " + p.verdict;
+      row.className = p.rentable ? "" : "muted";
+      if (p.orphanId) {
+        row.className = "error";
+        const b = el("button", "Terminate probe box", "danger");
+        b.type = "button";
+        b.addEventListener("click", () => terminate(p.orphanId));
+        row.append(" ", b);
+      }
+      if (p.rentable && stopAtFirst) return p.dc;
+    } catch (e) {
+      row.textContent = dc + ": " + e.message;
+      row.className = "error";
+    }
+  }
+  return "";
+}
+
+async function probe() {
+  if (!confirm("Probe " + regionList.length + " data center(s)? Each rents a real box for about a second, a fraction of a cent.")) return;
+  $("probe").disabled = $("place").disabled = true;
+  try { await sweep(false); } finally { $("probe").disabled = $("place").disabled = false; }
+}
+
+async function place() {
+  const name = $("volname").value.trim();
+  if (!name) { showLog("name the new volume first (Volumes, above)", true); return; }
+  const size = Number($("volsize").value);
+  if (!confirm("Probe until a data center rents, then create a " + size + " GB volume \"" + name + "\" there? The volume bills monthly until you delete it.")) return;
+  $("probe").disabled = $("place").disabled = true;
+  try {
+    const dc = await sweep(true);
+    if (!dc) { showLog("no probed data center had capacity; try again later or include all regions", true); return; }
+    const v = await createVolume(name, size, dc);
+    $("where").value = v.id;
+    showLog("created " + v.name + " in " + v.dc + "; it is selected under Launch", false);
+  } catch (e) {
+    showLog(e.message, true);
+  } finally {
+    $("probe").disabled = $("place").disabled = false;
   }
 }
 
@@ -226,7 +357,7 @@ function showState() {
   $("source").textContent = !ok ? "" :
     server.runpod ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
     "Using keys pasted into this tab.";
-  if (ok) { refresh(); loadVolumes(); }
+  if (ok) { refresh(); loadVolumes(); loadAdmin(); }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -254,5 +385,22 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("refresh").addEventListener("click", refresh);
   $("up").addEventListener("click", launch);
+  $("volcreate").addEventListener("click", async () => {
+    const name = $("volname").value.trim();
+    const size = Number($("volsize").value);
+    const dc = $("voldc").value;
+    if (!name || !dc) { showLog("name the volume and pick a data center", true); return; }
+    if (!confirm("Create a " + size + " GB volume \"" + name + "\" in " + dc + "? It bills monthly until you delete it.")) return;
+    try {
+      const v = await createVolume(name, size, dc);
+      $("volname").value = "";
+      showLog("created " + v.name + " in " + v.dc, false);
+    } catch (e) {
+      showLog(e.message, true);
+    }
+  });
+  $("probe").addEventListener("click", probe);
+  $("place").addEventListener("click", place);
+  $("allregions").addEventListener("change", loadAdmin);
   loadServerKeys().then(showState);
 });
