@@ -183,7 +183,7 @@ GCP_PROJECT ?=
 
 .PHONY: deploy
 deploy: checklinks
-	@test -n "$(GCP_PROJECT)" || { echo "set GCP_PROJECT=<your project>, e.g. make deploy GCP_PROJECT=my-meghplane"; exit 1; }
+	@test -n "$(GCP_PROJECT)" || { echo "set GCP_PROJECT=<your project>, e.g. make deploy GCP_PROJECT=meghplane"; exit 1; }
 	gcloud app deploy app.yaml --project $(GCP_PROJECT) --verbosity=info
 
 .PHONY: checklinks
