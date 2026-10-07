@@ -5,11 +5,15 @@
 
 const STORE = {
   RUNPOD_API_KEY: "megh.runpod",
+  HCLOUD_TOKEN: "megh.hcloud",
+  VULTR_API_KEY: "megh.vultr",
   MEGH_TAILSCALE_CLIENT_ID: "megh.tsid",
   MEGH_TAILSCALE_CLIENT_SECRET: "megh.tssecret",
 };
 const HEADERS = {
   "megh.runpod": "X-Megh-Runpod-Key",
+  "megh.hcloud": "X-Megh-Hcloud-Token",
+  "megh.vultr": "X-Megh-Vultr-Key",
   "megh.tsid": "X-Megh-Ts-Client-Id",
   "megh.tssecret": "X-Megh-Ts-Client-Secret",
 };
@@ -67,9 +71,14 @@ function shellWords(line) {
 }
 
 // server is what GET /api/keys reported the server holds (booleans only).
-let server = { runpod: false, tailscale: false };
+let server = { runpod: false, hetzner: false, vultr: false, tailscale: false };
 
-function haveKeys() { return server.runpod || get("megh.runpod") !== ""; }
+// PROVIDER_KEYS are the session keys that each open one backend. Any one is
+// enough; the server builds only the backends it has a key for.
+const PROVIDER_KEYS = ["megh.runpod", "megh.hcloud", "megh.vultr"];
+
+function serverHasProvider() { return server.runpod || server.hetzner || server.vultr; }
+function haveKeys() { return serverHasProvider() || PROVIDER_KEYS.some((k) => get(k) !== ""); }
 function haveLocalKeys() { return Object.keys(HEADERS).some((k) => get(k) !== ""); }
 
 async function loadServerKeys() {
@@ -139,6 +148,7 @@ function render(boxes) {
     const li = el("li");
     const head = el("div", "", "row");
     head.append(el("strong", b.name), el("span", b.status, "status"));
+    if (b.provider) head.append(el("span", b.provider, "muted"));
     if (b.dc) head.append(el("span", b.dc, "muted"));
     if (b.costPerHr) head.append(el("span", "$" + b.costPerHr.toFixed(3) + "/hr", "muted"));
     const down = el("button", "Terminate", "danger");
@@ -175,41 +185,77 @@ function setupPanel() {
 // --- Volumes and regions -----------------------------------------------------
 
 let regionList = [];
+// catalog is true when the chosen provider answers the region question from
+// its price list (Hetzner, Vultr), so there is nothing to probe.
+let catalog = false;
+
+function money(perHr) { return "$" + perHr.toFixed(3) + "/hr"; }
 
 async function loadAdmin() {
   try {
-    const all = $("allregions").checked ? "?all=1" : "";
-    const [rv, rr] = await Promise.all([call("GET", "/api/volumes"), call("GET", "/api/regions" + all)]);
-    const vols = (rv.data && rv.data.volumes) || [];
+    const rv = await call("GET", "/api/volumes");
+    const d = rv.data || {};
+    const prov = $("volprov");
+    const keepProv = prov.value;
+    prov.replaceChildren();
+    for (const p of d.providers || []) {
+      const o = el("option", p);
+      o.value = p;
+      prov.append(o);
+    }
+    prov.value = (d.providers || []).includes(keepProv) ? keepProv : (d.provider || "");
+
     const ul = $("volumes");
     ul.replaceChildren();
-    for (const v of vols) {
+    for (const v of d.volumes || []) {
       const li = el("li", "", "row");
-      li.append(el("strong", v.name), el("span", v.dc, "muted"), el("span", v.sizeGB + " GB", "muted"));
-      if (v.id === rv.data.default) li.append(el("span", "default", "status"));
+      li.append(el("strong", v.name), el("span", v.provider, "muted"), el("span", v.dc, "muted"), el("span", v.sizeGB + " GB", "muted"));
+      if (v.id === d.default) li.append(el("span", "default", "status"));
       const del = el("button", "Delete", "danger");
       del.type = "button";
       del.addEventListener("click", () => deleteVolume(v));
       li.append(del);
       ul.append(li);
     }
-    regionList = (rr.data && rr.data.dcs) || [];
+
+    const q = new URLSearchParams({ provider: prov.value });
+    if ($("allregions").checked) q.set("all", "1");
+    if ($("size").value) q.set("vcpu", $("size").value);
+    const rr = await call("GET", "/api/regions?" + q);
+    const r = rr.data || {};
+    regionList = r.dcs || [];
+    catalog = Array.isArray(r.offers);
     const dc = $("voldc");
     const keep = dc.value;
     dc.replaceChildren();
-    for (const d of regionList) {
-      const o = el("option", d);
-      o.value = d;
+    const offerByDC = {};
+    for (const offer of r.offers || []) offerByDC[offer.dc] = offer;
+    for (const name of regionList) {
+      const offer = offerByDC[name];
+      const o = el("option", offer ? name + " · " + offer.type + " · " + money(offer.perHr) : name);
+      o.value = name;
       dc.append(o);
     }
-    dc.value = keep || (rr.data && rr.data.default) || "";
+    dc.value = regionList.includes(keep) ? keep : (r.default || regionList[0] || "");
+    showRegions(r.offers);
   } catch (e) {
     showLog(e.message, true);
   }
 }
 
+// showRegions switches the Regions section between RunPod's probe buttons and
+// a catalog backend's price list, which needs no probing.
+function showRegions(offers) {
+  $("probe-help").hidden = $("probe-row").hidden = catalog;
+  $("offer-help").hidden = !catalog;
+  const ul = $("probes");
+  ul.replaceChildren();
+  for (const offer of offers || []) ul.append(el("li", offer.dc + ": " + offer.type + ", " + money(offer.perHr)));
+  if (catalog && !(offers || []).length) ul.append(el("li", "no location sells this size", "muted"));
+}
+
 async function createVolume(name, sizeGB, dc) {
-  const r = await call("POST", "/api/volumes", { name, sizeGB, dc });
+  const r = await call("POST", "/api/volumes", { provider: $("volprov").value, name, sizeGB, dc });
   await Promise.all([loadAdmin(), loadVolumes()]);
   return r.data;
 }
@@ -241,7 +287,7 @@ async function sweep(stopAtFirst) {
   for (const dc of regionList) {
     const row = probeRow(dc + " … probing", "muted");
     try {
-      const r = await call("POST", "/api/regions/probe", { dc, vcpu });
+      const r = await call("POST", "/api/regions/probe", { provider: $("volprov").value, dc, vcpu });
       const p = r.data;
       row.textContent = p.dc + ": " + p.verdict;
       row.className = p.rentable ? "" : "muted";
@@ -299,7 +345,7 @@ async function loadVolumes() {
     first.value = "";
     sel.append(first);
     for (const v of d.volumes || []) {
-      const o = el("option", v.name + " · " + v.dc + " · " + v.sizeGB + " GB" + (v.id === d.default ? " (default)" : ""));
+      const o = el("option", v.name + " · " + v.provider + " " + v.dc + " · " + v.sizeGB + " GB" + (v.id === d.default ? " (default)" : ""));
       o.value = v.id;
       sel.append(o);
     }
@@ -311,7 +357,7 @@ async function refresh() {
   try {
     const r = await call("GET", "/api/boxes");
     render(r.data || []);
-    showLog("", false);
+    showLog(r.log || "", !!r.log);
   } catch (e) {
     showLog(e.message + (e.log ? "\n" + e.log : ""), true);
   }
@@ -355,7 +401,7 @@ function showState() {
   $("app").hidden = !ok;
   $("forget").hidden = !haveLocalKeys();
   $("source").textContent = !ok ? "" :
-    server.runpod ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
+    serverHasProvider() ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
     "Using keys pasted into this tab.";
   if (ok) { refresh(); loadVolumes(); loadAdmin(); }
 }
@@ -364,8 +410,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("savekeys").addEventListener("click", () => {
     const keys = parseKeys($("keyblock").value);
     $("keyblock").value = "";
-    if (!keys["megh.runpod"]) {
-      showLog("no RUNPOD_API_KEY= line found", true);
+    if (!PROVIDER_KEYS.some((k) => keys[k])) {
+      showLog("no RUNPOD_API_KEY=, HCLOUD_TOKEN= or VULTR_API_KEY= line found", true);
       return;
     }
     for (const k in HEADERS) set(k, keys[k] || "");
@@ -402,5 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("probe").addEventListener("click", probe);
   $("place").addEventListener("click", place);
   $("allregions").addEventListener("change", loadAdmin);
+  $("volprov").addEventListener("change", loadAdmin);
+  $("size").addEventListener("change", loadAdmin);
   loadServerKeys().then(showState);
 });

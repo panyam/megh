@@ -22,7 +22,7 @@
   and go to the server only as headers on each request; closing the tab
   forgets them.</p>
   <textarea id="keyblock" rows="5" spellcheck="false" autocomplete="off"
-    placeholder="RUNPOD_API_KEY=...&#10;MEGH_TAILSCALE_CLIENT_ID=...&#10;MEGH_TAILSCALE_CLIENT_SECRET=..."></textarea>
+    placeholder="RUNPOD_API_KEY=...&#10;HCLOUD_TOKEN=...&#10;VULTR_API_KEY=...&#10;MEGH_TAILSCALE_CLIENT_ID=...&#10;MEGH_TAILSCALE_CLIENT_SECRET=..."></textarea>
   <button id="savekeys" type="button">Use these keys</button>
 </section>
 
@@ -52,7 +52,7 @@
         <option value="4">4 vCPU · 16 GB · 40 GB disk</option>
         <option value="8">8 vCPU · 32 GB · 50 GB disk</option>
       </select>
-      <select id="where" title="A box starts in its volume's data center">
+      <select id="where" title="A box starts on its volume's provider, in its data center">
         <option value="">default volume</option>
       </select>
       <button id="up" type="button">Launch</button>
@@ -61,10 +61,12 @@
 
   <section>
     <h2>Volumes</h2>
-    <p class="muted">A box starts in its volume's data center. Volumes bill monthly
-    whether or not a box uses them, at RunPod's network-volume price.</p>
+    <p class="muted">A box starts on its volume's provider, in its data center.
+    Volumes bill monthly whether or not a box uses them, at that provider's
+    volume price.</p>
     <ul id="volumes"></ul>
     <div class="row">
+      <select id="volprov" title="Which provider the new volume, and the boxes on it, belong to"></select>
       <input id="volname" placeholder="new volume name" autocomplete="off" autocapitalize="off" spellcheck="false">
       <select id="volsize">
         <option value="20">20 GB</option>
@@ -79,10 +81,13 @@
 
   <section>
     <h2>Regions</h2>
-    <p class="muted">Probing rents a real box in each data center for about a second
+    <p id="probe-help" class="muted">Probing rents a real box in each data center for about a second
     and terminates it, a fraction of a cent each. Place probes until one rents,
     then creates a volume there.</p>
-    <div class="row">
+    <p id="offer-help" class="muted" hidden>This provider publishes which locations sell
+    each size, so there is nothing to probe: these are the locations selling the
+    size chosen under Launch, cheapest first, with the type a box would get.</p>
+    <div id="probe-row" class="row">
       <label><input id="allregions" type="checkbox"> all regions</label>
       <button id="probe" type="button">Probe</button>
       <button id="place" type="button">Place a volume where one rents</button>

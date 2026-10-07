@@ -298,6 +298,22 @@ the page; the browser keeps it in session storage for that tab and sends the
 keys as headers on each request, and the server drops them when the request
 ends. Closing the tab forgets them.
 
+The note needs at least one provider key, `RUNPOD_API_KEY`, `HCLOUD_TOKEN` or
+`VULTR_API_KEY`, and the page works with whichever backends it holds a key for:
+boxes and volumes from all of them in one list, and a launch goes to the
+provider of the volume you pick. The Regions section probes RunPod's data
+centers, and for Hetzner and Vultr lists the locations selling the chosen size
+from their price lists, since those have nothing to probe. Two limits on the
+VM backends from here:
+
+- **A Vultr key used by meghplane must allow all IPs.** App Engine has no fixed
+  outbound address, so the key's IP allowlist (section 9) cannot name it.
+- **A Hetzner or Vultr box launched from the page pulls the image without a
+  registry login**, because the pull token comes from the launching machine's
+  environment (`registries[0].token_env`) and meghplane has none. A private
+  image therefore needs launching from the CLI for now; RunPod is unaffected,
+  since its pull credential lives in the RunPod console.
+
 It checks who you are twice. IAP signs you in at Google's edge, and the app
 then verifies IAP's signed header itself (audience, issuer, signature, expiry,
 via oneauth) and admits only the emails in `serve.allowed_emails`. With that
@@ -390,8 +406,8 @@ asking for them.
      --member=serviceAccount:<runtime-sa> --role=roles/secretmanager.secretAccessor
    ```
 3. Add `secret: megh-control` under `serve:` in `megh.yaml` and redeploy. The
-   startup log reports `secret megh-control holds runpod=true tailscale=true`,
-   names only.
+   startup log reports `secret megh-control holds runpod=true hetzner=false
+   vultr=false tailscale=true`, names only.
 
 **Rotating** means `gcloud secrets versions add megh-control --data-file=-`,
 then **destroying** the old version (`gcloud secrets versions destroy <n>`).
@@ -474,8 +490,8 @@ How it is put together:
 - **Terminate deletes the VM; the volume survives** and attaches to the next
   box in its location, so `megh hydrate` and your logins carry over, exactly as
   with a RunPod network volume.
-- **Not yet**: launching Hetzner boxes from meghplane (it only takes a RunPod
-  key per request today) and `megh regions` for Hetzner.
+- **meghplane** launches Hetzner boxes too, with `HCLOUD_TOKEN` in its note
+  (section 7). `megh regions` on the CLI is still RunPod-only.
 
 ## 9. Vultr: another provider, with more US regions
 

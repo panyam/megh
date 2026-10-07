@@ -90,3 +90,21 @@ type Provider interface {
 type StoppedBoxStarter interface {
 	StartStopped(ctx context.Context, id string) (Result, error)
 }
+
+// Offer is one location that sells a box of a requested shape, with the
+// cheapest type that fits there and its hourly price.
+type Offer struct {
+	DC    string  `json:"dc"`
+	Type  string  `json:"type"`
+	PerHr float64 `json:"perHr"`
+}
+
+// Locator answers "where can this shape run" from the backend's own catalog.
+// Hetzner and Vultr list which types each location sells, so a query answers
+// it; RunPod has no such catalog and is probed instead (runpod.Probe).
+type Locator interface {
+	// Offers is every location selling a type with at least vcpu cores,
+	// ramGiB memory and diskGiB disk, cheapest first. A location appears once,
+	// with the type Up would pick there.
+	Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]Offer, error)
+}
