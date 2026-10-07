@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
+	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -84,56 +84,6 @@ Give it one of:
 	return strings.TrimSpace(string(b)), nil
 }
 
-// withExtraPubKeys appends megh.yaml's extra_pubkeys to the launching machine's
-// key, one per line, which is what the entrypoint writes to authorized_keys.
-// Duplicates (same key body) are dropped. An entry that is not a public key is
-// an error rather than a skip: the likeliest mistake is pasting the PRIVATE half,
-// and that must never ride along into a box's env.
-func withExtraPubKeys(primary string, extra []string) (string, error) {
-	keys := []string{}
-	seen := map[string]bool{}
-	add := func(k string) {
-		f := strings.Fields(k)
-		if len(f) < 2 || seen[f[1]] {
-			return
-		}
-		seen[f[1]] = true
-		keys = append(keys, strings.TrimSpace(k))
-	}
-	for _, line := range strings.Split(primary, "\n") {
-		add(line)
-	}
-	for i, k := range extra {
-		k = strings.TrimSpace(k)
-		if k == "" {
-			continue
-		}
-		if !looksLikePubKey(k) {
-			return "", fmt.Errorf("megh.yaml extra_pubkeys[%d] is not an SSH public key (want e.g. \"ssh-ed25519 AAAA... comment\"); never put a private key here", i)
-		}
-		add(k)
-	}
-	return strings.Join(keys, "\n"), nil
-}
-
-// looksLikePubKey is a shape check, not a parse: a known key type, then a
-// base64 blob, and nothing that says PRIVATE.
-func looksLikePubKey(k string) bool {
-	if strings.Contains(k, "PRIVATE") || strings.Contains(k, "\n") {
-		return false
-	}
-	f := strings.Fields(k)
-	if len(f) < 2 {
-		return false
-	}
-	t := f[0]
-	if !strings.HasPrefix(t, "ssh-") && !strings.HasPrefix(t, "ecdsa-sha2-") && !strings.HasPrefix(t, "sk-") {
-		return false
-	}
-	_, err := base64.StdEncoding.DecodeString(f[1])
-	return err == nil
-}
-
 var upCmd = &cobra.Command{
 	Use:   "up <name>",
 	Short: "Launch a dev box on a provider",
@@ -147,92 +97,37 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 'work' and 'megh ssh work' / 'megh down work' resolve it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Flags and environment are this machine's say; megh.yaml and the
+		// built-in defaults are applied by the lifecycle service, so a server
+		// launching from a form gets the same fallbacks.
 		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
-		upFlavor = resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", cfg.DefaultFlavor, "slim")
-
-		prov, err := resolveProvider(cmd, upProvider)
+		if _, err := resolveProvider(cmd, upProvider); err != nil {
+			return err
+		}
+		pub, err := resolvePubKey(cmd, upOpts.PubKey, cfg.SSHPubKeyFile)
 		if err != nil {
 			return err
 		}
-		p := cfg.Provider(upProvider)
-		upOpts.DataCenter = resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", p.DefaultDC, "")
-		upOpts.VolumeID = resolve(cmd, "volume", upOpts.VolumeID, "MEGH_VOLUME_ID", p.DefaultVolume, "")
-		upOpts.Image = resolve(cmd, "image", upOpts.Image, "MEGH_IMAGE", "", cfg.DefaultImage(upFlavor))
-		upOpts.PubKey, err = resolvePubKey(cmd, upOpts.PubKey, cfg.SSHPubKeyFile)
-		if err != nil {
-			return err
-		}
-		if upOpts.PubKey, err = withExtraPubKeys(upOpts.PubKey, cfg.ExtraPubKeys); err != nil {
-			return err
-		}
-		upOpts.VCPU = resolveInt(cmd, "vcpu", upOpts.VCPU, p.VCPU, 2)
-		upOpts.RAMGiB = resolveInt(cmd, "ram", upOpts.RAMGiB, p.RAM, 8)
-		upOpts.DiskGiB = resolveInt(cmd, "disk", upOpts.DiskGiB, p.Disk, 20)
-		upOpts.ExposeSSH = p.PublicSSH()
-		if cmd.Flags().Changed("expose-ssh") {
-			upOpts.ExposeSSH = upExposeSSH
-		}
-		// Name is a required positional arg. Enforce the megh- marker up front so
-		// the uniqueness check below and the Tailscale hostname both use the final
-		// name (runpod.Up applies the same prefix idempotently).
-		upOpts.Name = providers.PrefixName(args[0])
-
 		if miss := cfg.MissingEnvs(); len(miss) > 0 {
 			return fmt.Errorf("required env vars not set (megh.yaml requires): %s", strings.Join(miss, ", "))
 		}
-		upOpts.ExtraEnv = cfg.BoxEnv()
-		// Tool state (logins/config) to persist on the volume across rebuilds; the
-		// entrypoint symlinks each onto the volume. Empty -> entrypoint default.
-		if len(cfg.Persist) > 0 {
-			if upOpts.ExtraEnv == nil {
-				upOpts.ExtraEnv = map[string]string{}
-			}
-			upOpts.ExtraEnv["MEGH_PERSIST"] = strings.Join(cfg.Persist, ",")
+		req := lifecycle.UpRequest{
+			Name:       args[0],
+			Provider:   upProvider,
+			Flavor:     resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", "", ""),
+			Image:      resolve(cmd, "image", upOpts.Image, "MEGH_IMAGE", "", ""),
+			VolumeID:   resolve(cmd, "volume", upOpts.VolumeID, "MEGH_VOLUME_ID", "", ""),
+			DataCenter: resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", "", ""),
+			VCPU:       resolveInt(cmd, "vcpu", upOpts.VCPU, 0, 0),
+			RAMGiB:     resolveInt(cmd, "ram", upOpts.RAMGiB, 0, 0),
+			DiskGiB:    resolveInt(cmd, "disk", upOpts.DiskGiB, 0, 0),
+			PubKey:     pub,
+			BoxEnv:     cfg.BoxEnv(),
 		}
-		// Home->volume path maps (e.g. ~/newstack -> repos/newstack) so local paths
-		// work on the box. Passed as MEGH_SYMLINKS ("link:target,..."); order-free.
-		if len(cfg.Symlinks) > 0 {
-			if upOpts.ExtraEnv == nil {
-				upOpts.ExtraEnv = map[string]string{}
-			}
-			var pairs []string
-			for link, target := range cfg.Symlinks {
-				pairs = append(pairs, link+":"+target)
-			}
-			upOpts.ExtraEnv["MEGH_SYMLINKS"] = strings.Join(pairs, ",")
+		if cmd.Flags().Changed("expose-ssh") {
+			req.ExposeSSH = &upExposeSSH
 		}
-
-		ctx := context.Background()
-		// Names double as the Tailscale hostname, so refuse a duplicate before
-		// launching rather than let two boxes fight over one tailnet name.
-		boxes, err := prov.List(ctx)
-		if err != nil {
-			return err
-		}
-		wantName := providers.PrefixName(upOpts.Name)
-		for _, b := range providers.Managed(boxes) {
-			if b.Name != wantName && b.DisplayName() != upOpts.Name {
-				continue
-			}
-			if b.Status == "RUNNING" {
-				return fmt.Errorf("box %q is already running (id %s); use `megh ssh %s`",
-					upOpts.Name, b.ID, upOpts.Name)
-			}
-			if starter, ok := prov.(providers.StoppedBoxStarter); ok && boxStopped(b.Status) {
-				res, err := starter.StartStopped(ctx, b.ID)
-				if err != nil {
-					return err
-				}
-				fmt.Print(res.Summary())
-				publishPortalBestEffort()
-				return nil
-			}
-			return fmt.Errorf("a box named %q already exists (id %s, status %s); pick another name or `megh down %s` first",
-				upOpts.Name, b.ID, b.Status, upOpts.Name)
-		}
-		upOpts.TSAuthKey = bootAuthKey(ctx, prov.Mesh(), providers.ShortName(upOpts.Name))
-
-		res, err := prov.Up(ctx, upOpts)
+		res, err := newService().Up(context.Background(), req)
 		if err != nil {
 			return err
 		}
@@ -240,23 +135,6 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		publishPortalBestEffort()
 		return nil
 	},
-}
-
-// bootAuthKey returns the node key to place in the box's create-time env.
-//
-// Only a backend that joins at boot gets one. A local box is joined afterwards
-// over SSH (`megh mesh join`), so minting here would spend a single-use key on
-// nothing and write a credential into the container's stored env, which
-// `docker inspect` then keeps for the life of the box.
-//
-// Best effort even when it does apply: a failure warns and falls back rather
-// than blocking a launch, because the control machine reaches a box over public
-// SSH and the mesh is the convenience layer on top.
-func bootAuthKey(ctx context.Context, m providers.Mesh, box string) string {
-	if !m.AtBoot {
-		return ""
-	}
-	return mintBoxAuthKey(ctx, box)
 }
 
 func init() {

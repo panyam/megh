@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/panyam/megh/internal/providers"
 )
@@ -31,8 +30,8 @@ func (w wireVolume) box() providers.Volume {
 	return providers.Volume{Provider: "runpod", ID: w.ID, Name: w.Name, DataCenter: w.DataCenter, Size: w.Size}
 }
 
-func authKey() (string, error) {
-	k := os.Getenv("RUNPOD_API_KEY")
+func authKey(ctx context.Context) (string, error) {
+	k := keyFor(ctx)
 	if k == "" {
 		return "", fmt.Errorf("RUNPOD_API_KEY is not set")
 	}
@@ -41,7 +40,7 @@ func authKey() (string, error) {
 
 // Volumes lists all network volumes on the account.
 func Volumes(ctx context.Context) ([]providers.Volume, error) {
-	key, err := authKey()
+	key, err := authKey(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +68,7 @@ func Volumes(ctx context.Context) ([]providers.Volume, error) {
 
 // CreateVolume creates a network volume in a data center.
 func CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*providers.Volume, error) {
-	key, err := authKey()
+	key, err := authKey(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +100,7 @@ func CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*pr
 // DeleteVolume removes a network volume by id. It errors if a pod still has it
 // attached (RunPod refuses the delete).
 func DeleteVolume(ctx context.Context, id string) error {
-	key, err := authKey()
+	key, err := authKey(ctx)
 	if err != nil {
 		return err
 	}

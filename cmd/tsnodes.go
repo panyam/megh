@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/tsapi"
 	"github.com/spf13/cobra"
 )
@@ -46,69 +46,6 @@ func tsClient() (*tsapi.Client, error) {
 		ClientID:     os.Getenv(cfg.Tailscale.ClientIDEnv),
 		ClientSecret: os.Getenv(cfg.Tailscale.ClientSecretEnv),
 	}, tailnet)
-}
-
-// liveBoxNames is the set of box names that currently exist at the provider. It
-// is the guard on every delete: a node whose box is still running is never
-// debris, whatever its name looks like.
-func liveBoxNames(ctx context.Context, prov providers.Provider) (map[string]bool, error) {
-	pods, err := prov.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	live := map[string]bool{}
-	for _, p := range providers.Managed(pods) {
-		live[p.DisplayName()] = true
-	}
-	return live, nil
-}
-
-// pruneNodesFor deletes the tailnet nodes belonging to one box name, including
-// the -N variants that accumulated under it. A variant whose name matches a
-// DIFFERENT live box is left alone; `box` itself is always fair game, since the
-// caller has just terminated it.
-func pruneNodesFor(ctx context.Context, c *tsapi.Client, box string, live map[string]bool) (deleted, kept []string, err error) {
-	devices, err := c.Devices(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, d := range devices {
-		name := d.BareName()
-		if !tsapi.MatchName(d, box) {
-			continue
-		}
-		if name != box && live[name] {
-			kept = append(kept, name)
-			continue
-		}
-		if err := c.Delete(ctx, d.ID); err != nil {
-			return deleted, kept, fmt.Errorf("delete %s (%s): %w", name, d.ID, err)
-		}
-		deleted = append(deleted, name)
-	}
-	return deleted, kept, nil
-}
-
-// pruneNodesBestEffort is the `megh down` path. Cleaning the tailnet must never
-// turn a successful termination into a failed command, so every problem here is
-// a note rather than an error, and no key configured at all is silent.
-func pruneNodesBestEffort(ctx context.Context, prov providers.Provider, box string) {
-	c, err := tsClient()
-	if err != nil {
-		return // no API key configured; the SSH logout above was the only path
-	}
-	live, err := liveBoxNames(ctx, prov)
-	if err != nil {
-		live = map[string]bool{} // provider unreachable: fall back to name matching alone
-	}
-	delete(live, box) // we just terminated it
-	deleted, _, err := pruneNodesFor(ctx, c, box, live)
-	switch {
-	case err != nil:
-		fmt.Printf("note: could not remove %s from the tailnet (%v)\n", box, err)
-	case len(deleted) > 0:
-		fmt.Printf("removed %d tailnet node(s): %s\n", len(deleted), strings.Join(deleted, ", "))
-	}
 }
 
 // newTSGCCmd builds the node-sweeper. It is a constructor rather than a package
@@ -148,7 +85,7 @@ A node for a box that is still running is never deleted.`,
 			if err != nil {
 				return err
 			}
-			live, err := liveBoxNames(ctx, prov)
+			live, err := lifecycle.LiveBoxNames(ctx, prov)
 			if err != nil {
 				return fmt.Errorf("could not list boxes to check against: %w", err)
 			}
