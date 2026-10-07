@@ -114,7 +114,7 @@ func splitRequested(want, live []int) (up, down []int) {
 // ssh is gone answers nothing, so there is no bookkeeping to fall out of date.
 //
 // It lives in the temp dir rather than under ~/.megh, for two measured reasons,
-// both of which bite when megh runs FROM a box rather than from the Mac.
+// both of which bite when megh runs FROM a box rather than from a laptop.
 //
 // ssh creates a master socket under a random name and then hard-links it into
 // place. `~/.megh` is persisted onto the work mount, which on a local box is a

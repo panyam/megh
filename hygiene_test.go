@@ -25,16 +25,16 @@ var selfDocumenting = map[string]bool{
 }
 
 // A per-user home directory. Deliberately not anchored to one OS: /Users/<name>
-// is the Mac, /home/<name> a Linux box or CI runner, and either one in a tracked
+// is macOS, /home/<name> a Linux box or CI runner, and either one in a tracked
 // file is the same bug.
 var perUserHome = regexp.MustCompile(`/(Users|home)/[a-zA-Z0-9._-]+/`)
 
-// A git SSH url whose host has no dot in it, e.g. "git@panyam-github:owner/repo".
+// A git SSH url whose host has no dot in it, e.g. "git@gh-alias:owner/repo".
 // That host is an ~/.ssh/config Host alias, so it resolves only on the machine
 // whose config defines it -- the same failure as an absolute path, spelled as a
 // hostname. A real host is a FQDN and has a dot, which the second pattern lets
 // through. This bit `megh portal`, which died on every box with "Could not
-// resolve hostname panyam-github" while working fine on the Mac.
+// resolve hostname gh-alias" while working fine on the one machine that had it.
 var sshHostAlias = regexp.MustCompile(`(^|[^A-Za-z0-9._-])[A-Za-z0-9._-]+@([A-Za-z0-9-]+):`)
 var sshRealHost = regexp.MustCompile(`[A-Za-z0-9._-]+@[A-Za-z0-9.-]*\.[A-Za-z0-9-]+:`)
 
@@ -72,8 +72,7 @@ func gitLines(t *testing.T, args ...string) []string {
 func TestNoMachineLocalPathsInTrackedFiles(t *testing.T) {
 	// A tracked symlink must be relative and must stay inside the repo. An
 	// absolute one is a machine-local fact committed to a shared artifact: it
-	// resolves where it was made and dangles everywhere else. This is how the
-	// `gaps` skill came to exist only on the Mac.
+	// resolves where it was made and dangles everywhere else.
 	for _, line := range gitLines(t, "ls-files", "-s") {
 		mode, rest, ok := strings.Cut(line, " ")
 		if !ok || mode != "120000" {

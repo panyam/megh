@@ -2,8 +2,8 @@
 
 Disposable cloud dev boxes for agentic coding. Provider-abstracted CLI; RunPod
 first (US), Hetzner next. Read `DESIGN.md` for the settled architecture and
-`WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run, and its §6 is
-the phone-as-control-device bootstrap (Termux, re-minted credentials, the
+`WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run, and its §6
+covers using a phone as the control device (Termux, re-minted credentials, the
 new-box-key gotcha).
 
 ## Build / run
@@ -23,8 +23,8 @@ verdict; a new xterm major is only READY once a stable `@xterm/addon-fit` peers
 with it), bump `versions.env`, `make vendor` (re-fetch + rewrite `SHA256SUMS`),
 verify, commit.
 
-The Makefile sources `~/personal/envvars` for every recipe that needs a secret.
-Run `megh` directly only after `source ~/personal/envvars`.
+The Makefile sources your secrets file (the Makefile's `$ENVFILE`) for every
+recipe that needs a secret. Run `megh` directly only after sourcing it.
 
 ## Commands
 
@@ -74,7 +74,7 @@ image), `make registry`.
 
 `megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
 `$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default
-`slim`, so `ghcr.io/panyam/megh-slim:latest`; use `--flavor full` for frontend);
+`slim`; use `--flavor full` for frontend);
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
@@ -87,8 +87,7 @@ with the word `window` on each line, because tmux auto-names a session created
 without `-s` by NUMBER, and a session called `3` beside window indices that are
 also small numbers is otherwise unreadable.
 
-**In this CLI "session" means a TMUX session.** (`megh sessions collect`, which
-meant agent transcripts, was retired 2026-10-06.) `megh tmux ls` exists because
+**In this CLI "session" means a TMUX session.** `megh tmux ls` exists because
 `megh ssh` runs `tmux new -A`, so it cannot report what is running without
 possibly creating it: there was no read-only way to look.
 
@@ -96,7 +95,7 @@ possibly creating it: there was no read-only way to look.
 `megh ssh --cc` attaches tmux in control mode, which iTerm2 renders as native
 tabs; `MEGH_SSH_CC=1` makes it that machine's default. It belongs in the shell
 config because it describes the terminal you are sitting at, and `megh.yaml` is
-installed on every control device including the phone. In a terminal that does
+installed on every control device, including a phone. In a terminal that does
 not speak the protocol you do not get an ugly shell, you get NO shell: tmux reads
 stdin as control COMMANDS, so `whoami` answers `parse error: unknown command` and
 `ls` silently runs tmux's list-sessions. That asymmetry is why the default is off
@@ -129,7 +128,7 @@ Four things differ, and each is deliberate.
   of a box that runs agent code. Joining afterwards hands the key to the bring-up
   script on stdin instead. Then `tailscale serve --bg --https=5173
   http://localhost:5173` publishes any port to your devices, with no restart and
-  nothing running on the Mac. A box joined this way rejoins after a `docker
+  nothing running on the host. A box joined this way rejoins after a `docker
   restart` on its own: the entrypoint brings tailscale up when
   `/var/lib/tailscale/tailscaled.state` exists, with no key, since the one it used
   was single-use.
@@ -172,18 +171,18 @@ its own mounts, and reading the yaml ON the box says nothing about what is
 mounted. `cat /proc/self/mountinfo` answers "is it mounted"; `megh config` on the
 CONTROL machine answers "was it declared"; the two disagreeing means the box
 predates the edit. Adding a mount is therefore `megh down` + `megh up`, never a
-restart. Diagnosed the long way on 2026-09-21: a mount added to megh.yaml never
-appeared, the box had the line in its own copy, and the box turned out to be 26
-minutes older than the commit that added it.
+restart. The tell is a box whose own copy of megh.yaml has the mount line while
+`/proc/self/mountinfo` lacks it: the box is older than the edit.
 
-**Never mount a directory whose entries are absolute host symlinks.** `~/personal`
-is one: `helper_functions`, `anchor_pr_files` and `completions` point into
-`/Users/<you>/dotfiles/shared`, which does not exist in a container. The entrypoint's
-skip test is `[ -e "$link" ] && [ ! -L "$link" ]`, so it does NOT skip a symlink,
-it replaces it. Read-only the `ln` fails and kills PID 1; read-write it succeeds
-and rewrites the HOST's copy to point at `/mnt/work`. Mount such a tree at a path
-nothing symlinks into (`/root/personal-mac`) and let `symlinks:` build the box's
-own `~/personal` from the dotfiles mount, exactly as on a cloud box.
+**Never mount a directory whose entries are absolute host symlinks.** A
+dotfiles-managed directory is the usual case: its entries point into something
+like `/Users/<you>/dotfiles/shared`, which does not exist in a container. The
+entrypoint's skip test is `[ -e "$link" ] && [ ! -L "$link" ]`, so it does NOT
+skip a symlink, it replaces it. Read-only the `ln` fails and kills PID 1;
+read-write it succeeds and rewrites the HOST's copy to point at `/mnt/work`.
+Mount such a tree at a path nothing symlinks into (`/root/host-<dir>`) and let
+`symlinks:` build the box's own copy from the dotfiles mount, exactly as on a
+cloud box.
 
 **Bind-mount the DIRECTORY, never the single file.** A file bind mount binds an
 inode, not a name, so it survives an in-place append and dies on anything that
@@ -192,45 +191,33 @@ most editors do. The mount then points at an unlinked inode: reads fail with
 ENOENT while `ls` still shows the entry with a link count of 0, and
 `/proc/self/mountinfo` names the source `<path>//deleted`. That is the tell, and
 it is the only one that says so outright. Nothing re-binds until the box is
-recreated. Measured 2026-09-12 on `~/personal/box-envvars`, whose mount had been
-dead since the Mac last edited it. Mount the parent directory and reference the
-file inside it; a directory's inode survives its children being rewritten.
+recreated. A single env file mounted from the host and edited there is the
+typical victim. Mount the parent directory and reference the file inside it; a
+directory's inode survives its children being rewritten.
 
 **A box lives in ONE docker daemon; pin it with `providers.docker.context`.**
 With colima and Docker Desktop both installed there are two daemons, and megh
 shells out to plain `docker`, so without the key it asks whichever context the
 shell last selected. The box then vanishes: `megh list` says `no boxes` and
-`ssh`/`down` cannot find it, while it runs fine in the other daemon. Seen
-2026-09-25 with `dev` on Desktop and `colima` active. `docker context ls` shows
-the `*`; the image must be built into the pinned daemon too.
+`ssh`/`down` cannot find it, while it runs fine in the other daemon. `docker
+context ls` shows the `*`; the image must be built into the pinned daemon too.
 
 **A local box is not a security sandbox.** Anything mounted read-write can be
 deleted from inside it. What it isolates is the rest of the machine.
 
-## The repo is public; history is not fully purged
+## Nothing private in a commit
 
-`main` is clean and code search finds nothing, but do NOT assume the old
-`megh.yaml` is unreachable. It was tracked until 2026-09-02, the repo went public
-before that landed, and a `filter-repo` rewrite plus force-push followed. GitHub
-keeps unreachable objects alive, and the 41 `refs/pull/*` refs from merged PRs
-pin the pre-rewrite commits permanently, so anyone with an old SHA can still read
-it:
-
-    gh api "repos/panyam/megh/contents/megh.yaml?ref=<old-sha>" -H "Accept: application/vnd.github.raw"
-
-What is retrievable that way is a list of repo names, a RunPod volume id and a
-tailnet name. No credentials: an audit of all 130 commits found zero, because
-`megh.yaml` has only ever held env-var NAMES. Only GitHub support can expunge the
-objects, and that was judged not worth it for an inventory that is not sensitive.
-
-The lesson for anything future: a rewrite closes the browsable surface, not the
-addressable one. Nothing secret should ever reach a commit, because removing it
-afterwards is not something you fully control.
+A history rewrite closes the browsable surface, not the addressable one: GitHub
+keeps unreachable objects alive, and PR refs pin old commits, so anyone holding
+an old SHA can still read what it contained. Nothing secret or private should
+ever reach a commit, because removing it afterwards is not something you fully
+control. This is why the real `megh.yaml` is never tracked here.
 
 ## Config (`megh.yaml`, NOT checked in)
 
-The real `megh.yaml` is private and lives in the dotfiles repo at
-`megh/megh.yaml`, because it names every repo you work on. This repo tracks only
+The real `megh.yaml` is private and lives in your private config repo (default
+`<gh login>/dotfiles`, path `megh/megh.yaml`), because it names every repo you
+work on. This repo tracks only
 `megh.yaml.example`. `install.sh` fetches the real one to
 `~/.config/megh/megh.yaml`; on a box it arrives via `files:` + `symlinks:`, and
 the image bakes the EXAMPLE to `/etc/megh/megh.yaml` as a last resort.
@@ -240,7 +227,7 @@ Settings are auto-discovered walking up from cwd, then
 `--config`/`$MEGH_CONFIG`.
 
 **In practice that means THREE copies exist on a dev machine and nothing syncs
-them**: the canonical `~/dotfiles/megh/megh.yaml`, the `~/.config/megh/megh.yaml`
+them**: the canonical copy in your config repo's checkout, the `~/.config/megh/megh.yaml`
 that `install.sh` writes, and a repo-local `megh.yaml` that wins over both while
 you are working inside the checkout. Edit the canonical one and copy it to the
 other two, or you will change a setting, run megh from the repo, and watch it
@@ -270,7 +257,7 @@ to `~/.claude,~/.claude.json,~/.codex` when unset (old binaries too). Add a tool
 config/auth dir. This is per-volume; megh never handles the tokens (they live on
 the volume). Cross-volume "baked" seeding was considered and deferred (approach B).
 
-`symlinks:` maps home paths onto volume locations (`~/newstack -> repos/newstack`,
+`symlinks:` maps home paths onto volume locations (`~/projects -> repos/projects`,
 target relative to `/mnt/work` or absolute), so paths your local scripts expect
 resolve on the box. Passed as `MEGH_SYMLINKS`. Same symlink primitive as `persist`
 but orthogonal intent: `persist` keeps mutable tool STATE alive (auto slot,
@@ -283,21 +270,22 @@ content. Targets may be files or dirs and may not exist until `megh hydrate` run
 (`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
 connect); a `/mnt/work/` path persists. **`files:` only runs from a control machine**
 (`megh ssh`/`hydrate` pushing over SSH), so a box launched from meghplane and entered
-through Tailscale's console never receives it: no `megh.yaml`, no `box-envvars`.
+through Tailscale's console never receives it: no `megh.yaml`, no env file.
 `megh config pull` and a pasted note fill those in (SETUP.md §7.2). **`files:` is the EVERY-BOX channel**, so a
 provider credential placed there is elevated on every box megh touches, cloud pods
 included, and silently. A box that is your control plane may hold one deliberately
-(C3 was relaxed 2026-09-12), but elevate it through a channel scoped to the boxes
-you mean — `providers.docker.mounts:` for local boxes, which the cloud backends
-never read — and keep it out of `box-envvars`. Split of concerns: versioned dotfiles
+(C3 allows it), but elevate it through a channel scoped to the boxes you mean
+(`providers.docker.mounts:` for local boxes, which the cloud backends never read)
+and keep it out of any env file listed in `files:`. Split of concerns: versioned dotfiles
 -> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
 **`extra_pubkeys:` is how a box is shared across machines without sharing a
 launcher.** `megh up` authorizes the launching machine's key plus every key in
 this list (one per line in `PUBLIC_KEY`, which the entrypoint appends to
-`authorized_keys`). The intended entry is a key living in Bitwarden desktop's SSH
-agent: any machine with that app signed in can then `ssh` into a box the phone
-started, with no profile, provider key or tailnet on that machine, finding the
+`authorized_keys`). The intended entry is a key living in a password manager's
+SSH agent (e.g. Bitwarden desktop): any machine with that app signed in can then
+`ssh` into a box another device started, with no profile, provider key or
+tailnet on that machine, finding the
 box's `ssh -p <port> root@<ip>` line in the portal (which omits loopback
 endpoints). It is read only at CREATE, so adding a key does not reach a running
 box. `up` rejects any entry that is not a public key, because the likely mistake
@@ -350,9 +338,8 @@ persisted so this survives rebuilds. Check the whole set with
   delete ANY node on the tailnet including your laptop's, while a credential
   scoped to `tag:megh` can only touch megh boxes. That is the main argument for
   the scoped pair over the PAT. See `CONSTRAINTS.md` C5.
-- Agent transcripts need NO secret: they stay on the volume. `megh sessions
-  collect` and the `megh-sessions` repo were retired 2026-10-06 (DESIGN.md,
-  "Agent session history"); checkpoint into the repo instead.
+- Agent transcripts need NO secret: they stay on the volume (DESIGN.md, "Agent
+  session history"). Checkpoint what matters into the repo instead.
 
 ## Architecture (one-liners; see DESIGN.md)
 
@@ -440,7 +427,7 @@ exit, rather than leaving a proxy aimed at a dead port the way an installed-but-
 idle `:6080` does.
 
 Three things to know. **There is no GPU** — not on a CPU pod, and not on the
-docker backend either, where the Mac's GPU is unreachable from a Linux container
+docker backend either, where a macOS host's GPU is unreachable from a Linux container
 (measured, with the reasoning, in `internal/features/NOTES.md`). So GL is mesa's
 llvmpipe: fine for schematic capture, slow for pcbnew's GL canvas and the 3D
 viewer (pcbnew Preferences -> Graphics -> Fallback when it crawls). **apt installs onto the
@@ -457,7 +444,7 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   parser drops unknown keys, so `serve:` indented under `requires:` became
   `requires.serve` and meghplane saw no allowlist (it refused to start, which is
   the fail-closed path working). `megh config` and a startup log are the only
-  tells. Measured 2026-10-07 on the first meghplane deploy.
+  tells.
 - **meghplane fails closed, and each refusal has its own symptom.** A 503 means
   the instance exited at startup; Google pages mean IAP; a plain `not authorized`
   means the app's allowlist. SETUP.md §7 has the symptom table, the deploy
@@ -466,14 +453,12 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   executing app-data files, so termux-exec runs a binary as `/system/bin/linker64
   <path> args...`, and every command then failed with `unknown command
   "/data/data/com.termux/files/usr/bin/megh"`. `stripLinkerArg` (`cmd/argv.go`)
-  drops that argument before cobra sees it. Seen 2026-10-06 on the first phone
-  bootstrap.
-
+  drops that argument before cobra sees it.
 - **`/dev/null` is a character device**, so the `os.ModeCharDevice` test that
   looks like "is stdin a terminal" answers YES for it. `megh enable </dev/null`
   then printed a menu and prompted at an input that can only answer EOF, which
   reads as the command refusing to list. `x/term.IsTerminal` asks the tty ioctl,
-  and is also the part that differs between Linux and the Mac megh runs from.
+  and is also the part that differs between Linux and macOS.
   `TestDevNullIsNotATerminal` pins it.
 - **RunPod CPU pods CANNOT run containers.** No `cap_sys_admin`; `docker run`
   dies at `unshare: operation not permitted` even after `dockerd` is coaxed into
@@ -481,13 +466,13 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   and the native-services answer: `DESIGN.md`.
 - **The scratch volume is NFS or MooseFS depending on the TIER, and they do not
   behave the same.** RunPod's volume-creation form has a "high performance"
-  checkbox: US-CA-2 forces it ON, US-IL-1 lets you leave it off. The REST API has
+  checkbox that some DCs force ON (e.g. US-CA-2) and others let you leave off
+  (e.g. US-IL-1). The REST API has
   no tier field at all (create takes only `{name, size, dataCenterId}`, and
   "high performance storage" appears nowhere but the BILLING schema), so megh
   cannot express the choice and the volume has to be made in the console.
-  Measured 2026-09-13: high-perf is NFS (`10.100.232.10:/runpodfs/...`) at
-  ~$0.142/GB/month; standard is MooseFS (`mfs#us-il-1.runpod.net:9421`) at about
-  half that. Three differences that matter more than the price:
+  High-perf is NFS (`<ip>:/runpodfs/...`) at ~$0.142/GB/month; standard is
+  MooseFS (`mfs#<dc>.runpod.net:9421`) at about half that. Three differences that matter more than the price:
   **`chown` WORKS on MooseFS** and does not on NFS, so the next bullet's
   limitation is tier-specific rather than a property of "the volume";
   `df` reports the whole MooseFS cluster (658 TB) rather than your quota, so it
@@ -497,15 +482,13 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 - **On the NFS (high-performance) tier, `chown` is denied for EVERY uid,
   including root.** Measured. Root cannot hand a directory to another user there.
   But the export PRESERVES the creating process's uid, so a directory created BY
-  that user is owned by it and needs no chown. (This bit us: postgres was briefly
-  declared impossible on the volume when the real bug was creating the dir as
-  root first.)
+  that user is owned by it and needs no chown. Creating a service's data dir as
+  root and then chowning it fails here; create it as the service user instead.
 - **Container disk caps scale with instance size, and they MOVE.** Roughly 20-30
   GB at 2 vCPU, 40 at 4, 50+ at 8, but the real cap follows whichever CPU flavor
-  is actually free at that instant, not the vCPU count you asked for. Measured in
-  US-CA-2 within one minute on 2026-08-21: 30 GB accepted with no volume
-  attached, then 20 GB was the stated maximum for the same 2 vCPU shape with the
-  volume attached. The DB features keep data on this disk, which is why the
+  is actually free at that instant, not the vCPU count you asked for. In one DC,
+  within one minute, 30 GB was accepted with no volume attached, then 20 GB was
+  the stated maximum for the same 2 vCPU shape with the volume attached. The DB features keep data on this disk, which is why the
   default is 4 vCPU / 40 GB. This is the ephemeral OS disk, NOT scratch; real
   scratch is the 100 GB volume.
 - **RunPod REST schema differs from its docs.** CPU pods use `computeType:"CPU"`,
@@ -513,10 +496,10 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   vCPU). `dataCenterIds` is an array, `ports` is an array, `env` is a map.
 - **Placement: storage + CPU must coexist in one DC, and there's no reliable
   availability API.** "Flavor defined in a DC" != "rentable." Only a real rent
-  attempt proves capacity (a failed one costs nothing). US-TX-3 was dry; US-CA-2
-  worked. Volume-supporting US DCs are enumerated in WORKFLOW.md.
-- **mosh is impossible on RunPod. SETTLED, two independent blockers** (checked
-  2026-09-01). RunPod's `ports` takes only `http` or `tcp` per its own schema, so
+  attempt proves capacity (a failed one costs nothing), and capacity varies by
+  DC and over time. Volume-supporting US DCs are enumerated in WORKFLOW.md.
+- **mosh is impossible on RunPod. SETTLED, two independent blockers.**
+  RunPod's `ports` takes only `http` or `tcp` per its own schema, so
   there is no way to expose the UDP 60000-61000 mosh needs. And Tailscale runs
   `--tun=userspace-networking` here (no TUN device), which proxies inbound TCP
   and HTTP through `tailscale serve` but cannot deliver inbound UDP to a local
@@ -531,7 +514,8 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   rather than inheriting the container's), `/etc/profile.d/megh-path.sh` is read
   by LOGIN shells only, and a dotfiles `~/.zshrc` arriving via `mounts:` /
   `symlinks:` SETS `PATH` rather than appending, replacing all of it with the
-  Mac's list (`/Users/<you>/.lmstudio/bin` on a Linux box is the tell). So
+  host's PATH (a macOS path such as `/Users/<you>/...` on a Linux box is the
+  tell). So
   `provision.sh` symlinks `go`/`gofmt` into `/usr/local/bin` and installs gopls,
   goimports, dlv and staticcheck there with `GOBIN`, since `/usr/local/bin` is in
   every one of those PATHs. Anything else installed outside `/usr/local/bin`
@@ -565,16 +549,16 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   `ssh box "git push"` get the repoint too, not just login shells. It is
   deliberately NOT a persistent agent holding a key: with no session open there
   is no agent, so an unattended
-  box cannot write to your repos. Pushing from the phone therefore needs a
+  box cannot write to your repos. Pushing from a phone therefore needs a
   session open somewhere, webterm alone is not one.
 - **Clipboard: xclip cannot work on a box, OSC 52 is the only route.** There is
   no X server (no Xvfb, nothing in `/tmp/.X11-unix`) and no `DISPLAY`, so xclip
   answers `Can't open display: :0`; even with `megh enable vnc` it would fill the
-  CONTAINER's clipboard, which the Mac cannot read. And the baked vim is built
+  CONTAINER's clipboard, which your local machine cannot read. And the baked vim is built
   `-clipboard -xterm_clipboard`, so `"+y` has no register to write to. The route
   that works is the terminal connection you already have: `pbcopy` (written by
   the entrypoint) base64s stdin into an OSC 52 sequence on `/dev/tty`, so
-  `... | pbcopy` and vim's `:'<,'>w !pbcopy` reach the Mac with no daemon, port
+  `... | pbcopy` and vim's `:'<,'>w !pbcopy` reach your local clipboard with no daemon, port
   or bridge. `/etc/tmux.conf` sets `set-clipboard on` for this: tmux's DEFAULT is
   `external`, which forwards only tmux's OWN copy-mode selections and silently
   ignores a sequence an application emits. Pasting INTO the box needs nothing --
@@ -608,8 +592,8 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   the node cannot outlive the box.
 - **"claude wants me to log in again" is usually token expiry, not broken
   persistence.** `persist:` symlinks `~/.claude` and `~/.claude.json` onto the
-  volume and that works, but the credential inside has its own clock: measured
-  2026-08-21, the access token lasts ~7h and the REFRESH token ~3.5 days. Rebuild
+  volume and that works, but the credential inside has its own clock: the access
+  token lasts ~7h and the REFRESH token ~3.5 days. Rebuild
   a box within a few days of last use and there is no login; come back after a
   week and there is, however healthy the volume. Check
   `/mnt/work/state/claude/.credentials.json` for `expiresAt` /
@@ -627,7 +611,7 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   `megh mesh join|status|logs|restart` pipes the same bytes over SSH, so boot and
   repair never drift and those verbs work on any box regardless of image age.
 
-  **These verbs moved out of `megh doctor ts` on 2026-09-20** (`start` and
+  **These verbs moved out of `megh doctor ts`** (`start` and
   `setkey` collapsing into `join`, since both ran the script's `up` and differed
   only in whether a key came along). `doctor ts` still works, hidden from help,
   because the entrypoint baked into every older image calls it at boot. `megh
@@ -635,19 +619,17 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   `megh doctor control-plane`, the probes you reach for when you do not yet know
   which subsystem is broken.
 - **Making a box a control plane is a CHECKLIST, and `megh doctor control-plane`
-  is that checklist.** The Mac satisfies every prerequisite implicitly, by being
-  where everything was set up; a fresh box satisfies none, and each missing piece
-  surfaces far from its cause. Eight were found one at a time before the command
-  existed: the spawn guard, the provider key, a box key, a GitHub identity, the
-  `requires:` gate, no tailnet, no docker CLI, and a portal remote naming a
-  Mac-only ssh alias. Run it on any machine you expect to drive boxes; it exits
-  non-zero on a real blocker and only warns for reduced function. The spawn guard
-  is no longer one of them: **holding the provider key IS being the control
-  plane** (C3, simplified 2026-09-14), so `MEGH_CONTROL_PLANE` and
-  `--i-am-the-control-plane` are gone and the `provider key` row carries the whole
-  question. What scopes elevation is the CHANNEL the key arrives by —
-  `providers.docker.mounts:` reaches local boxes only, `box-envvars` reaches every
-  box megh touches, cloud pods included.
+  is that checklist.** The machine you first set everything up on satisfies
+  every prerequisite implicitly; a fresh box satisfies none, and each missing
+  piece surfaces far from its cause: the provider key, a box key, a GitHub
+  identity, the `requires:` gate, no tailnet, no docker CLI, and a portal remote
+  naming an ssh alias defined on one machine only. Run it on any machine you
+  expect to drive boxes; it exits non-zero on a real blocker and only warns for
+  reduced function. **Holding the provider key IS being the control plane**
+  (C3), so there is nothing to declare and the `provider key` row carries the
+  whole question. What scopes elevation is the CHANNEL the key arrives by:
+  `providers.docker.mounts:` reaches local boxes only, while an env file listed
+  in `files:` reaches every box megh touches, cloud pods included.
 - **A profile's keys are per CONTROL MACHINE, not per box.** `megh profile gh add
   <name>` mints a NEW keypair into `~/.megh/profiles/<p>/gh/`, and only its
   PUBLIC half ever reaches a box (as `~/.ssh/gh-<name>.pub` plus a `Host gh-<name>`
@@ -679,163 +661,51 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 - **An ssh ControlMaster socket cannot live on the work mount, and barely fits
   in a deep path.** `megh browse -b` backgrounds its tunnel with `ssh -f -M -S`,
   and ssh creates that socket under a random name and then HARD-LINKS it into
-  place. `~/.megh` is persisted onto the volume, which on a local box is a bind
-  mount from macOS, and linking there fails with `muxserver_listen: link mux
-  listener ... Bad file descriptor` — so a tunnel opened FROM a box never comes
-  up, while the same code works on the Mac. The socket therefore lives in
+  place. `~/.megh` is persisted onto the volume, which on a local box may be a
+  bind mount from macOS, and linking there fails with `muxserver_listen: link mux
+  listener ... Bad file descriptor`, so a tunnel opened FROM a box never comes
+  up, while the same code works on a macOS host. The socket therefore lives in
   `$TMPDIR/megh-tunnels-<uid>/`, which is local to whatever machine megh runs on.
-  Both measured 2026-09-20 on this box. The second limit is the path length: a
+  The second limit is the path length: a
   unix socket path caps near 104 bytes and ssh's random suffix eats into that, so
   a socket under a long scratch path dies with `too long for Unix domain socket`.
   That one is checked and explained rather than passed to ssh.
-- **A shared artifact never encodes one machine's paths — `CONSTRAINTS.md` C6.**
-  This is the single disease behind the PATH-clobbering `~/.zshrc`, the
-  `~/personal` absolute-symlink mount hazard, the leafless-vs-`/main` `repos:`
-  entries, and the dotfiles repo's two git-tracked symlinks into
-  `/Users/<user>/newstack/...` that made the `gaps` skill exist on the Mac only.
-  The Mac is where it originates because it is the only machine here that is
-  never rebuilt, so a Mac-specific assumption survives for months while a
-  box-specific one dies at the next `megh up`. Enforced mechanically:
-  `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1` here, and
-  `shared/checks/no-machine-paths.sh` in CI on the dotfiles repo.
+- **A shared artifact never encodes one machine's paths (`CONSTRAINTS.md` C6).**
+  This is the single cause behind a PATH-clobbering `~/.zshrc`, the
+  absolute-symlink mount hazard, `repos:` entries that only match one machine's
+  layout, and git-tracked symlinks into one machine's home directory. It
+  originates on the long-lived host (usually a laptop), because that is the only
+  machine never rebuilt: a host-specific assumption survives for months while a
+  box-specific one dies at the next `megh up`. Enforced mechanically here with
+  `go test ./ -run TestNoMachineLocalPathsInTrackedFiles -count=1`; the same
+  check is worth running in your dotfiles repo's CI.
 - **The `megh-` prefix is internal only.** It marks RunPod pods (no tags there)
   but is never the tailnet hostname or a name the user types/sees. Route box
   names through `runpod.ShortName`/`Pod.DisplayName`, not raw `Pod.Name`. See
   `CONSTRAINTS.md` C1.
-
-## Live-validation debt
-
-Unproven from the 2026-10-06/07 sessions (phone-as-launcher, meghplane), all
-code merged:
-
-- **A two-line `PUBLIC_KEY` through RunPod's REST env map** (`extra_pubkeys`,
-  #79). Docker passes it as an argv `-e`, which is fine; RunPod is unseen. The
-  first `megh up` with `extra_pubkeys` set should show both lines in
-  `~/.ssh/authorized_keys`.
-- **A launch from meghplane end to end** (#82): `up` from the page, reach the
-  box with an `extra_pubkeys` key, `down` from the page. The lifecycle refactor
-  (#85) has not met real RunPod either, so this covers both.
-- **meghplane reading Secret Manager** (#90): only the fake-server tests have run.
-- **Bitwarden desktop's SSH agent** reaching a box via the portal's ssh line
-  (SETUP.md §6.7).
-
-Validated 2026-10-07: the Bitwarden bootstrap note on a real phone, past the
-Termux linker-argv bug (#80); and meghplane on App Engine behind IAP, with
-Google sign-in, the app's own check of IAP's signed header (via oneauth), the
-`serve.allowed_emails` refusal, and pasted keys all working live.
-
-Unproven from the 2026-09-21 session, which ran on a local box with no tailnet:
-
-- **`pw-ui`'s tailnet half has never executed.** `tailscale ip -4` fails on a box
-  that never joined, so the serve and the trap that takes it down on exit are
-  both untested. The viewer itself was proven over loopback: `pw-ui trace` against
-  a real playwright-core project serves 127.0.0.1:9323, `GET /` returns 302 into
-  the viewer, and the port is released on exit.
-- **`megh enable`'s menu has never run at a real terminal.** It was driven through
-  a pty harness (menu renders, Enter cancels, an out-of-range number errors) and
-  piped and `</dev/null`. What a Mac terminal does with the row alignment and the
-  `…` clipping is unseen.
-- **The baked launcher has never come out of an image.** `MEGH_PLAYWRIGHT_EMIT_ONLY=1
-  megh enable playwright --local` was run directly; no image has been rebuilt since,
-  so the Dockerfile `RUN` is proven only by the test that reads it.
-
-Validated on a live RunPod box (2026-07-26): Tailscale userspace `up --ssh` +
-`serve --http`, the box joining the tailnet as its bare `<name>` (the `megh-`
-prefix is the RunPod pod marker only, not the tailnet hostname), `megh doctor`
-probing tailscale + surfaces over SSH, and the bare-name `up`/`list`/`doctor`/`down`
-lifecycle.
-
-Second pass on a live slim box (2026-08-10, image `f57e6a0`), which cleared the
-rest of the list:
-
-- **webterm** (`:7682`) works end to end. The baked
-  `/opt/megh/webterm/term.html` renders with zero external resource references
-  (only a favicon 404), keystrokes typed in the page land in tmux session `main`
-  (the same session `:7681` serves), the `^C` key-bar button delivers a real
-  SIGINT and `↑` recalls history, and autocorrect / autocapitalize / autocomplete
-  / spellcheck are off on both the paste textarea and xterm's helper textarea.
-  Note the key bar binds `touchstart` + `mousedown` with `preventDefault`
-  (`webterm.sh:271`) so the soft keyboard can't steal focus. It does NOT bind
-  `click`, so a synthetic `.click()` in a test harness is a no-op.
-- **baked `megh` + `megh hydrate --local`** run on the box.
-- **code-server** on slim background-installs and comes up on `:8080` a few
-  minutes after boot (`doctor` shows it `down`, later `up`).
-- **Codex transcript path** in the (now removed) `flush-sessions.sh` staged
-  `codex-sessions/` and `claude-projects/` correctly and the allowlist excludes
-  `.credentials.json`. The authenticated push was never proven and never will be
-  from the box: that path is gone as of 2026-08-21, since it needed a standing
-  GitHub credential on a VM. The control machine collects instead.
-
-Gotcha found in that pass: `megh hydrate --local` run from inside
-`/mnt/work/repos/newstack/megh` picks up THAT checkout's `megh.yaml` by upward discovery,
-not the baked `/etc/megh/megh.yaml`. A stale on-volume checkout therefore reports
-drift that does not exist. Run it from `/` or pass `--config /etc/megh/megh.yaml`.
-
-RunPod DinD is now settled (see `DESIGN.md`); it is a definitive no.
-
-Third pass on image `0cf66ed` (2026-08-12) cleared the rest: `gh` 2.97.0 and
-pnpm 11.21.0 are baked, `~/.config/gh` persists to `state/config-gh`, the baked
-`megh hydrate --local --check` now exits 0 with no phantom drift, and Grafana
-renders per-tenant dashboards with correct data and no errors (verified through
-`/api/ds/query`, the panel path, plus a real browser render).
-
-Fourth pass on a live slim box (2026-08-21) cleared the last two features.
-`megh enable vnc` comes up in ~35s and noVNC really attaches to the Xvfb display
-(page title becomes `<container>:99 - noVNC`), with the auto-started xterm
-visible. `megh enable playwright` then drives headed Chromium on `DISPLAY=:99`,
-rendered through noVNC over a `megh browse` tunnel. Two real bugs fell out of it
-and are fixed: the npx install probe that never installed anything, and the
-650 MB browser cache landing on the throwaway container disk. Both are written
-up in `internal/features/NOTES.md`.
-
-Also measured that pass: US-CA-2 would not rent 4 vCPU at all (the API really
-does return "no longer any instances"), which is what `megh regions probe` is
-for.
-
-Fifth pass (2026-08-21) validated per-box key minting end to end on a live box
-(`mintlab`, slim, US-CA-2). `megh up` minted a single-use ephemeral key tagged
-`tag:megh` at launch, the box joined the tailnet as its BARE name with no `-1`
-suffix, came up `authorized: True` (so pre-authorization skips manual approval)
-with `keyExpiryDisabled: True` (tagged nodes do not expire), and `RunSSH: true`
-box-side. On `megh down` the node removed ITSELF: the command printed "asked
-mintlab to leave the tailnet" and then nothing further, because the ephemeral
-logout had already deleted the node and the control-plane prune found nothing to
-do. That silence is the fix working. The API delete stays as the safety net for
-a box killed out of band, where no logout can run.
-
-Not verifiable from the control machine: Tailscale SSH INTO a tagged box. The
-ACL rule for `dst: ["tag:megh"]` is in place and the network grants preview
-confirms reachability, but proving the SSH policy needs a client on the tailnet,
-which this Mac is not. The phone is the natural way to confirm it, which folds
-into the Termux item.
-
-Sixth pass (2026-09-20) validated the mesh on a LOCAL box, live, on a box that
-was already running — which is the point, since the whole design exists so a
-box does not have to be recreated to reach the network. `megh mesh join dev`
-from the Mac started tailscaled inside the running container, brought it up as
-its bare name, and served 6080/7681/7682/8080. Measured after the join:
-`tailscale serve status` shows all four proxying to `127.0.0.1`, the node is
-`dev`/`100.78.215.117` on `taild311d3.ts.net`, and nothing on the box restarted.
-
-Three findings from that pass, all now in the gotchas or the code:
-
-- **The scheme is decided by the tailnet, not by megh.** With HTTPS certificates
-  off, everything serves plain HTTP, so a phone gets no clipboard API (it needs a
-  secure context). `ts-up.sh` says so and names `megh mesh restart` to re-serve
-  after turning certs on.
+- **The webterm key bar binds `touchstart` + `mousedown`, not `click`**, each with
+  `preventDefault` (`webterm.sh`), so the soft keyboard cannot steal focus. A
+  synthetic `.click()` in a test harness is therefore a no-op; drive it with
+  touch or mouse events.
+- **`megh hydrate --local` run inside a checkout of megh reads that checkout's
+  `megh.yaml`** by upward discovery, not the box's own config, so a stale
+  on-volume checkout reports drift that does not exist. Run it from `/` or pass
+  `--config`.
+- **A minted ephemeral key makes the node remove itself.** On `megh down` the
+  box's logout deletes its own node, so the command prints that it asked the box
+  to leave and then nothing further: the control-plane prune finds nothing to
+  do, and that silence is correct. The API delete remains the safety net for a
+  box killed out of band, where no logout can run.
+- **The tailnet decides http vs https for served surfaces, not megh.** With
+  HTTPS certificates off, everything serves plain HTTP, so a phone gets no
+  clipboard API (it needs a secure context). `ts-up.sh` says so; after turning
+  certificates on, `megh mesh restart <box>` re-serves.
 - **`:6080` is served whenever `Xvfb` is installed**, whether or not noVNC is
   running, so a box without `megh enable vnc` publishes a port that answers with
   a proxy error. Cosmetic, but it looks like a broken mesh.
-- **An ssh ControlMaster socket cannot live on the work mount** — see the gotcha.
-  Found while proving `megh browse -b`, and it only fails when megh runs FROM a
-  box, which is the case the Mac never exercises.
 
-Still unproven: `megh browse <box> <port> -b` end to end from the Mac (the
-mechanism was proven against this box's own sshd with a throwaway key, but not
-the command); a box REJOINING the mesh by itself after a restart, which needs an
-image built after the entrypoint change; and `megh mesh serve` (issue #66), which
-does not exist yet.
+## Live validation
 
-The one item that never cleared, the authenticated session-flush push, was
-retired rather than validated: it required a standing GitHub credential on a box,
-which is what the control-machine collection replaces.
+Features not yet exercised against real infrastructure are tracked as GitHub
+issues labelled `needs-live-test` (the running checklist is #95). Close an item
+with a comment saying what was observed on the real box.

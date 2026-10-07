@@ -11,7 +11,7 @@ import (
 )
 
 // A control plane is a machine that can SPAWN boxes, REACH them, and HYDRATE
-// them. The Mac satisfies all three implicitly, by being the machine everything
+// them. Your first machine satisfies all three implicitly, by being where everything
 // was set up on. A box satisfies none of them until each is arranged, and until
 // this command existed you learned the list only by failing through it one
 // prerequisite at a time -- seven of them, each surfacing as an unrelated-looking
@@ -70,7 +70,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 		case onABox:
 			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set; this box cannot launch",
 				"put " + p.APIKeyEnv + " in a channel scoped to the boxes you mean " +
-					"(providers.docker.mounts:), never box-envvars"})
+					"(providers.docker.mounts:), never an env file listed in files:"})
 		default:
 			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set",
 				"add " + p.APIKeyEnv + " to this machine's environment"})
@@ -168,8 +168,8 @@ var doctorControlPlaneCmd = &cobra.Command{
 
 'megh doctor <box>' probes a BOX. This probes the machine you are typing on, which
 is a different question and the one that bites when development moves onto boxes:
-the Mac satisfies every prerequisite implicitly, a fresh box satisfies none, and
-each missing piece surfaces far from its cause.
+the machine you first set up on satisfies every prerequisite implicitly, a fresh
+box satisfies none, and each missing piece surfaces far from its cause.
 
 Exits non-zero if anything is FAIL. Warnings do not fail: they describe reduced
 function (no tailnet, no docker CLI), not a blocked one.`,

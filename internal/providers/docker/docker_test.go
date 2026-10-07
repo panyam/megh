@@ -193,7 +193,7 @@ func TestEveryDockerCallCarriesTheConfiguredContext(t *testing.T) {
 func TestRunArgsMountsOnlyWhatConfigAllows(t *testing.T) {
 	set := settings{mounts: map[string]string{
 		"/host/projects": "repos/projects",
-		"/host/secrets":  "/root/personal/envvars:ro",
+		"/host/secrets":  "/root/secrets/envvars:ro",
 	}}
 	args := argvOf(t, set, providers.Options{Name: "local1"})
 
@@ -205,7 +205,7 @@ func TestRunArgsMountsOnlyWhatConfigAllows(t *testing.T) {
 	}
 	want := []string{
 		"/host/work:/workspace",
-		"/host/secrets:/root/personal/envvars:ro",
+		"/host/secrets:/root/secrets/envvars:ro",
 		"/host/projects:/workspace/repos/projects",
 	}
 	if len(vols) != len(want) {
@@ -268,13 +268,13 @@ func TestParseMounts(t *testing.T) {
 // the one it sits inside or it is shadowed rather than shadowing.
 func TestParseMountsSortsNestedAfterParent(t *testing.T) {
 	got, err := ParseMounts(map[string]string{
-		"/host/envvars":  "/root/personal/envvars",
-		"/host/personal": "/root/personal",
+		"/host/envvars":    "/root/secrets/envvars",
+		"/host/secretsdir": "/root/secrets",
 	}, "/workspace")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].Box != "/root/personal" || got[1].Box != "/root/personal/envvars" {
+	if got[0].Box != "/root/secrets" || got[1].Box != "/root/secrets/envvars" {
 		t.Errorf("nested mount not ordered after its parent: %+v", got)
 	}
 }

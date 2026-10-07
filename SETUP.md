@@ -5,8 +5,8 @@ RunPod CPU pod, backed by a network volume for scratch, reachable through a web
 shell, a headed-browser view, and SSH.
 
 The image is the reusable piece. The launch is scripted, but for the very first
-box the RunPod console path is more reliable while we confirm the API against
-your account. Both are below.
+box the RunPod console path is the simplest way to see everything work. Both are
+below.
 
 ## Before any of this: a box on your own machine
 
@@ -245,7 +245,7 @@ They live in `~/.megh/profiles/phone/secrets.env`, mode 0600, outside any repo.
 needed even though `up` never reads it, because `requires.envs` gates the launch
 on it.
 
-**Keep the master copy in a Bitwarden secure note**, and make the note the whole
+**Keep the master copy in a password manager's secure note** (e.g. Bitwarden), and make the note the whole
 bootstrap: a script that writes itself to `~/megh-bootstrap.sh` via a heredoc and
 then runs it, so §6.1–6.5 are one copy and one paste in Termux. Write-then-run
 matters: pasted line by line, `gh auth login` reads the following pasted lines
@@ -257,7 +257,7 @@ already done so re-pasting is also the upgrade and rotation path.
 
 ```sh
 megh config
-megh regions probe --dc US-CA-2 --first -y   # capacity flaps; a probe costs a fraction of a cent
+megh regions probe --dc <dc> --first -y      # capacity flaps; a probe costs a fraction of a cent
 megh up devbox
 megh ssh devbox                              # lands in tmux `main`
 ```
@@ -265,12 +265,12 @@ megh ssh devbox                              # lands in tmux `main`
 ### 6.7 Reaching a phone-launched box from other machines
 
 A box trusts the launcher's key plus every key in `extra_pubkeys:` in
-`megh.yaml`. Keep one SSH key item in Bitwarden, put its public half there, and
-enable Bitwarden desktop's SSH agent (Settings > Enable SSH agent; point
-`SSH_AUTH_SOCK` at its socket) on any machine you want in from. That machine
-needs no megh, profile, provider key or tailnet: open the portal, copy the box's
-`ssh -p <port> root@<ip>` line (or the `-L 7682:...` one for webterm), and
-Bitwarden asks to approve each use. Tailnet members can use `ssh root@<box>`
+`megh.yaml`. Keep one SSH key in a password manager that can act as an SSH
+agent (e.g. Bitwarden desktop: Settings > Enable SSH agent, then point
+`SSH_AUTH_SOCK` at its socket), put its public half there, and enable that agent
+on any machine you want in from. That machine needs no megh, profile, provider
+key or tailnet: open the portal, copy the box's `ssh -p <port> root@<ip>` line
+(or the `-L 7682:...` one for webterm), and the agent asks to approve each use. Tailnet members can use `ssh root@<box>`
 instead. `extra_pubkeys` is read at create, so a new key reaches only new boxes.
 
 ### The surprise worth knowing first
@@ -303,8 +303,7 @@ then verifies IAP's signed header itself (audience, issuer, signature, expiry,
 via oneauth) and admits only the emails in `serve.allowed_emails`. With that
 list empty, or IAP's keys unreachable, it refuses to start.
 
-**One-time setup.** This is the sequence that worked on the live `meghplane`
-project (2026-10-07), on a personal Google account with no Workspace org.
+**One-time setup.** Tested on a personal (non-Workspace) Google account.
 
 1. **App Engine app** created (any region; it cannot change later).
 2. **Let the deploy build.** Cloud Build runs as the app's service account, and
@@ -325,7 +324,7 @@ project (2026-10-07), on a personal Google account with no Workspace org.
    ID(s)/secret(s)` until you supply your own. Create a Web application client
    (Google Auth Platform > Clients), add the redirect URI
    `https://iap.googleapis.com/v1/oauth/clientIds/<CLIENT_ID>:handleRedirect`,
-   keep the secret in Bitwarden, then:
+   keep the secret in your password manager, then:
    ```sh
    gcloud iap web enable --resource-type=app-engine --project=<project> \
      --oauth2-client-id=<CLIENT_ID> --oauth2-client-secret=<CLIENT_SECRET>
@@ -361,8 +360,9 @@ signed in, so IAP will sign the same account straight back in.
 (gitignored, but `.gcloudignore` uploads it) holding `serve.allowed_emails`:
 
 ```sh
-cp ~/dotfiles/megh/megh.yaml .
-gcloud app deploy --project <project-id>
+megh config pull                       # refresh ~/.config/megh/megh.yaml from your config repo
+cp ~/.config/megh/megh.yaml .
+gcloud app deploy --project <project>
 ```
 
 The app reads its defaults (data center, volume, `extra_pubkeys`, tailnet)
@@ -373,20 +373,20 @@ use (SETUP §6.7).
 ### 7.1 Keys on the server (optional)
 
 Pasting keys into a page means trusting every extension that page runs
-beside, and a work-managed browser can force-install extensions you cannot
+beside, and a managed browser can force-install extensions you cannot
 remove. For those, keep the keys in Secret Manager instead and the page stops
 asking for them.
 
-1. Store the same note you keep in Bitwarden as **one** secret (one active
+1. Store your control-plane note as **one** secret (one active
    version, inside the six that are free every month), in a single region:
    ```sh
-   gcloud secrets create megh-control --project meghplane \
+   gcloud secrets create megh-control --project <project> \
      --replication-policy=user-managed --locations=us-central1 --data-file=-
    # paste the note, then Ctrl-D
    ```
 2. Let only the app's **runtime** service account read it, on that secret alone:
    ```sh
-   gcloud secrets add-iam-policy-binding megh-control --project meghplane \
+   gcloud secrets add-iam-policy-binding megh-control --project <project> \
      --member=serviceAccount:<runtime-sa> --role=roles/secretmanager.secretAccessor
    ```
 3. Add `secret: megh-control` under `serve:` in `megh.yaml` and redeploy. The
@@ -413,7 +413,7 @@ your Google account's 2FA is now the whole lock.
 
 A box launched from meghplane and entered through Tailscale's browser console
 (or webterm) has had nothing done to it: no control machine ran `megh ssh` or
-`megh hydrate`, so `files:` never copied `megh.yaml` or `box-envvars` in, no
+`megh hydrate`, so `files:` never copied `megh.yaml` or your box env file in, no
 repo was cloned, and the dotfiles your shell expects are missing. Everything
 below runs on the box, with no RunPod key and no phone.
 
@@ -424,9 +424,9 @@ megh hydrate                              # on a box this runs locally; no agent
 exec zsh
 ```
 
-Then paste your `box-envvars` note with its target set to
-`/mnt/work/state/personal/envvars`, the path the box's `~/personal/envvars`
-points at.
+Then paste your box env file (the service tokens a box needs) with its target
+set to the volume path your `files:` entry maps it to, the path your shell rc
+expects through `symlinks:`.
 
 **Choose the GitHub credential deliberately.** It lives on the volume, so every
 later box on that volume inherits it, and without a forwarded agent it is also
