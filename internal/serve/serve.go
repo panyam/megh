@@ -325,10 +325,19 @@ func (s *Server) boxes(r *http.Request, svc *lifecycle.Service) (any, error) {
 // tailnet hostname.
 var boxName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 
+// boxSize is a whole shape the page can ask for. RunPod caps the container
+// disk by instance size when a volume is attached (about 20 GB at 2 vCPU, 40 at
+// 4, 50 at 8), so RAM and disk are tied to the vCPU count rather than chosen
+// separately and rejected at launch.
+type boxSize struct{ ram, disk int }
+
+var boxSizes = map[int]boxSize{2: {8, 20}, 4: {16, 40}, 8: {32, 50}}
+
 func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
 		Name   string `json:"name"`
 		Flavor string `json:"flavor"`
+		VCPU   int    `json:"vcpu"` // 0 = megh.yaml's default size
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -339,7 +348,20 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if req.Flavor != "" && !contains(s.Config.Flavors, req.Flavor) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("unknown flavor %q", req.Flavor)}
 	}
-	res, err := svc.Up(r.Context(), lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor})
+	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor}
+	if req.VCPU != 0 {
+		size, ok := boxSizes[req.VCPU]
+		if !ok {
+			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", req.VCPU)}
+		}
+		up.VCPU, up.RAMGiB, up.DiskGiB = req.VCPU, size.ram, size.disk
+	}
+	res, err := svc.Up(r.Context(), up)
+	if errors.Is(err, runpod.ErrNoCapacity) {
+		// Transient and size-dependent, not a fault: 503, with the provider's
+		// advice, so the page can say "try again or pick a smaller size".
+		return nil, &apiError{http.StatusServiceUnavailable, err.Error()}
+	}
 	if err != nil {
 		return nil, err
 	}
