@@ -58,6 +58,37 @@
       <button id="up" type="button">Launch</button>
     </div>
   </section>
+
+  <section>
+    <h2>Volumes</h2>
+    <p class="muted">A box starts in its volume's data center. Volumes bill monthly
+    whether or not a box uses them, at RunPod's network-volume price.</p>
+    <ul id="volumes"></ul>
+    <div class="row">
+      <input id="volname" placeholder="new volume name" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <select id="volsize">
+        <option value="20">20 GB</option>
+        <option value="50" selected>50 GB</option>
+        <option value="100">100 GB</option>
+        <option value="200">200 GB</option>
+      </select>
+      <select id="voldc"></select>
+      <button id="volcreate" type="button">Create volume</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Regions</h2>
+    <p class="muted">Probing rents a real box in each data center for about a second
+    and terminates it, a fraction of a cent each. Place probes until one rents,
+    then creates a volume there.</p>
+    <div class="row">
+      <label><input id="allregions" type="checkbox"> all regions</label>
+      <button id="probe" type="button">Probe</button>
+      <button id="place" type="button">Place a volume where one rents</button>
+    </div>
+    <ul id="probes"></ul>
+  </section>
 </main>
 
 <pre id="log" hidden></pre>
