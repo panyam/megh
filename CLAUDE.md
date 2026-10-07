@@ -58,6 +58,7 @@ megh registry ls                  # dev-env image tags
 megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; READ-ONLY (ssh would create one)
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
+megh serve [--addr 127.0.0.1:8080] # the web control plane, locally; loopback only. Hosted copy: cmd/meghplane (SETUP.md §7)
 ```
 
 Make wrappers: `make up NAME=.. VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,

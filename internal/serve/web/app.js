@@ -1,0 +1,185 @@
+// meghplane page. Every string from the server goes into the DOM through
+// textContent or an attribute, never innerHTML, and the CSP forbids inline
+// script, so nothing a backend returns can run here.
+"use strict";
+
+const STORE = {
+  RUNPOD_API_KEY: "megh.runpod",
+  MEGH_TAILSCALE_CLIENT_ID: "megh.tsid",
+  MEGH_TAILSCALE_CLIENT_SECRET: "megh.tssecret",
+};
+const HEADERS = {
+  "megh.runpod": "X-Megh-Runpod-Key",
+  "megh.tsid": "X-Megh-Ts-Client-Id",
+  "megh.tssecret": "X-Megh-Ts-Client-Secret",
+};
+
+const $ = (id) => document.getElementById(id);
+
+function get(k) {
+  try { return sessionStorage.getItem(k) || ""; } catch (e) { return ""; }
+}
+
+function set(k, v) {
+  try { v ? sessionStorage.setItem(k, v) : sessionStorage.removeItem(k); } catch (e) {}
+}
+
+// parseKeys accepts the note as pasted: KEY=value lines, with or without
+// "export", with or without quotes. Unknown names are ignored.
+function parseKeys(text) {
+  const out = {};
+  for (let line of text.split(/\r?\n/)) {
+    line = line.trim().replace(/^export\s+/, "");
+    const eq = line.indexOf("=");
+    if (eq < 1) continue;
+    const name = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
+    if (STORE[name]) out[STORE[name]] = val;
+  }
+  return out;
+}
+
+function haveKeys() { return get("megh.runpod") !== ""; }
+
+function showLog(text, isError) {
+  const el = $("log");
+  el.textContent = text;
+  el.hidden = !text;
+  el.className = isError ? "error" : "";
+}
+
+async function call(method, path, body) {
+  const headers = {};
+  for (const k in HEADERS) {
+    const v = get(k);
+    if (v) headers[HEADERS[k]] = v;
+  }
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let json = {};
+  try { json = await res.json(); } catch (e) { json = { error: res.status + " " + res.statusText }; }
+  if (!res.ok) {
+    const err = new Error(json.error || res.statusText);
+    err.log = json.log || "";
+    throw err;
+  }
+  return json;
+}
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function link(label, url) {
+  const a = el("a", label);
+  if (/^https?:\/\//.test(url)) a.href = url;
+  a.rel = "noopener noreferrer";
+  a.target = "_blank";
+  return a;
+}
+
+function copyable(label, cmd) {
+  const row = el("div", "", "cmd");
+  row.append(el("span", label + " "), el("code", cmd));
+  const b = el("button", "copy");
+  b.type = "button";
+  b.addEventListener("click", () => navigator.clipboard && navigator.clipboard.writeText(cmd));
+  row.append(b);
+  return row;
+}
+
+function render(boxes) {
+  const ul = $("boxes");
+  ul.replaceChildren();
+  $("empty").hidden = boxes.length > 0;
+  for (const b of boxes) {
+    const li = el("li");
+    const head = el("div", "", "row");
+    head.append(el("strong", b.name), el("span", b.status, "status"));
+    if (b.dc) head.append(el("span", b.dc, "muted"));
+    if (b.costPerHr) head.append(el("span", "$" + b.costPerHr.toFixed(3) + "/hr", "muted"));
+    const down = el("button", "Terminate", "danger");
+    down.type = "button";
+    down.addEventListener("click", () => terminate(b.name));
+    head.append(down);
+    li.append(head);
+    const links = el("div", "", "links");
+    for (const l of b.links || []) links.append(link(l.label, l.url));
+    li.append(links);
+    if (b.ssh) li.append(copyable("ssh", b.ssh));
+    if (b.tunnel) li.append(copyable("webterm tunnel", b.tunnel));
+    ul.append(li);
+  }
+}
+
+async function refresh() {
+  try {
+    const r = await call("GET", "/api/boxes");
+    render(r.data || []);
+    showLog("", false);
+  } catch (e) {
+    showLog(e.message + (e.log ? "\n" + e.log : ""), true);
+  }
+}
+
+async function launch() {
+  const name = $("name").value.trim();
+  if (!name) return;
+  $("up").disabled = true;
+  showLog("launching " + name + " ...", false);
+  try {
+    const r = await call("POST", "/api/up", { name, flavor: $("flavor").value });
+    showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
+    $("name").value = "";
+    await refresh();
+  } catch (e) {
+    showLog(e.message + (e.log ? "\n" + e.log : ""), true);
+  } finally {
+    $("up").disabled = false;
+  }
+}
+
+async function terminate(name) {
+  const typed = prompt("Type " + name + " to terminate it. The volume survives.");
+  if (typed !== name) return;
+  showLog("terminating " + name + " ...", false);
+  try {
+    const r = await call("POST", "/api/down", { name });
+    showLog(r.log || ("terminated " + name), false);
+    await refresh();
+  } catch (e) {
+    showLog(e.message + (e.log ? "\n" + e.log : ""), true);
+  }
+}
+
+function showState() {
+  const ok = haveKeys();
+  $("keys").hidden = ok;
+  $("app").hidden = !ok;
+  $("forget").hidden = !ok;
+  if (ok) refresh();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("savekeys").addEventListener("click", () => {
+    const keys = parseKeys($("keyblock").value);
+    $("keyblock").value = "";
+    if (!keys["megh.runpod"]) {
+      showLog("no RUNPOD_API_KEY= line found", true);
+      return;
+    }
+    for (const k in HEADERS) set(k, keys[k] || "");
+    showState();
+  });
+  $("forget").addEventListener("click", () => {
+    for (const k in HEADERS) set(k, "");
+    showLog("", false);
+    showState();
+  });
+  $("refresh").addEventListener("click", refresh);
+  $("up").addEventListener("click", launch);
+  showState();
+});
