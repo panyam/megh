@@ -6,7 +6,6 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +22,7 @@ var storageListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		// One global view across every registered backend.
-		vols, errs := providers.VolumesAll(ctx)
+		vols, errs := newService().Volumes(ctx)
 		if len(vols) == 0 && len(errs) > 0 {
 			return errs[0]
 		}
@@ -54,14 +53,14 @@ var storageCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a scratch volume in a data center",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, storageProvider)
-		if err != nil {
+		provider := resolve(cmd, "provider", storageProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		if _, err := resolveProvider(cmd, storageProvider); err != nil {
 			return err
 		}
 		if storageDC == "" {
 			return fmt.Errorf("--dc is required (the volume is pinned to it)")
 		}
-		v, err := prov.CreateVolume(context.Background(), storageName, storageSize, storageDC)
+		v, err := newService().CreateVolume(context.Background(), provider, storageName, storageSize, storageDC)
 		if err != nil {
 			return err
 		}
@@ -77,11 +76,8 @@ var storageRmCmd = &cobra.Command{
 	Short:   "Delete a scratch volume by id (must be detached from all boxes)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, storageProvider)
-		if err != nil {
-			return err
-		}
-		if err := prov.DeleteVolume(context.Background(), args[0]); err != nil {
+		provider := resolve(cmd, "provider", storageProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		if err := newService().DeleteVolume(context.Background(), provider, args[0]); err != nil {
 			return err
 		}
 		fmt.Printf("deleted volume %s\n", args[0])

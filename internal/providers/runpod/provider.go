@@ -2,17 +2,44 @@ package runpod
 
 import (
 	"context"
+	"os"
 
 	"github.com/panyam/megh/internal/providers"
 )
 
-// Provider is the RunPod backend. It is a stateless value: every credential is
-// read from the environment per call, so there is nothing to configure at
-// construction and nothing to keep in sync with a reloaded config.
-type Provider struct{}
+// Provider is the RunPod backend. With no key of its own it reads
+// RUNPOD_API_KEY from the environment per call, which is what the CLI wants.
+// A server handling requests for whoever is signed in builds one per request
+// with NewWithKey instead, so one request's key is never another's.
+type Provider struct{ key string }
 
-// New returns the RunPod backend, for the registration list in cmd/root.go.
+// New returns the RunPod backend that reads its key from the environment, for
+// the registration list in cmd/root.go.
 func New() *Provider { return &Provider{} }
+
+// NewWithKey returns a RunPod backend that authenticates with key and ignores
+// RUNPOD_API_KEY. An empty key behaves like New.
+func NewWithKey(key string) *Provider { return &Provider{key: key} }
+
+type apiKeyCtx struct{}
+
+// with scopes this provider's key to one call. The package-level functions
+// take a context already, so the key rides on it rather than on a global.
+func (p *Provider) with(ctx context.Context) context.Context {
+	if p.key == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, apiKeyCtx{}, p.key)
+}
+
+// keyFor is the key for this call: the provider's own if it has one, else the
+// environment's.
+func keyFor(ctx context.Context) string {
+	if k, ok := ctx.Value(apiKeyCtx{}).(string); ok && k != "" {
+		return k
+	}
+	return os.Getenv("RUNPOD_API_KEY")
+}
 
 var _ providers.Provider = (*Provider)(nil)
 
@@ -27,18 +54,24 @@ func (*Provider) Mesh() providers.Mesh {
 	return providers.Mesh{Vendor: providers.MeshTailscale, AtBoot: true}
 }
 
-func (*Provider) Up(ctx context.Context, o providers.Options) (providers.Result, error) {
-	return up(ctx, o)
+func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Result, error) {
+	return up(p.with(ctx), o)
 }
 
-func (*Provider) List(ctx context.Context) ([]providers.Box, error) { return List(ctx) }
+func (p *Provider) List(ctx context.Context) ([]providers.Box, error) { return List(p.with(ctx)) }
 
-func (*Provider) Terminate(ctx context.Context, id string) error { return Terminate(ctx, id) }
-
-func (*Provider) Volumes(ctx context.Context) ([]providers.Volume, error) { return Volumes(ctx) }
-
-func (*Provider) CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*providers.Volume, error) {
-	return CreateVolume(ctx, name, sizeGiB, dc)
+func (p *Provider) Terminate(ctx context.Context, id string) error {
+	return Terminate(p.with(ctx), id)
 }
 
-func (*Provider) DeleteVolume(ctx context.Context, id string) error { return DeleteVolume(ctx, id) }
+func (p *Provider) Volumes(ctx context.Context) ([]providers.Volume, error) {
+	return Volumes(p.with(ctx))
+}
+
+func (p *Provider) CreateVolume(ctx context.Context, name string, sizeGiB int, dc string) (*providers.Volume, error) {
+	return CreateVolume(p.with(ctx), name, sizeGiB, dc)
+}
+
+func (p *Provider) DeleteVolume(ctx context.Context, id string) error {
+	return DeleteVolume(p.with(ctx), id)
+}

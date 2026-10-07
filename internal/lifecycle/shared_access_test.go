@@ -1,10 +1,11 @@
-package cmd
+package lifecycle
 
 import (
 	"encoding/base64"
 	"strings"
 	"testing"
 
+	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/providers"
 )
 
@@ -64,7 +65,7 @@ func TestWithExtraPubKeysRejectsNonKeys(t *testing.T) {
 // A machine off the tailnet needs the public SSH endpoint, with -L before the
 // host (after it, ssh would treat it as the remote command).
 func TestRenderPortalListsPublicSSH(t *testing.T) {
-	md := renderPortal([]providers.Box{{Name: "megh-mybox", Status: "RUNNING", PublicIP: "203.0.113.7", SSHPort: 41234}})
+	md := RenderPortal(config.Config{}, []providers.Box{{Name: "megh-mybox", Status: "RUNNING", PublicIP: "203.0.113.7", SSHPort: 41234}})
 	for _, want := range []string{
 		"`ssh -p 41234 root@203.0.113.7`",
 		"`ssh -p 41234 -L 7682:127.0.0.1:7682 root@203.0.113.7`",
@@ -78,7 +79,7 @@ func TestRenderPortalListsPublicSSH(t *testing.T) {
 // A local box's endpoint is the launcher's loopback, meaningless anywhere else;
 // a box with no mapped port yet has nothing to show.
 func TestRenderPortalOmitsUnusableSSH(t *testing.T) {
-	md := renderPortal([]providers.Box{
+	md := RenderPortal(config.Config{}, []providers.Box{
 		{Name: "megh-local", Status: "running", PublicIP: "127.0.0.1", SSHPort: 2222},
 		{Name: "megh-booting", Status: "RUNNING"},
 	})

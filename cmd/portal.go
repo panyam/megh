@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
@@ -44,71 +44,12 @@ it automatically when portal.repo is set.`,
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "megh: portal: skipping a provider: %v\n", e)
 		}
-		if err := pushPortal(renderPortal(providers.Managed(pods))); err != nil {
+		if err := pushPortal(lifecycle.RenderPortal(cfg, providers.Managed(pods))); err != nil {
 			return err
 		}
 		fmt.Printf("portal published. Bookmark: %s\n", portalBookmarkURL())
 		return nil
 	},
-}
-
-// renderPortal builds the PORTAL.md markdown for the given boxes.
-func renderPortal(pods []providers.Box) string {
-	scheme := cfg.Portal.Scheme
-	if scheme == "" {
-		scheme = "http"
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "# megh boxes\n\n_updated %s · %d box(es)_\n\n",
-		time.Now().UTC().Format("2006-01-02 15:04 UTC"), len(pods))
-	if len(pods) == 0 {
-		b.WriteString("No boxes. Run `megh up <name>` to launch one.\n")
-		return b.String()
-	}
-	surfaces := []struct {
-		label string
-		port  int
-		path  string
-	}{
-		{"📱 webterm", 7682, "/"},
-		{"🖥️ shell", 7681, "/"},
-		{"code", 8080, "/"},
-		{"vnc", 6080, "/vnc.html"},
-	}
-	for _, p := range pods {
-		name := p.DisplayName()
-		host := name
-		if cfg.Tailnet != "" {
-			host = name + "." + cfg.Tailnet
-		}
-		meta := []string{"`" + p.Status + "`"}
-		if p.DataCenter != "" {
-			meta = append(meta, p.DataCenter)
-		}
-		if p.CostPerHr > 0 {
-			meta = append(meta, fmt.Sprintf("$%.3f/hr", p.CostPerHr))
-		}
-		fmt.Fprintf(&b, "## %s\n\n%s\n\n", name, strings.Join(meta, " · "))
-		for _, s := range surfaces {
-			fmt.Fprintf(&b, "- [%s](%s://%s:%d%s)\n", s.label, scheme, host, s.port, s.path)
-		}
-		// The tailnet links above are useless to a machine that is not on the
-		// tailnet; public SSH is its way in, with any key in extra_pubkeys. A
-		// local box's endpoint is this machine's loopback, so it is left out.
-		if p.SSHReady() && !isLoopback(p.PublicIP) {
-			fmt.Fprintf(&b, "- ssh: `ssh -p %d root@%s`\n", p.SSHPort, p.PublicIP)
-			fmt.Fprintf(&b, "- webterm off-tailnet: `ssh -p %d -L 7682:127.0.0.1:7682 root@%s` then http://localhost:7682\n",
-				p.SSHPort, p.PublicIP)
-		}
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// isLoopback reports whether an endpoint only means something on this machine.
-func isLoopback(host string) bool {
-	ip := net.ParseIP(host)
-	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
 // pushPortal force-pushes PORTAL.md to portal.branch of portal.repo via a throwaway
@@ -228,7 +169,7 @@ func publishPortalBestEffort() {
 		fmt.Fprintf(os.Stderr, "megh: portal refresh skipped: %v\n", errs[0])
 		return
 	}
-	if err := pushPortal(renderPortal(providers.Managed(pods))); err != nil {
+	if err := pushPortal(lifecycle.RenderPortal(cfg, providers.Managed(pods))); err != nil {
 		fmt.Fprintf(os.Stderr, "megh: portal refresh failed: %v\n", err)
 		return
 	}
