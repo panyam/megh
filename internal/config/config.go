@@ -44,6 +44,10 @@ type Provider struct {
 	// is how RunPod keeps joining at boot without naming it in every config.
 	Mesh string `yaml:"mesh"`
 
+	// BlockType is Vultr's volume class for new volumes: "high_perf" (NVMe,
+	// the default) or "storage_opt" (HDD, cheaper, fewer regions).
+	BlockType string `yaml:"block_type"`
+
 	// The rest are docker-only and inert everywhere else. They live on the same
 	// struct so `providers:` keeps one shape in the file rather than growing a
 	// parallel top-level block for one backend.
@@ -331,6 +335,7 @@ func Default() Config {
 		Providers: map[string]Provider{
 			"runpod":  {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
 			"hetzner": {APIKeyEnv: "HCLOUD_TOKEN", VCPU: 2, RAM: 4, Disk: 40},
+			"vultr":   {APIKeyEnv: "VULTR_API_KEY", VCPU: 2, RAM: 4, Disk: 50},
 		},
 		Tailscale: Tailscale{
 			AuthKeyEnv:      "TS_AUTHKEY",

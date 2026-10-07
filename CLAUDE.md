@@ -32,6 +32,9 @@ needs `GCP_PROJECT=<project>`; it has no default on purpose.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
+                                  # --provider vultr: the same shape, 9 US regions; its volumes arrive
+                                  # blank and the first boot formats one only if blkid -p says blank
+                                  # (internal/providers/vmhost), VULTR_API_KEY (SETUP.md section 9)
                                   # --provider hetzner: a VM running the image under Docker, sized
                                   # per launch (cheapest x86 type that fits); needs HCLOUD_TOKEN and
                                   # a volume, which fixes the location (SETUP.md section 8)
