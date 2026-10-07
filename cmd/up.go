@@ -155,5 +155,13 @@ func init() {
 }
 
 // boxMarker is written into the image by the Dockerfile, so its presence is a
-// reliable "we are running ON a megh box" signal.
-const boxMarker = "/etc/megh/build-info"
+// reliable "we are running ON a megh box" signal. A var so tests can point it
+// at a temp file.
+var boxMarker = "/etc/megh/build-info"
+
+// onABox reports whether megh is running on a megh box rather than a control
+// machine.
+func onABox() bool {
+	_, err := os.Stat(boxMarker)
+	return err == nil
+}
