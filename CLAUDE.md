@@ -23,8 +23,10 @@ verdict; a new xterm major is only READY once a stable `@xterm/addon-fit` peers
 with it), bump `versions.env`, `make vendor` (re-fetch + rewrite `SHA256SUMS`),
 verify, commit.
 
-The Makefile sources your secrets file (the Makefile's `$ENVFILE`) for every
-recipe that needs a secret. Run `megh` directly only after sourcing it.
+The Makefile sources your secrets file (`$ENVFILE`, default
+`~/.config/megh/secrets.env`; export it to point elsewhere) for every recipe
+that needs a secret. Run `megh` directly only after sourcing it. `make deploy`
+needs `GCP_PROJECT=<project>`; it has no default on purpose.
 
 ## Commands
 
@@ -74,7 +76,10 @@ image), `make registry`.
 
 `megh up` defaults: `--provider` = `$MEGH_PROVIDER` else `runpod`; `--image` =
 `$MEGH_IMAGE` else `ghcr.io/<namespace>/megh-<flavor>:latest` (flavor default
-`slim`; use `--flavor full` for frontend);
+`slim`; use `--flavor full` for frontend). **No namespace is built in**: it comes
+from `registries[0].namespace` in megh.yaml or `$MEGH_GHCR_NAMESPACE`, and with
+neither there is no default image (`megh config` says so) rather than someone
+else's;
 `--pubkey` = `$MEGH_PUBKEY` else
 `~/.ssh/id_ed25519.pub`. `--volume`/`--dc` are still required (or
 `$MEGH_VOLUME_ID`/`$MEGH_DC`) since placement is account-specific.
