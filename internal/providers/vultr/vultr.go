@@ -41,6 +41,7 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 type Provider struct {
 	cfg  func() config.Config
 	base string
+	key  string // "" = read the environment
 	// attachTries and attachWait bound how long Up retries attaching the
 	// volume while the new instance is still being created.
 	attachTries int
@@ -48,11 +49,24 @@ type Provider struct {
 }
 
 // New returns the Vultr backend for the registration list in cmd/root.go.
+// It reads its key from VULTR_API_KEY (or providers.vultr.api_key_env).
 func New(cfg func() config.Config) *Provider {
 	return &Provider{cfg: cfg, base: apiBase, attachTries: 36, attachWait: 5 * time.Second}
 }
 
-var _ providers.Provider = (*Provider)(nil)
+// NewWithKey returns a Vultr backend that authenticates with key instead of
+// the environment, so one web request's key is never another's. An empty key
+// behaves like New.
+func NewWithKey(cfg func() config.Config, key string) *Provider {
+	p := New(cfg)
+	p.key = key
+	return p
+}
+
+var (
+	_ providers.Provider = (*Provider)(nil)
+	_ providers.Locator  = (*Provider)(nil)
+)
 
 // Name is "vultr".
 func (*Provider) Name() string { return "vultr" }
@@ -72,7 +86,7 @@ type apiError struct {
 func (e *apiError) Error() string { return fmt.Sprintf("vultr: HTTP %d: %s", e.Status, e.Message) }
 
 func (p *Provider) do(ctx context.Context, method, path string, body, out any) error {
-	tok := os.Getenv(cmp.Or(p.settings().APIKeyEnv, "VULTR_API_KEY"))
+	tok := cmp.Or(p.key, os.Getenv(cmp.Or(p.settings().APIKeyEnv, "VULTR_API_KEY")))
 	if tok == "" {
 		return fmt.Errorf("%w: vultr has no API key (set VULTR_API_KEY, or providers.vultr.api_key_env in megh.yaml)", providers.ErrNotConfigured)
 	}
@@ -149,26 +163,52 @@ func (p *Provider) plans(ctx context.Context) ([]plan, error) {
 }
 
 // pickPlan is the cheapest CPU plan sold in region with at least the
+// requested vCPU, RAM and disk.
+func pickPlan(plans []plan, region string, vcpu, ramGiB, diskGiB int) (plan, error) {
+	best, ok := cheapestByRegion(plans, vcpu, ramGiB, diskGiB)[region]
+	if !ok {
+		return plan{}, fmt.Errorf("vultr sells no CPU plan in %s with %d vCPU, %d GB RAM and %d GB disk", region, vcpu, ramGiB, diskGiB)
+	}
+	return best, nil
+}
+
+// cheapestByRegion is, per region, the cheapest CPU plan with at least the
 // requested vCPU, RAM and disk. Plans ending in -v6 are IPv6-only and left
 // out, since the box's SSH and tailnet bring-up want IPv4.
-func pickPlan(plans []plan, region string, vcpu, ramGiB, diskGiB int) (plan, error) {
-	var best plan
-	found := false
+func cheapestByRegion(plans []plan, vcpu, ramGiB, diskGiB int) map[string]plan {
+	best := map[string]plan{}
 	for _, pl := range plans {
-		if !slices.Contains(planTypes, pl.Type) || strings.HasSuffix(pl.ID, "-v6") || !slices.Contains(pl.Locations, region) {
+		if !slices.Contains(planTypes, pl.Type) || strings.HasSuffix(pl.ID, "-v6") {
 			continue
 		}
 		if pl.VCPUCount < vcpu || pl.RAM < ramGiB*1024 || pl.Disk < diskGiB {
 			continue
 		}
-		if !found || pl.MonthlyCost < best.MonthlyCost {
-			best, found = pl, true
+		for _, r := range pl.Locations {
+			if cur, ok := best[r]; !ok || pl.MonthlyCost < cur.MonthlyCost {
+				best[r] = pl
+			}
 		}
 	}
-	if !found {
-		return plan{}, fmt.Errorf("vultr sells no CPU plan in %s with %d vCPU, %d GB RAM and %d GB disk", region, vcpu, ramGiB, diskGiB)
+	return best
+}
+
+// Offers lists every region selling a CPU plan that fits, with the plan Up
+// would pick there, cheapest first. The hourly price is the monthly one over
+// 730 hours, as List reports it.
+func (p *Provider) Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]providers.Offer, error) {
+	plans, err := p.plans(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return best, nil
+	var out []providers.Offer
+	for r, pl := range cheapestByRegion(plans, vcpu, ramGiB, diskGiB) {
+		out = append(out, providers.Offer{DC: r, Type: pl.ID, PerHr: pl.MonthlyCost / 730})
+	}
+	slices.SortFunc(out, func(a, b providers.Offer) int {
+		return cmp.Or(cmp.Compare(a.PerHr, b.PerHr), cmp.Compare(a.DC, b.DC))
+	})
+	return out, nil
 }
 
 // ubuntuID is the os_id of Ubuntu 24.04 x64, looked up rather than hardcoded.

@@ -75,6 +75,9 @@ megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; R
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 megh serve [--addr 127.0.0.1:8080] # the web control plane, locally; loopback only. Hosted copy: cmd/meghplane (SETUP.md §7)
+                                  # any one of RUNPOD_API_KEY / HCLOUD_TOKEN / VULTR_API_KEY opens it; a launch
+                                  # goes to the chosen volume's provider; Hetzner/Vultr regions are a price-list
+                                  # query (providers.Locator), RunPod's a probe
 ```
 
 Make wrappers: `make up NAME=.. VOLUME=.. DC=..`, `make list`, `make ssh [BOX=..]`,

@@ -56,8 +56,8 @@ func main() {
 		case err != nil:
 			log.Printf("meghplane: secret %s unreadable, browser keys only: %v", cfg.Serve.Secret, err)
 		default:
-			log.Printf("meghplane: secret %s holds runpod=%t tailscale=%t", cfg.Serve.Secret,
-				k.RunPod != "", k.TSClientID != "" && k.TSClientSecret != "")
+			log.Printf("meghplane: secret %s holds runpod=%t hetzner=%t vultr=%t tailscale=%t", cfg.Serve.Secret,
+				k.RunPod != "", k.Hetzner != "", k.Vultr != "", k.TSClientID != "" && k.TSClientSecret != "")
 		}
 	}
 	port := os.Getenv("PORT")

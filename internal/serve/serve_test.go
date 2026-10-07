@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"log"
@@ -18,6 +19,7 @@ import (
 const runpodKey = "rpa_SECRETKEY123"
 
 type fake struct {
+	name    string // "" = runpod
 	boxes   []providers.Box
 	listErr error
 	upOpts  *providers.Options
@@ -32,7 +34,7 @@ type result string
 
 func (r result) Summary() string { return string(r) }
 
-func (f *fake) Name() string         { return "runpod" }
+func (f *fake) Name() string         { return cmp.Or(f.name, "runpod") }
 func (f *fake) Mesh() providers.Mesh { return providers.Mesh{} }
 func (f *fake) List(context.Context) ([]providers.Box, error) {
 	return f.boxes, f.listErr
@@ -47,7 +49,7 @@ func (f *fake) Up(_ context.Context, o providers.Options) (providers.Result, err
 func (f *fake) Terminate(_ context.Context, id string) error        { f.killed = id; return nil }
 func (f *fake) Volumes(context.Context) ([]providers.Volume, error) { return f.vols, nil }
 func (f *fake) CreateVolume(_ context.Context, name string, size int, dc string) (*providers.Volume, error) {
-	v := providers.Volume{Provider: "runpod", ID: "vol-new", Name: name, DataCenter: dc, Size: size}
+	v := providers.Volume{Provider: f.Name(), ID: "vol-new", Name: name, DataCenter: dc, Size: size}
 	f.created = &v
 	return &v, nil
 }

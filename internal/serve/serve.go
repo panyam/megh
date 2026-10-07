@@ -33,16 +33,20 @@ import (
 	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/hetzner"
 	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers/vultr"
 	"github.com/panyam/megh/internal/tsapi"
 )
 
 // Request headers carrying the caller's credentials. Header names, not
 // cookies, so the browser never sends them on its own.
 const (
-	HeaderRunPodKey = "X-Megh-Runpod-Key"
-	HeaderTSID      = "X-Megh-Ts-Client-Id"
-	HeaderTSSecret  = "X-Megh-Ts-Client-Secret"
+	HeaderRunPodKey   = "X-Megh-Runpod-Key"
+	HeaderHcloudToken = "X-Megh-Hcloud-Token"
+	HeaderVultrKey    = "X-Megh-Vultr-Key"
+	HeaderTSID        = "X-Megh-Ts-Client-Id"
+	HeaderTSSecret    = "X-Megh-Ts-Client-Secret"
 )
 
 // csp allows nothing but this origin's own files: no inline script or style,
@@ -54,10 +58,21 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 's
 var web embed.FS
 
 // Keys are the credentials one request carried. They live for that request.
+// Each provider key is optional on its own; a request needs at least one.
 type Keys struct {
 	RunPod         string
+	Hetzner        string
+	Vultr          string
 	TSClientID     string
 	TSClientSecret string
+}
+
+// anyProvider reports whether k holds a key for at least one backend.
+func (k Keys) anyProvider() bool { return k.RunPod != "" || k.Hetzner != "" || k.Vultr != "" }
+
+// values is every key k holds, for scrubbing.
+func (k Keys) values() []string {
+	return []string{k.RunPod, k.Hetzner, k.Vultr, k.TSClientID, k.TSClientSecret}
 }
 
 // Server is the control plane. The zero value is not usable; build one with New.
@@ -84,6 +99,8 @@ type Server struct {
 func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
 	hdr := Keys{
 		RunPod:         r.Header.Get(HeaderRunPodKey),
+		Hetzner:        r.Header.Get(HeaderHcloudToken),
+		Vultr:          r.Header.Get(HeaderVultrKey),
 		TSClientID:     r.Header.Get(HeaderTSID),
 		TSClientSecret: r.Header.Get(HeaderTSSecret),
 	}
@@ -95,6 +112,8 @@ func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
 			s.Log.Printf("server keys unavailable, using the browser's: %v", err)
 		}
 		k.RunPod = cmp.Or(held.RunPod, hdr.RunPod)
+		k.Hetzner = cmp.Or(held.Hetzner, hdr.Hetzner)
+		k.Vultr = cmp.Or(held.Vultr, hdr.Vultr)
 		k.TSClientID = cmp.Or(held.TSClientID, hdr.TSClientID)
 		k.TSClientSecret = cmp.Or(held.TSClientSecret, hdr.TSClientSecret)
 	}
@@ -114,17 +133,31 @@ func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
 	}
 	resp["server"] = map[string]bool{
 		"runpod":    held.RunPod != "",
+		"hetzner":   held.Hetzner != "",
+		"vultr":     held.Vultr != "",
 		"tailscale": held.TSClientID != "" && held.TSClientSecret != "",
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// New returns a Server backed by RunPod with each request's own key.
+// New returns a Server whose backends are the providers each request holds a
+// key for: RunPod, Hetzner and Vultr, in that order.
 func New(cfg config.Config) *Server {
+	cfgFn := func() config.Config { return cfg }
 	return &Server{
 		Config: cfg,
 		Backends: func(k Keys) []providers.Provider {
-			return []providers.Provider{runpod.NewWithKey(k.RunPod)}
+			var ps []providers.Provider
+			if k.RunPod != "" {
+				ps = append(ps, runpod.NewWithKey(k.RunPod))
+			}
+			if k.Hetzner != "" {
+				ps = append(ps, hetzner.NewWithToken(cfgFn, k.Hetzner))
+			}
+			if k.Vultr != "" {
+				ps = append(ps, vultr.NewWithKey(cfgFn, k.Vultr))
+			}
+			return ps
 		},
 		Tailscale: func(k Keys) func() (*tsapi.Client, error) {
 			if k.TSClientID == "" || k.TSClientSecret == "" {
@@ -235,8 +268,8 @@ type apiFunc func(r *http.Request, svc *lifecycle.Service) (any, error)
 func (s *Server) api(f apiFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		k, scrub := s.keysFor(r)
-		if k.RunPod == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no RunPod key: none stored on the server and none on this request; paste your keys into the page"})
+		if !k.anyProvider() {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no provider key (RUNPOD_API_KEY, HCLOUD_TOKEN or VULTR_API_KEY): none stored on the server and none on this request; paste your keys into the page"})
 			return
 		}
 		if r.Method == http.MethodPost && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -268,7 +301,7 @@ func (s *Server) api(f apiFunc) http.HandlerFunc {
 func scrubber(sets ...Keys) func(string) string {
 	var secrets []string
 	for _, k := range sets {
-		for _, v := range []string{k.RunPod, k.TSClientID, k.TSClientSecret} {
+		for _, v := range k.values() {
 			if len(v) >= 4 {
 				secrets = append(secrets, v)
 			}
@@ -301,6 +334,7 @@ func decode(r *http.Request, v any) error {
 // BoxView is one box as the page shows it.
 type BoxView struct {
 	Name      string           `json:"name"`
+	Provider  string           `json:"provider"`
 	ID        string           `json:"id"`
 	Status    string           `json:"status"`
 	DC        string           `json:"dc"`
@@ -310,20 +344,43 @@ type BoxView struct {
 	Tunnel    string           `json:"tunnel,omitempty"`
 }
 
+// boxes lists the boxes on every backend the request holds a key for. One
+// backend failing does not hide the others: its error goes to the log, and
+// the call fails only when every backend did.
 func (s *Server) boxes(r *http.Request, svc *lifecycle.Service) (any, error) {
-	boxes, err := svc.List(r.Context(), "", false)
-	if err != nil {
-		return nil, err
+	views := []BoxView{}
+	var firstErr error
+	failed := 0
+	for _, p := range svc.Providers {
+		boxes, err := svc.List(r.Context(), p.Name(), false)
+		if err != nil {
+			fmt.Fprintf(svc.Err, "%s: %v\n", p.Name(), err)
+			firstErr = cmp.Or(firstErr, err)
+			failed++
+			continue
+		}
+		for _, b := range boxes {
+			shell, tunnel := lifecycle.SSHCommands(b)
+			views = append(views, BoxView{
+				Name: b.DisplayName(), Provider: p.Name(), ID: b.ID, Status: b.Status, DC: b.DataCenter,
+				CostPerHr: b.CostPerHr, Links: lifecycle.BoxLinks(s.Config, b), SSH: shell, Tunnel: tunnel,
+			})
+		}
 	}
-	views := make([]BoxView, 0, len(boxes))
-	for _, b := range boxes {
-		shell, tunnel := lifecycle.SSHCommands(b)
-		views = append(views, BoxView{
-			Name: b.DisplayName(), ID: b.ID, Status: b.Status, DC: b.DataCenter,
-			CostPerHr: b.CostPerHr, Links: lifecycle.BoxLinks(s.Config, b), SSH: shell, Tunnel: tunnel,
-		})
+	if failed > 0 && failed == len(svc.Providers) {
+		return nil, firstErr
 	}
 	return views, nil
+}
+
+// defaultProvider is megh.yaml's default backend when the request holds a key
+// for it, else the first backend it does hold a key for.
+func (s *Server) defaultProvider(svc *lifecycle.Service) string {
+	name := cmp.Or(s.Config.DefaultProvider, "runpod")
+	if _, err := svc.Provider(name); err != nil && len(svc.Providers) > 0 {
+		return svc.Providers[0].Name()
+	}
+	return name
 }
 
 // boxName is a valid box name: one DNS label, since it becomes the box's
@@ -332,15 +389,17 @@ var boxName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 
 // VolumeView is one scratch volume as the launch form offers it.
 type VolumeView struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	DC     string `json:"dc"`
-	SizeGB int    `json:"sizeGB"`
+	Provider string `json:"provider"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	DC       string `json:"dc"`
+	SizeGB   int    `json:"sizeGB"`
 }
 
-// volumes lists the scratch volumes a box can launch onto, and which one
-// megh.yaml names as the default. A box can only attach a volume in its own
-// data center, so picking a volume is how the page picks a region.
+// volumes lists the scratch volumes a box can launch onto, on every backend
+// the request holds a key for, which one megh.yaml names as the default, and
+// those backends. A box can only attach a volume in its own data center, and
+// on its own provider, so picking a volume picks both.
 func (s *Server) volumes(r *http.Request, svc *lifecycle.Service) (any, error) {
 	vols, errs := svc.Volumes(r.Context())
 	if len(vols) == 0 && len(errs) > 0 {
@@ -348,11 +407,18 @@ func (s *Server) volumes(r *http.Request, svc *lifecycle.Service) (any, error) {
 	}
 	views := make([]VolumeView, 0, len(vols))
 	for _, v := range vols {
-		views = append(views, VolumeView{ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size})
+		views = append(views, VolumeView{Provider: v.Provider, ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size})
 	}
+	names := make([]string, 0, len(svc.Providers))
+	for _, p := range svc.Providers {
+		names = append(names, p.Name())
+	}
+	def := s.defaultProvider(svc)
 	return map[string]any{
-		"volumes": views,
-		"default": s.Config.Provider("runpod").DefaultVolume,
+		"volumes":   views,
+		"default":   s.Config.Provider(def).DefaultVolume,
+		"providers": names,
+		"provider":  def,
 	}, nil
 }
 
@@ -380,7 +446,7 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if req.Flavor != "" && !contains(s.Config.Flavors, req.Flavor) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("unknown flavor %q", req.Flavor)}
 	}
-	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor}
+	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor, Provider: s.defaultProvider(svc)}
 	if req.VCPU != 0 {
 		size, ok := boxSizes[req.VCPU]
 		if !ok {
@@ -389,13 +455,13 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 		up.VCPU, up.RAMGiB, up.DiskGiB = req.VCPU, size.ram, size.disk
 	}
 	if req.Volume != "" {
-		// Only a volume that exists, and the box goes to its data center: a pod
-		// can only attach a volume in its own DC.
+		// Only a volume that exists, and the box goes to its provider and data
+		// center: a box can only attach a volume there.
 		vols, _ := svc.Volumes(r.Context())
 		found := false
 		for _, v := range vols {
 			if v.ID == req.Volume {
-				up.VolumeID, up.DataCenter, found = v.ID, v.DataCenter, true
+				up.Provider, up.VolumeID, up.DataCenter, found = v.Provider, v.ID, v.DataCenter, true
 				break
 			}
 		}
@@ -427,18 +493,40 @@ func (s *Server) down(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if req.Name == "" {
 		return nil, &apiError{http.StatusBadRequest, "name the box to terminate"}
 	}
-	prov, box, err := svc.Find(r.Context(), "", req.Name)
+	prov, box, err := s.findBox(r, svc, req.Name)
 	if err != nil {
-		var nf *providers.NotFoundError
-		if errors.As(err, &nf) {
-			return nil, &apiError{http.StatusNotFound, err.Error()}
-		}
 		return nil, err
 	}
 	if err := svc.Down(r.Context(), prov, *box, lifecycle.DownOptions{}); err != nil {
 		return nil, err
 	}
 	return map[string]string{"terminated": box.DisplayName()}, nil
+}
+
+// findBox finds a box by name on every backend the request holds a key for.
+// The same name on two backends is refused rather than guessed, since the
+// caller is about to terminate it.
+func (s *Server) findBox(r *http.Request, svc *lifecycle.Service, name string) (providers.Provider, *providers.Box, error) {
+	var prov providers.Provider
+	var box *providers.Box
+	for _, p := range svc.Providers {
+		_, b, err := svc.Find(r.Context(), p.Name(), name)
+		var nf *providers.NotFoundError
+		if errors.As(err, &nf) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		if box != nil {
+			return nil, nil, &apiError{http.StatusConflict, fmt.Sprintf("%q is a box on both %s and %s; terminate it with megh down --provider", name, prov.Name(), p.Name())}
+		}
+		prov, box = p, b
+	}
+	if box == nil {
+		return nil, nil, &apiError{http.StatusNotFound, (&providers.NotFoundError{Name: name}).Error()}
+	}
+	return prov, box, nil
 }
 
 func contains(list []string, s string) bool {
