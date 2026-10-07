@@ -1,0 +1,16 @@
+[
+  {"name": "one per line", "in": "RUNPOD_API_KEY=rpa_1\nMEGH_TAILSCALE_CLIENT_ID=id1", "want": {"runpod": "rpa_1", "tsid": "id1"}},
+  {"name": "export prefix", "in": "export RUNPOD_API_KEY=rpa_1", "want": {"runpod": "rpa_1"}},
+  {"name": "export with tabs", "in": "export\t\tRUNPOD_API_KEY=rpa_1", "want": {"runpod": "rpa_1"}},
+  {"name": "several on a line", "in": "export RUNPOD_API_KEY=rpa_1 MEGH_TAILSCALE_CLIENT_ID=id1 MEGH_TAILSCALE_CLIENT_SECRET=s1", "want": {"runpod": "rpa_1", "tsid": "id1", "tssecret": "s1"}},
+  {"name": "semicolons", "in": "RUNPOD_API_KEY=rpa_1; export MEGH_TAILSCALE_CLIENT_ID=id1;", "want": {"runpod": "rpa_1", "tsid": "id1"}},
+  {"name": "double quotes", "in": "RUNPOD_API_KEY=\"rpa_1\"", "want": {"runpod": "rpa_1"}},
+  {"name": "single quotes", "in": "RUNPOD_API_KEY='rpa_1'", "want": {"runpod": "rpa_1"}},
+  {"name": "quoted space and hash", "in": "RUNPOD_API_KEY=\"a b#c\"", "want": {"runpod": "a b#c"}},
+  {"name": "trailing comment", "in": "RUNPOD_API_KEY=rpa_1 # runpod, rotated monthly", "want": {"runpod": "rpa_1"}},
+  {"name": "comment line", "in": "# RUNPOD_API_KEY=old\nRUNPOD_API_KEY=new", "want": {"runpod": "new"}},
+  {"name": "hash inside a value", "in": "RUNPOD_API_KEY=rpa#1", "want": {"runpod": "rpa#1"}},
+  {"name": "unknown names ignored", "in": "OPENAI_API_KEY=x\nRUNPOD_API_KEY=rpa_1", "want": {"runpod": "rpa_1"}},
+  {"name": "CRLF", "in": "RUNPOD_API_KEY=rpa_1\r\nMEGH_TAILSCALE_CLIENT_ID=id1\r\n", "want": {"runpod": "rpa_1", "tsid": "id1"}},
+  {"name": "blank and junk", "in": "\n  \nexport\nfoo bar\n", "want": {}}
+]

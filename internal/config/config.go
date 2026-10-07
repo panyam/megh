@@ -213,6 +213,11 @@ type Serve struct {
 	// app refuses to start with this empty, so a missing list cannot mean
 	// "anyone IAP admits".
 	AllowedEmails []string `yaml:"allowed_emails"`
+	// Secret names a Secret Manager secret (short name, or a full
+	// projects/.../secrets/... name) whose latest version holds the
+	// control-plane note. Keys found there are used for every request; any
+	// it lacks come from the browser. Empty means browser keys only.
+	Secret string `yaml:"secret"`
 }
 
 // Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)
