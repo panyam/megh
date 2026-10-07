@@ -107,7 +107,7 @@ func (s *Service) boxEnv(base map[string]string) map[string]string {
 	if len(s.Config.Persist) > 0 {
 		set("MEGH_PERSIST", strings.Join(s.Config.Persist, ","))
 	}
-	// Home->volume path maps (e.g. ~/newstack -> repos/newstack) so local paths
+	// Home->volume path maps (e.g. ~/projects -> repos/projects) so local paths
 	// work on the box. Passed as MEGH_SYMLINKS ("link:target,..."); order-free.
 	if len(s.Config.Symlinks) > 0 {
 		var pairs []string
@@ -272,7 +272,7 @@ func (s *Service) tsClient() (*tsapi.Client, error) {
 // TS_AUTHKEY is gone from the environment there is nothing to fall back TO, so
 // saying "falling back to the static key" would point at something that does
 // not exist. The box still launches either way: the control machine drives it
-// over public SSH, and the tailnet is the phone's path.
+// over public SSH, and the tailnet is a phone's path.
 func (s *Service) warnNoMintedKey() {
 	if os.Getenv("TS_AUTHKEY") != "" {
 		fmt.Fprintln(s.errOut(), "megh: falling back to the static TS_AUTHKEY")

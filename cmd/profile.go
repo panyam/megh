@@ -187,7 +187,7 @@ func init() {
 // your account, purely for a once-per-device step, is a worse trade than using
 // the tool that already owns GitHub auth.
 //
-// This exists for the phone. Keys are never copied between machines, so a new
+// This exists for phones. Keys are never copied between machines, so a new
 // device mints its own and has to enrol it, and pasting a base64 blob into a
 // mobile browser is the most annoying step in the whole bootstrap.
 func registerGHKey(pubFile, title string) error {

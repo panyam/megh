@@ -18,8 +18,9 @@ var (
 	bwKey    = fakeKey("bitwarden-key-blob", "bitwarden")
 )
 
-// A box launched from the phone must also let in the Bitwarden-held key, one key
-// per line, because that is what the entrypoint appends to authorized_keys.
+// A box launched from one device must also let in a key held elsewhere (say a
+// password manager's SSH agent), one key per line, because that is what the
+// entrypoint appends to authorized_keys.
 func TestWithExtraPubKeysAppendsOnePerLine(t *testing.T) {
 	got, err := withExtraPubKeys(phoneKey, []string{" " + bwKey + " ", ""})
 	if err != nil {

@@ -62,7 +62,7 @@ var itermSaveCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("saved iTerm profile %q to %s\n", args[0], path)
-		fmt.Println("commit that file in dotfiles; run `megh iterm load` on other Macs")
+		fmt.Println("commit that file in dotfiles; run `megh iterm load` on your other Macs")
 		return nil
 	},
 }

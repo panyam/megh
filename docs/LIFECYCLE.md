@@ -13,12 +13,12 @@ by hand on a box and snapshotted.
 flowchart LR
   edit["edit env/base/provision.sh<br>(or entrypoint / Dockerfile)"] --> push["git push main"]
   push -->|"only if env/** changed"| ci["GitHub Action: build-env<br>build-arg MEGH_BUILD_REF = git sha"]
-  ci --> ghcr["ghcr.io/panyam/megh-full latest<br>plus a per-sha tag, private, amd64"]
+  ci --> ghcr["ghcr.io/NAMESPACE/megh-full latest<br>plus a per-sha tag, private, amd64"]
   ghcr -.->|"RunPod pulls via<br>Container Registry Auth"| pod["RunPod pod"]
 ```
 
 CLI-only changes (`cmd/`, `internal/`) do **not** trigger a build; they run on
-your Mac, not in the image.
+your control machine, not in the image.
 
 ## 2. Profile setup (once per machine / identity)
 
@@ -36,27 +36,27 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-  participant Mac
+  participant Control as Control machine
   participant RunPod
   participant VM as Box
   participant GitHub
 
-  Note over Mac: megh up
-  Mac->>RunPod: create pod with image, pod env, and box pubkey
+  Note over Control: megh up
+  Control->>RunPod: create pod with image, pod env, and box pubkey
   RunPod->>VM: pull image and boot
   VM->>VM: entrypoint mounts volume, starts tailscale and web surfaces
 
-  Note over Mac: megh hydrate
-  Mac->>VM: forward gh keys and write ssh config aliases
+  Note over Control: megh hydrate
+  Control->>VM: forward gh keys and write ssh config aliases
   VM->>GitHub: clone repos into workspace repos via gh alias
   GitHub-->>VM: repo contents
 
-  Note over Mac: megh ssh
-  Mac->>VM: connect with box key, forward gh keys, tunnel surfaces
+  Note over Control: megh ssh
+  Control->>VM: connect with box key, forward gh keys, tunnel surfaces
   VM->>GitHub: git push and pull with forwarded key
 
-  Note over Mac: megh down
-  Mac->>RunPod: delete pod, volume survives
+  Note over Control: megh down
+  Control->>RunPod: delete pod, volume survives
 ```
 
 Repos are **not** cloned automatically by `megh up`; `megh hydrate` does it (it
@@ -95,13 +95,13 @@ box if you explicitly declare them as `box_envs`.
 
 ```mermaid
 flowchart TB
-  subgraph Mac["Your Mac (control plane)"]
+  subgraph Control["Control machine"]
     prof["~/.megh/profile:<br>box.key + gh private keys"]
     env["environment:<br>RUNPOD_API_KEY, GH_MEGH_TOKEN,<br>box_envs (OPENAI_API_KEY, ...)"]
   end
   subgraph Box["RunPod VM (data plane)"]
     pub["~/.ssh/gh-*.pub + config aliases"]
-    penv["pod env: box_envs,<br>TS_AUTHKEY, MEGH_SESSIONS_TOKEN"]
+    penv["pod env: box_envs,<br>TS_AUTHKEY"]
     repos["/workspace/repos"]
   end
   GitHub["GitHub"]
@@ -115,12 +115,12 @@ flowchart TB
 
 | Thing | On the box? | How |
 |---|---|---|
-| Box SSH key (private) | no | on your Mac; used to connect |
+| Box SSH key (private) | no | on the control machine; used to connect |
 | GitHub SSH keys (private) | **no** | forwarded via scoped ssh-agent |
 | GitHub SSH keys (public) | yes | written to `~/.ssh/gh-*.pub` + config aliases |
-| `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` | no | used by megh on the Mac |
+| `RUNPOD_API_KEY`, `GH_MEGH_TOKEN` | no | used by megh on the control machine |
 | Service API keys (`box_envs`) | yes | copied into pod env at `megh up` |
-| `TS_AUTHKEY`, `MEGH_SESSIONS_TOKEN` | yes | pod env (tailscale / session flush) |
+| `TS_AUTHKEY` | yes | pod env (tailscale) |
 
 ## 5. State and persistence
 

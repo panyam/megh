@@ -4,7 +4,7 @@ The end-to-end operational flow for launching and reaching a dev box, plus the
 provider realities learned the hard way. Read alongside `SETUP.md` (first-run
 specifics) and `DESIGN.md` (why the architecture is shaped this way).
 
-## Secrets (in `~/personal/envvars`, never in the repo)
+## Secrets (in your secrets file, never in the repo)
 
 The Makefile sources this file for every recipe that needs a secret.
 
@@ -21,7 +21,7 @@ The Makefile sources this file for every recipe that needs a secret.
 
 The image is a build output, never a hand-mutated snapshot. Source of truth is
 `env/base/provision.sh`; the `build-env` GitHub Action builds it for
-`linux/amd64` and pushes to GHCR as `ghcr.io/panyam/megh-full:latest` (private).
+`linux/amd64` and pushes to GHCR as `ghcr.io/<namespace>/megh-full:latest` (private).
 
 ```
 make image        # git push origin HEAD -> triggers the build (~15 min first time)
@@ -29,7 +29,7 @@ make registry     # confirm the tag landed (needs GH_MEGH_TOKEN)
 ```
 
 RunPod pulls the private image using a Container Registry Auth credential
-(ghcr.io / panyam / a read:packages PAT), added once in the RunPod console. The
+(ghcr.io / <your GitHub user> / a read:packages PAT), added once in the RunPod console. The
 launcher attaches its id automatically (`registryAuthID` looks it up by host).
 
 ## 2. Placement: find storage + CPU in a close-enough region
@@ -42,8 +42,8 @@ must run in that same DC. So you need a DC that has **both** volume support
   DC, but "defined" is not "rentable." The only definitive signal is a real rent
   attempt: success, or `no longer any instances`. A failed attempt creates
   nothing and costs nothing, so iterating across DCs is safe.
-- **CPU capacity flaps and varies by DC.** US-TX-3 was dry across every flavor;
-  US-CA-2 had capacity.
+- **CPU capacity flaps and varies by DC and over time.** One DC can be dry across
+  every flavor while another rents fine.
 
 `megh regions` automates the search. It reads the candidate DCs from the pods
 schema in RunPod's published OpenAPI document, which is the closest thing to an
@@ -53,7 +53,7 @@ here named US-MO-2 and US-NE-1, which RunPod no longer accepts).
 ```
 megh regions list                       # candidate DCs, marking where volumes already are
 megh regions probe                      # rent-and-terminate in each; report who took it
-megh regions probe --dc US-CA-2 --first # just check one, stop at the first that rents
+megh regions probe --dc <dc> --first     # just check one, stop at the first that rents
 megh regions place --name scratch --size 100   # probe, then create the volume where it rents
 ```
 
@@ -65,14 +65,14 @@ probe pod exists at any moment. If one is ever left behind the command says so
 loudly and prints the `megh down` line for it.
 
 Placement by hand still works if you prefer: create the volume in a DC that
-rents CPU (US-CA-2 worked), and launch there. If a launch returns `no
+rents CPU (check with `megh regions probe`), and launch there. If a launch returns `no
 instances`, the DC went dry; move the volume (delete + recreate) to another and
 retry.
 
 Volume ops (one global view across providers):
 ```
 megh storage list
-megh storage create --dc US-CA-2 --size 100 --name megh-scratch-ca
+megh storage create --dc <dc> --size 100 --name megh-scratch
 megh storage rm <id>            # must be detached from all boxes first
 ```
 A volume can be mounted by multiple boxes in the same DC at once (shared scratch
@@ -197,8 +197,8 @@ Two things to check FIRST, both cheap and both able to sink the plan:
   dangle in a container, and the entrypoint REPLACES a dangling symlink rather
   than skipping it: read-only the `ln` fails and kills PID 1 under
   `set -euo pipefail`, read-write it rewrites the host's copy.
-- A scoped secrets file is only scoped if you read it. `box-envvars` carried a
-  live `RUNPOD_API_KEY` for months under a header claiming it held no
+- A scoped secrets file is only scoped if you read it. An every-box env file once carried a
+  live provider key for months under a header claiming it held no
   credentials, and `files:` copied it to every box. Check contents, not intent.
 
 ## Putting a running box on the mesh (no rebuild)
