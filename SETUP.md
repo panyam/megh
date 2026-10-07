@@ -281,6 +281,44 @@ has taken a box from `up` to `ssh` successfully. Revoke afterwards, not before.
 terminates pods and mints a fresh API key, and `megh up` injects whatever pubkey
 you hand it, so a new control device is a re-mint rather than a recovery.
 
+## 7. meghplane: the control plane as a web page
+
+`cmd/meghplane` is the page `megh serve` runs locally, hosted on App Engine
+standard behind IAP, so any device with a browser can list, launch and
+terminate boxes. **It stores no keys.** You paste your control-plane note into
+the page; the browser keeps it in session storage for that tab and sends the
+keys as headers on each request, and the server drops them when the request
+ends. Closing the tab forgets them.
+
+It checks who you are twice. IAP signs you in at Google's edge, and the app
+then verifies IAP's signed header itself (audience, issuer, signature, expiry,
+via oneauth) and admits only the emails in `serve.allowed_emails`. With that
+list empty, or IAP's keys unreachable, it refuses to start.
+
+**One-time setup, in the console for the project:**
+
+1. App Engine app created (any region; it cannot change later).
+2. Security > Identity-Aware Proxy: configure the OAuth consent screen, turn
+   IAP on for App Engine, and add your account as **IAP-secured Web App User**.
+3. Billing > Budgets: a $1 alert. Nothing here should cost money (one F1
+   instance, max), so the alert is how a mistake gets noticed.
+
+**Deploy** from a checkout with your private `megh.yaml` at the repo root
+(gitignored, but `.gcloudignore` uploads it) holding `serve.allowed_emails`:
+
+```sh
+cp ~/dotfiles/megh/megh.yaml .
+gcloud app deploy --project <project-id>
+```
+
+The app reads its defaults (data center, volume, `extra_pubkeys`, tailnet)
+from that file. Boxes it launches carry only `extra_pubkeys`, since the
+server has no key of its own, so that list must hold a key you can actually
+use (SETUP §6.7).
+
+**Old deploy images pile up.** Each deploy stores a build image; add a cleanup
+policy in Artifact Registry keeping the last few so storage stays free.
+
 ## What is not here yet
 
 - The mesh (Headscale/Tailscale) so you reach the box by name without RunPod's
