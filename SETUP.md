@@ -186,7 +186,15 @@ One command, and it is the same one on every machine:
 curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | sh
 ```
 
-The repo and its releases are public, so the script and the binary need no auth.
+or, through the `gh` login from step 6.2, which also works if the repo is ever
+made private:
+
+```sh
+gh api repos/panyam/megh/contents/install.sh -H 'Accept: application/vnd.github.raw' | sh
+```
+
+With `gh` logged in the installer downloads the release through it; otherwise
+it uses plain `curl`, which only works while the repo is public.
 
 It picks the artifact for the machine, verifies the checksum, installs to
 `$PREFIX/bin` on Termux (`~/.local/bin` elsewhere), and writes
@@ -194,13 +202,12 @@ It picks the artifact for the machine, verifies the checksum, installs to
 upgrade. `MEGH_TARGET` and `MEGH_INSTALL_DIR` override the guesses.
 
 The **config** is the one part that still needs auth. A real `megh.yaml` names
-every repo you work on, so it lives in the private dotfiles repo. The installer
-fetches it with `gh` when you are logged in, and otherwise installs
-`megh.yaml.example` and says so, which still leaves you a working binary.
-`MEGH_CONFIG_REPO` and `MEGH_CONFIG_PATH` point it elsewhere.
-
-So step 6.2 is only needed for the config and for `--register` later; the install
-itself works without it.
+every repo you work on, so it lives in a private repo of yours: by default
+`<your GitHub login>/dotfiles`, file `megh/megh.yaml`. The installer fetches it
+with `gh` when you are logged in, and otherwise installs `megh.yaml.example` and
+says so, which still leaves you a working binary. `MEGH_CONFIG_REPO` and
+`MEGH_CONFIG_PATH` point it elsewhere, for both the installer and
+`megh config pull`.
 
 Taking the **android** build rather than linux/arm64 matters and the script
 handles it: the arch is the same, but Go's static linux binary is `ET_EXEC` and
