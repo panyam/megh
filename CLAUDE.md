@@ -1,7 +1,8 @@
 # CLAUDE.md — megh
 
-Disposable cloud dev boxes for agentic coding. Provider-abstracted CLI; RunPod
-first (US), Hetzner next. Read `DESIGN.md` for the settled architecture and
+Disposable cloud dev boxes for agentic coding. Provider-abstracted CLI with four
+backends: RunPod (CPU pods), Hetzner and Vultr (VMs sized per launch), and local
+docker. Read `DESIGN.md` for the settled architecture and
 `WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run, and its §6
 covers using a phone as the control device (Termux, re-minted credentials, the
 new-box-key gotcha).
@@ -355,7 +356,14 @@ persisted so this survives rebuilds. Check the whole set with
 ## Architecture (one-liners; see DESIGN.md)
 
 - Dev env is a container image built from `env/base/provision.sh` (single source
-  of truth); two artifacts, container (RunPod) + VM (Hetzner, later).
+  of truth). Every backend runs that one image: RunPod as a pod, docker as a local
+  container, and Hetzner/Vultr as a VM whose only job is to run it under Docker
+  (`internal/providers/vmhost` renders that VM's first-boot script). The separate
+  VM image DESIGN.md once planned was not needed.
+- A new backend implements `providers.Provider`, registers in `cmd/root.go`, and
+  returns `providers.ErrNotConfigured` when it has no credential, so the global
+  views (`megh storage list`, the portal) skip it quietly for anyone who never set
+  it up.
 - Two flavors from that one script via `MEGH_SLIM`: `base` (full, Playwright +
   code-server baked) and `slim` (lean, fast pull; no frontend stack; code-server
   background-installs to the box's local disk on boot). `megh up --flavor slim`.
@@ -451,6 +459,20 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Gotchas (things that bit us)
 
+- **RunPod's CPU pool can be dry everywhere at once.** On 2026-10-07 every US data
+  center (and the console) said no capacity at every size. megh reports it as
+  `runpod.ErrNoCapacity` with the size, DC and what to try, rather than RunPod's
+  repeated raw lines, and `ProbeResult.OutOfCapacity` checks that sentinel first
+  (its text no longer carries RunPod's wording). When the whole pool is dry the
+  answer is another backend, which is why Hetzner and Vultr exist.
+- **Compare VM providers on current prices, not on reputation.** Hetzner's April
+  and June 2026 repricing roughly doubled its US CPX/CCX lines, which left Vultr
+  at about half Hetzner's hourly price for 4 vCPU in the US, with 9 US regions to
+  Hetzner's 2. Prices move; re-check before choosing a default.
+- **A Vultr volume arrives blank; a Hetzner one arrives formatted and mounted.**
+  So only the Vultr path runs `vmhost.PrepareVolume`, the one step in megh that
+  can destroy data: exact size match, `blkid -p` exit 2 is the only "format", any
+  other answer stops the boot. Later boxes on the same volume only mount it.
 - **A misindented `megh.yaml` block is silently ignored, not an error.** The
   parser drops unknown keys, so `serve:` indented under `requires:` became
   `requires.serve` and meghplane saw no allowlist (it refused to start, which is
