@@ -36,7 +36,7 @@ func Find(ctx context.Context, p Provider, idOrName string) (*Box, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("no box matching %q (try `megh list`)", idOrName)
+		return nil, &NotFoundError{Name: idOrName}
 	case 1:
 		return &matches[0], nil
 	default:
@@ -46,6 +46,15 @@ func Find(ctx context.Context, p Provider, idOrName string) (*Box, error) {
 		}
 		return nil, fmt.Errorf("%q is ambiguous across %s; pass an id", idOrName, strings.Join(ids, ", "))
 	}
+}
+
+// NotFoundError is Find's error when no managed box matches. It is a type so
+// a caller can tell "no such box" (a 404 to the web control plane) from the
+// provider failing to answer at all.
+type NotFoundError struct{ Name string }
+
+func (e *NotFoundError) Error() string {
+	return fmt.Sprintf("no box matching %q (try `megh list`)", e.Name)
 }
 
 // Sole returns the only megh-managed box when exactly one exists.

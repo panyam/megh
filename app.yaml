@@ -1,0 +1,12 @@
+# meghplane: the web control plane on App Engine standard. SETUP.md section 7.
+# Deploy from a checkout holding your private megh.yaml at the repo root (it is
+# gitignored but .gcloudignore lets it upload): gcloud app deploy --project <id>
+runtime: go126
+main: ./cmd/meghplane
+instance_class: F1        # the free-tier class
+automatic_scaling:
+  max_instances: 1        # traffic can never add a paid instance
+handlers:
+  - url: /.*
+    script: auto
+    secure: always        # http redirects to https
