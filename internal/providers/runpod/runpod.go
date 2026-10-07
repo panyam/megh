@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -118,7 +119,7 @@ func up(ctx context.Context, o providers.Options) (*Result, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("runpod: HTTP %d: %s", resp.StatusCode, string(body))
+		return nil, createError(resp.StatusCode, body, o)
 	}
 
 	// Tolerate id at the top level or nested under "pod" across API versions.
@@ -157,6 +158,28 @@ proxy; only SSH (key auth) is public.
 // RunPod ties RAM to the flavor class, not a free field: c=2GB, g=4GB, m=8GB per
 // vCPU. We offer gen5 then gen3 of the chosen class and let availability decide,
 // so effective RAM is vcpu*classRatio (e.g. 4 vCPU general = 16 GB).
+// ErrNoCapacity means RunPod had no machine of the requested shape free in the
+// data center at that moment. It is transient and size-dependent, so callers
+// can suggest retrying or a smaller box rather than treating it as a fault.
+var ErrNoCapacity = errors.New("no capacity")
+
+// createError turns a failed create-pod reply into something a person can act
+// on. RunPod answers a capacity gap with one "no longer any instances available"
+// line per CPU flavor it tried, as an HTTP 500; that becomes ErrNoCapacity with
+// the shape, the data center and what to try. Anything else stays the raw reply.
+func createError(status int, body []byte, o providers.Options) error {
+	if strings.Contains(string(body), "no longer any instances available") {
+		dc := o.DataCenter
+		if dc == "" {
+			dc = "the volume's data center"
+		}
+		return fmt.Errorf("%w: RunPod has no CPU machine with %d vCPU free in %s right now (it tried all %d CPU types). "+
+			"Retry in a few minutes, ask for a smaller box (e.g. 2 vCPU), or check what rents with `megh regions probe --dc %s`",
+			ErrNoCapacity, o.VCPU, dc, len(cpuFlavorIDs(o.VCPU, o.RAMGiB)), dc)
+	}
+	return fmt.Errorf("runpod: HTTP %d: %s", status, string(body))
+}
+
 func cpuFlavorIDs(vcpu, ramGiB int) []string {
 	if vcpu <= 0 {
 		vcpu = 1

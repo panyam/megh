@@ -21,6 +21,7 @@ type fake struct {
 	boxes   []providers.Box
 	listErr error
 	upOpts  *providers.Options
+	upErr   error
 	killed  string
 }
 
@@ -35,6 +36,9 @@ func (f *fake) List(context.Context) ([]providers.Box, error) {
 }
 func (f *fake) Up(_ context.Context, o providers.Options) (providers.Result, error) {
 	f.upOpts = &o
+	if f.upErr != nil {
+		return nil, f.upErr
+	}
 	return result("launched " + o.Name), nil
 }
 func (f *fake) Terminate(_ context.Context, id string) error        { f.killed = id; return nil }
