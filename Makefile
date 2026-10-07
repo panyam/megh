@@ -179,7 +179,7 @@ clean: ## remove build artifacts
 
 # The GCP project hosting meghplane (SETUP.md section 7). No default: deploying
 # to the wrong project is not a mistake worth making easy.
-GCP_PROJECT ?=
+GCP_PROJECT ?= meghplane
 
 .PHONY: deploy
 deploy: checklinks
