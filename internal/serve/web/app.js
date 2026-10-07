@@ -206,6 +206,13 @@ document.addEventListener("DOMContentLoaded", () => {
     showLog("", false);
     showState();
   });
+  // Sign out forgets the keys, then asks IAP to drop its session cookie so the
+  // next visit signs in again. Locally (`megh serve`, no IAP) the query string
+  // is ignored and this just reloads the page.
+  $("signout").addEventListener("click", () => {
+    for (const k in HEADERS) set(k, "");
+    location.replace("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE");
+  });
   $("refresh").addEventListener("click", refresh);
   $("up").addEventListener("click", launch);
   showState();
