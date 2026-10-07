@@ -24,19 +24,46 @@ function set(k, v) {
   try { v ? sessionStorage.setItem(k, v) : sessionStorage.removeItem(k); } catch (e) {}
 }
 
-// parseKeys accepts the note as pasted: KEY=value lines, with or without
-// "export", with or without quotes. Unknown names are ignored.
+// parseKeys accepts the note as pasted: KEY=value assignments, several to a
+// line or one per line, with or without "export", quotes or comments. Unknown
+// names are ignored.
 function parseKeys(text) {
   const out = {};
-  for (let line of text.split(/\r?\n/)) {
-    line = line.trim().replace(/^export\s+/, "");
-    const eq = line.indexOf("=");
-    if (eq < 1) continue;
-    const name = line.slice(0, eq).trim();
-    let val = line.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, "$2");
-    if (STORE[name]) out[STORE[name]] = val;
+  for (const line of text.split(/\r?\n/)) {
+    for (const word of shellWords(line)) {
+      const eq = word.indexOf("=");
+      if (eq < 1) continue; // "export", or any other bare word
+      const name = word.slice(0, eq);
+      if (STORE[name]) out[STORE[name]] = word.slice(eq + 1);
+    }
   }
   return out;
+}
+
+// shellWords splits one line roughly as a shell would for simple assignments:
+// whitespace and ";" separate words, '...' and "..." group (the quotes are
+// dropped), and an unquoted "#" at the start of a word begins a comment. A "#"
+// inside a word is kept, since a key may contain one.
+function shellWords(line) {
+  const words = [];
+  let cur = "", inWord = false, quote = "";
+  for (const c of line) {
+    if (quote) {
+      if (c === quote) quote = "";
+      else cur += c;
+      continue;
+    }
+    if (c === "'" || c === '"') { quote = c; inWord = true; continue; }
+    if (c === "#" && !inWord) break;
+    if (c === " " || c === "\t" || c === ";") {
+      if (inWord) { words.push(cur); cur = ""; inWord = false; }
+      continue;
+    }
+    cur += c;
+    inWord = true;
+  }
+  if (inWord) words.push(cur);
+  return words;
 }
 
 function haveKeys() { return get("megh.runpod") !== ""; }
