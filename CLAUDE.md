@@ -56,6 +56,9 @@ megh mesh gc [name...]            # delete tailnet nodes whose box is gone (cont
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh regions list|probe|place     # find a DC that will actually rent (probe = real rent + immediate terminate)
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
+                                  # ON a box it runs locally; with no SSH agent (Tailscale console,
+                                  # webterm) it clones over https via gh's login (SETUP.md §7.2)
+megh config pull                  # fetch the private megh.yaml (via gh) into ~/.config/megh/megh.yaml
 megh profile create|use|list|show # profiles; profile gh add|list for GitHub identities
 megh config                       # resolved settings + which secrets are set
 megh registry ls                  # dev-env image tags
@@ -278,7 +281,10 @@ content. Targets may be files or dirs and may not exist until `megh hydrate` run
 `files:` copies LOCAL files onto a box over SSH (on `megh ssh`/`hydrate`, mode
 0600) — rc files and **secret** files that must not live in a repo or image
 (`local_path: box_path`). A `~/` box path is ephemeral (`/root`, re-copied each
-connect); a `/mnt/work/` path persists. **`files:` is the EVERY-BOX channel**, so a
+connect); a `/mnt/work/` path persists. **`files:` only runs from a control machine**
+(`megh ssh`/`hydrate` pushing over SSH), so a box launched from meghplane and entered
+through Tailscale's console never receives it: no `megh.yaml`, no `box-envvars`.
+`megh config pull` and a pasted note fill those in (SETUP.md §7.2). **`files:` is the EVERY-BOX channel**, so a
 provider credential placed there is elevated on every box megh touches, cloud pods
 included, and silently. A box that is your control plane may hold one deliberately
 (C3 was relaxed 2026-09-12), but elevate it through a channel scoped to the boxes
