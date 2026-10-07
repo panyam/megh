@@ -9,6 +9,7 @@
 #   make image REPO=panyam/megh
 #   make up PUBKEY_FILE=~/.ssh/id_panyam.pub VCPU=8 RAM=32
 
+NUM_LINKED_GOMODS=`cat go.mod | grep -v "^\/\/" | grep replace | wc -l | sed -e "s/ *//g"`
 SHELL := /bin/bash
 
 # Source personal env if present. `set +u` because that file may assume it.
