@@ -171,3 +171,15 @@ doctor: build ## probe a box's health (tailscale/surfaces/scratch); BOX=<name-or
 .PHONY: clean
 clean: ## remove build artifacts
 	rm -f bin/megh
+
+GCP_PROJECT ?= meghplane
+
+.PHONY: deploy
+deploy: checklinks
+	gcloud app deploy app.yaml --project $(GCP_PROJECT) --verbosity=info
+
+.PHONY: checklinks
+checklinks:
+	@if [ x"${NUM_LINKED_GOMODS}" != "x0" ]; then	\
+		echo "You are trying to deploy with symlinks. Remove them first and make sure versions exist" && false ;	\
+	fi
