@@ -32,6 +32,9 @@ needs `GCP_PROJECT=<project>`; it has no default on purpose.
 
 ```
 megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= tailnet host)
+                                  # --provider hetzner: a VM running the image under Docker, sized
+                                  # per launch (cheapest x86 type that fits); needs HCLOUD_TOKEN and
+                                  # a volume, which fixes the location (SETUP.md section 8)
                                   # runs anywhere the provider key is: holding it IS being the
                                   # control plane (C3), so there is nothing to declare
                                   # --provider docker runs it as a LOCAL container (see below)

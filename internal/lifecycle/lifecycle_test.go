@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -209,5 +211,25 @@ func TestMintWithNoTailscaleClientWarnsAndFallsBack(t *testing.T) {
 	}
 	if s.BootAuthKey(context.Background(), providers.Mesh{Vendor: "tailscale"}, "a") != "" {
 		t.Error("a backend that joins later never mints")
+	}
+}
+
+// volFail is a backend whose volume listing fails with err.
+type volFail struct {
+	fake
+	err error
+}
+
+func (v *volFail) Volumes(context.Context) ([]providers.Volume, error) { return nil, v.err }
+
+// A backend with no credential on this machine stays out of the global views;
+// any other failure is still reported.
+func TestVolumesSkipsUnconfiguredBackendsButReportsRealErrors(t *testing.T) {
+	quiet := &volFail{fake: fake{name: "hetzner"}, err: fmt.Errorf("%w: no token", providers.ErrNotConfigured)}
+	loud := &volFail{fake: fake{name: "runpod"}, err: errors.New("runpod: HTTP 500")}
+	s := &Service{Providers: []providers.Provider{quiet, loud}}
+	_, errs := s.Volumes(context.Background())
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "HTTP 500") {
+		t.Errorf("errs = %v", errs)
 	}
 }
