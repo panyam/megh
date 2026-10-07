@@ -1,6 +1,15 @@
 package providers
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrNotConfigured means a backend has no credential on this machine. The
+// global views (ListAll, VolumesAll, `megh storage list`) skip such a backend
+// silently, so every user does not get a warning about every provider they
+// never set up; asking for it by name still reports the error.
+var ErrNotConfigured = errors.New("provider not configured")
 
 // All returns every registered backend, ordered by name so output is stable.
 func All() []Provider {
@@ -29,7 +38,9 @@ func ListAll(ctx context.Context) ([]Box, []error) {
 	for _, p := range All() {
 		got, err := p.List(ctx)
 		if err != nil {
-			errs = append(errs, err)
+			if !errors.Is(err, ErrNotConfigured) {
+				errs = append(errs, err)
+			}
 			continue
 		}
 		boxes = append(boxes, got...)
@@ -45,7 +56,9 @@ func VolumesAll(ctx context.Context) ([]Volume, []error) {
 	for _, p := range All() {
 		got, err := p.Volumes(ctx)
 		if err != nil {
-			errs = append(errs, err)
+			if !errors.Is(err, ErrNotConfigured) {
+				errs = append(errs, err)
+			}
 			continue
 		}
 		vols = append(vols, got...)
