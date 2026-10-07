@@ -10,7 +10,7 @@ name: release
 # releases stay a separate, deliberate act (see the release skill).
 #
 # megh.yaml.example rides along as an asset. The REAL config is private and lives
-# in the dotfiles repo, because it names every repo you work on; install.sh
+# in your private config repo, because it names every repo you work on; install.sh
 # fetches that separately. Shipping the template still means a fresh machine has
 # something to start from without cloning anything.
 
@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           sha=$(git rev-parse --short HEAD)
-          # android/arm64 is the phone. NOT linux/arm64: Go's static linux build
+          # android/arm64 is for phones (Termux). NOT linux/arm64: Go's static linux build
           # is ET_EXEC, and Android's loader only accepts ET_DYN, so Termux
           # rejects it outright with `unexpected e_type: 2`. Building -buildmode=pie
           # for linux fixes the type but asks for /lib/ld-linux-aarch64.so.1,

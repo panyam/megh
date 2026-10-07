@@ -104,7 +104,7 @@ for _p in "${_persist[@]}"; do
   link_state "${_home}" "${WORK_MOUNT}/state/${_name}" "${_kind}"
 done
 
-# Map home paths onto volume locations (e.g. ~/newstack -> repos/newstack) so the
+# Map home paths onto volume locations (e.g. ~/projects -> repos/projects) so the
 # paths your local scripts/tools expect resolve on the box. Configurable via
 # megh.yaml `symlinks:` (passed as MEGH_SYMLINKS, "link:target" pairs). Targets are
 # relative to /mnt/work unless absolute. Unlike `persist` this does not migrate
@@ -122,7 +122,7 @@ if [ -n "${MEGH_SYMLINKS:-}" ]; then
       continue
     fi
     # Make the parents, not the target itself: the target may be a FILE (a dotfile
-    # like repos/dotfiles/.vimrc) or a dir (repos/newstack), and it may not exist
+    # like repos/dotfiles/.vimrc) or a dir (repos/projects), and it may not exist
     # until `megh hydrate` runs. mkdir-ing the target would wrongly create a dir.
     mkdir -p "$(dirname "${target}")" "$(dirname "${link}")"
     ln -sfn "${target}" "${link}"
@@ -208,7 +208,7 @@ fi
 #   - pane-base-index 1 to match base-index: without it windows count from 1 and
 #     the panes inside them count from 0, so `megh tmux ls` and ctrl-b q print
 #     two different numbering schemes on adjacent lines.
-#   - set-clipboard on: the box has no X server and no way to reach the Mac's
+#   - set-clipboard on: the box has no X server and no way to reach your local
 #     clipboard except back through the terminal that is already connected. OSC
 #     52 is that channel. `on` (tmux's default is `external`) is what makes tmux
 #     forward a sequence an APPLICATION emits, which is what `pbcopy` below and
@@ -236,13 +236,13 @@ set -g @resurrect-dir '${WORK_MOUNT}/state/tmux-resurrect'
 set -g @resurrect-process 'true'
 EOF
 
-# `pbcopy`, so copying out of the box works the same way it does on the Mac.
+# `pbcopy`, so copying out of the box works the same way it does on macOS.
 #
-# There is no X server here and no route to the Mac's clipboard except back
+# There is no X server here and no route to your local clipboard except back
 # through the terminal that is already connected, so xclip and friends cannot
 # help: they talk to a local X display that does not exist. OSC 52 rides the
 # existing connection instead -- no daemon, no port, no bridge, and it works
-# over ssh, through tmux, and from the phone.
+# over ssh, through tmux, and from a phone.
 #
 # The other direction needs nothing: pasting INTO the box is the terminal
 # typing the characters, so Cmd-V already works.

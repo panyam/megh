@@ -97,8 +97,8 @@ func tmuxAttachCmd(session string, controlMode bool) string {
 //
 // Control mode is a property of the TERMINAL YOU ARE SITTING AT, not of the box
 // or the project, which is why it is an environment variable and deliberately
-// NOT a megh.yaml key. megh.yaml lives in a dotfiles repo and is installed on
-// every control device including the phone, so a setting there would follow you
+// NOT a megh.yaml key. megh.yaml may live in a shared repo and be installed on
+// every control device including a phone, so a setting there would follow you
 // onto Termux, which cannot render control mode at all.
 //
 // It is also why control mode is OFF by default rather than on. The two failure
@@ -110,7 +110,7 @@ func tmuxAttachCmd(session string, controlMode bool) string {
 // it half-works. A default has to fail in the graceful direction, so the machine
 // with the capable terminal opts in:
 //
-//	export MEGH_SSH_CC=1   # in the Mac's shell config, never in megh.yaml
+//	export MEGH_SSH_CC=1   # in that machine's shell config, never in megh.yaml
 func resolveControlMode(cmd *cobra.Command) (bool, error) {
 	if cmd.Flags().Changed("cc") && cmd.Flags().Changed("no-cc") {
 		return false, fmt.Errorf("--cc and --no-cc are opposites; pass one")

@@ -10,7 +10,7 @@ import (
 )
 
 // The remote command must attach an existing session rather than start a second
-// one, or the desktop and the phone end up in different places.
+// one, or a desktop and a phone end up in different places.
 func TestTmuxAttachReusesTheSession(t *testing.T) {
 	got := tmuxAttachCmd("main", false)
 	if !strings.Contains(got, "tmux new -A -s 'main'") {
