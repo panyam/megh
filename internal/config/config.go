@@ -202,6 +202,17 @@ type Config struct {
 	Symlinks        map[string]string   `yaml:"symlinks"`      // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
 	Files           map[string]string   `yaml:"files"`         // local path -> box path; copied over SSH (secrets/rc files not in a repo)
 	ExtraPubKeys    []string            `yaml:"extra_pubkeys"` // public keys authorized on every box beside the launcher's own (e.g. a Bitwarden SSH-agent key)
+	Serve           Serve               `yaml:"serve"`
+}
+
+// Serve configures the hosted web control plane (cmd/meghplane). It lives in
+// megh.yaml, which is private and travels with a deploy, so the allowlist of
+// who may sign in never lands in the public repo.
+type Serve struct {
+	// AllowedEmails are the Google accounts IAP may let through. The deployed
+	// app refuses to start with this empty, so a missing list cannot mean
+	// "anyone IAP admits".
+	AllowedEmails []string `yaml:"allowed_emails"`
 }
 
 // Portal configures `megh portal`: a bookmarkable box+URL index (PORTAL.md)

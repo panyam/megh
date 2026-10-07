@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>meghplane</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>meghplane</h1>
+  <button id="forget" type="button" hidden>Forget keys</button>
+</header>
+
+<section id="keys" hidden>
+  <h2>Keys for this tab</h2>
+  <p>Paste your control-plane note. Keys stay in this tab's session storage
+  and go to the server only as headers on each request; closing the tab
+  forgets them.</p>
+  <textarea id="keyblock" rows="5" spellcheck="false" autocomplete="off"
+    placeholder="RUNPOD_API_KEY=...&#10;MEGH_TAILSCALE_CLIENT_ID=...&#10;MEGH_TAILSCALE_CLIENT_SECRET=..."></textarea>
+  <button id="savekeys" type="button">Use these keys</button>
+</section>
+
+<main id="app" hidden>
+  <section>
+    <div class="row">
+      <h2>Boxes</h2>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+    <p id="empty" hidden>No boxes.</p>
+    <ul id="boxes"></ul>
+  </section>
+
+  <section>
+    <h2>Launch</h2>
+    <div class="row">
+      <input id="name" placeholder="name" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <select id="flavor">
+        <option value="">default flavor</option>
+        <option value="slim">slim</option>
+        <option value="full">full</option>
+      </select>
+      <button id="up" type="button">Launch</button>
+    </div>
+  </section>
+</main>
+
+<pre id="log" hidden></pre>
+</body>
+</html>

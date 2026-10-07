@@ -1,0 +1,13 @@
+# What `gcloud app deploy` uploads. Deliberately NOT `#!include:.gitignore`:
+# the private megh.yaml is gitignored but must reach the app, which reads its
+# defaults and serve.allowed_emails from it.
+.git/
+.gitignore
+.claude/
+.megh/
+bin/
+docs/
+env/
+*.md
+megh.yaml.example
+*_test.go

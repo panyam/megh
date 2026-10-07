@@ -35,6 +35,14 @@ ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 # extra_pubkeys:
 #   - ssh-ed25519 AAAA... megh-access (bitwarden)
 
+# The hosted web control plane (cmd/meghplane, SETUP.md section 7). Only these
+# Google accounts get in, checked against IAP's signed header; the app refuses
+# to start with the list empty. Keep it here, not in app.yaml: this file is
+# private and travels with the deploy, app.yaml is public.
+# serve:
+#   allowed_emails:
+#     - you@example.com
+
 # OCI registries megh inspects / pulls dev-env images from. The first is the
 # default. token_env NAMES the env var holding a read:packages token.
 registries:
