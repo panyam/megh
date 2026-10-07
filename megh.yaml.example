@@ -39,9 +39,14 @@ ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 # Google accounts get in, checked against IAP's signed header; the app refuses
 # to start with the list empty. Keep it here, not in app.yaml: this file is
 # private and travels with the deploy, app.yaml is public.
+# secret, if set, names a Secret Manager secret holding your control-plane
+# note (RUNPOD_API_KEY=..., MEGH_TAILSCALE_CLIENT_ID=..., ..._SECRET=...). Keys
+# found there are used for every request and the page stops asking for them;
+# any it lacks are taken from the browser.
 # serve:
 #   allowed_emails:
 #     - you@example.com
+#   secret: megh-control
 
 # OCI registries megh inspects / pulls dev-env images from. The first is the
 # default. token_env NAMES the env var holding a read:packages token.
