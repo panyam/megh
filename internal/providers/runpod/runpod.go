@@ -173,9 +173,16 @@ func createError(status int, body []byte, o providers.Options) error {
 		if dc == "" {
 			dc = "the volume's data center"
 		}
+		// Suggest a smaller box only when there is one; at the smallest size the
+		// way out is another data center, which means another volume too.
+		next := "ask for a smaller box (e.g. 2 vCPU), or check what rents with `megh regions probe --dc " + dc + "`"
+		if o.VCPU <= 2 {
+			next = "or find a data center that rents with `megh regions probe` (a volume only attaches in its own " +
+				"data center, so `megh regions place` creates one where a box can actually start)"
+		}
 		return fmt.Errorf("%w: RunPod has no CPU machine with %d vCPU free in %s right now (it tried all %d CPU types). "+
-			"Retry in a few minutes, ask for a smaller box (e.g. 2 vCPU), or check what rents with `megh regions probe --dc %s`",
-			ErrNoCapacity, o.VCPU, dc, len(cpuFlavorIDs(o.VCPU, o.RAMGiB)), dc)
+			"Retry in a few minutes, %s",
+			ErrNoCapacity, o.VCPU, dc, len(cpuFlavorIDs(o.VCPU, o.RAMGiB)), next)
 	}
 	return fmt.Errorf("runpod: HTTP %d: %s", status, string(body))
 }

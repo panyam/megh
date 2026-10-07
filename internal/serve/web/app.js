@@ -155,6 +155,27 @@ function render(boxes) {
   }
 }
 
+// loadVolumes fills the "where" menu. A box starts in its volume's data center,
+// so this is also the region choice; the default entry keeps megh.yaml's pair.
+async function loadVolumes() {
+  try {
+    const r = await call("GET", "/api/volumes");
+    const d = r.data || {};
+    const sel = $("where");
+    const keep = sel.value;
+    sel.replaceChildren();
+    const first = el("option", "default volume");
+    first.value = "";
+    sel.append(first);
+    for (const v of d.volumes || []) {
+      const o = el("option", v.name + " · " + v.dc + " · " + v.sizeGB + " GB" + (v.id === d.default ? " (default)" : ""));
+      o.value = v.id;
+      sel.append(o);
+    }
+    sel.value = keep;
+  } catch (e) { /* the default entry still works */ }
+}
+
 async function refresh() {
   try {
     const r = await call("GET", "/api/boxes");
@@ -171,7 +192,9 @@ async function launch() {
   $("up").disabled = true;
   showLog("launching " + name + " ...", false);
   try {
-    const r = await call("POST", "/api/up", { name, flavor: $("flavor").value, vcpu: Number($("size").value) || 0 });
+    const r = await call("POST", "/api/up", {
+      name, flavor: $("flavor").value, vcpu: Number($("size").value) || 0, volume: $("where").value,
+    });
     showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
     $("name").value = "";
     await refresh();
@@ -203,7 +226,7 @@ function showState() {
   $("source").textContent = !ok ? "" :
     server.runpod ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
     "Using keys pasted into this tab.";
-  if (ok) refresh();
+  if (ok) { refresh(); loadVolumes(); }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
