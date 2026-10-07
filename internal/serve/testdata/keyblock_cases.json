@@ -12,5 +12,7 @@
   {"name": "hash inside a value", "in": "RUNPOD_API_KEY=rpa#1", "want": {"runpod": "rpa#1"}},
   {"name": "unknown names ignored", "in": "OPENAI_API_KEY=x\nRUNPOD_API_KEY=rpa_1", "want": {"runpod": "rpa_1"}},
   {"name": "CRLF", "in": "RUNPOD_API_KEY=rpa_1\r\nMEGH_TAILSCALE_CLIENT_ID=id1\r\n", "want": {"runpod": "rpa_1", "tsid": "id1"}},
+  {"name": "hetzner and vultr", "in": "export HCLOUD_TOKEN=hc_1\nVULTR_API_KEY='vk 1'", "want": {"hcloud": "hc_1", "vultr": "vk 1"}},
+  {"name": "provider keys without runpod", "in": "VULTR_API_KEY=vk_1 MEGH_TAILSCALE_CLIENT_ID=id1", "want": {"vultr": "vk_1", "tsid": "id1"}},
   {"name": "blank and junk", "in": "\n  \nexport\nfoo bar\n", "want": {}}
 ]

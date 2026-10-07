@@ -4,7 +4,8 @@ import "strings"
 
 // ParseKeyBlock reads a control-plane note: KEY=value assignments, several to
 // a line or one per line, with or without "export", quotes or comments. Only
-// RUNPOD_API_KEY and the two MEGH_TAILSCALE_CLIENT_* names are kept. It follows
+// RUNPOD_API_KEY, HCLOUD_TOKEN, VULTR_API_KEY and the two
+// MEGH_TAILSCALE_CLIENT_* names are kept. It follows
 // the same rules as the page's parseKeys (web/app.js); both are tested against
 // testdata/keyblock_cases.json so they cannot drift.
 func ParseKeyBlock(text string) Keys {
@@ -18,6 +19,10 @@ func ParseKeyBlock(text string) Keys {
 			switch v := w[eq+1:]; w[:eq] {
 			case "RUNPOD_API_KEY":
 				k.RunPod = v
+			case "HCLOUD_TOKEN":
+				k.Hetzner = v
+			case "VULTR_API_KEY":
+				k.Vultr = v
 			case "MEGH_TAILSCALE_CLIENT_ID":
 				k.TSClientID = v
 			case "MEGH_TAILSCALE_CLIENT_SECRET":

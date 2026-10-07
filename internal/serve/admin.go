@@ -1,34 +1,61 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 
 	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
 	"github.com/panyam/megh/internal/providers/runpod"
 )
 
-// Prober is the region search a backend may offer. RunPod's does; a backend
-// without one makes the region endpoints answer 501.
+// Prober is RunPod's region search: rent a box for a second to prove a data
+// center has capacity. A backend with neither this nor a providers.Locator
+// makes the region endpoints answer 501.
 type Prober interface {
 	DataCenters(ctx context.Context) []string
 	Probe(ctx context.Context, o providers.Options) runpod.ProbeResult
 }
 
-func proberOf(svc *lifecycle.Service) (Prober, error) {
-	prov, err := svc.Provider("")
+// backend is the named provider, or the request's default one for "", as a
+// 400 when the request holds no key for it.
+func (s *Server) backend(svc *lifecycle.Service, name string) (providers.Provider, error) {
+	prov, err := svc.Provider(cmp.Or(name, s.defaultProvider(svc)))
 	if err != nil {
-		return nil, err
+		return nil, &apiError{http.StatusBadRequest, err.Error()}
 	}
+	return prov, nil
+}
+
+func proberOf(prov providers.Provider) (Prober, error) {
 	p, ok := prov.(Prober)
 	if !ok {
-		return nil, &apiError{http.StatusNotImplemented, prov.Name() + " has no region search"}
+		return nil, &apiError{http.StatusNotImplemented, prov.Name() + " has no region probe"}
 	}
 	return p, nil
+}
+
+// dataCenters is where prov can place a volume a box could then start on:
+// RunPod's data centers, or the locations a Locator sells the smallest
+// offered size in. ok is false when the backend can say neither.
+func dataCenters(ctx context.Context, prov providers.Provider) (dcs []string, ok bool, err error) {
+	if p, isProber := prov.(Prober); isProber {
+		return p.DataCenters(ctx), true, nil
+	}
+	if l, isLocator := prov.(providers.Locator); isLocator {
+		small := boxSizes[2]
+		offers, err := l.Offers(ctx, 2, small.ram, small.disk)
+		for _, o := range offers {
+			dcs = append(dcs, o.DC)
+		}
+		return dcs, true, err
+	}
+	return nil, false, nil
 }
 
 // volumeName is a RunPod volume name the page may create: one DNS-label-ish
@@ -43,9 +70,10 @@ var volumeSizes = []int{20, 50, 100, 200}
 // moves to a region that has capacity: the volume pins where boxes can start.
 func (s *Server) createVolume(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
-		Name   string `json:"name"`
-		SizeGB int    `json:"sizeGB"`
-		DC     string `json:"dc"`
+		Provider string `json:"provider"` // "" = the default backend
+		Name     string `json:"name"`
+		SizeGB   int    `json:"sizeGB"`
+		DC       string `json:"dc"`
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -56,14 +84,22 @@ func (s *Server) createVolume(r *http.Request, svc *lifecycle.Service) (any, err
 	if !slices.Contains(volumeSizes, req.SizeGB) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%d GB is not an offered size %v", req.SizeGB, volumeSizes)}
 	}
-	if p, err := proberOf(svc); err == nil && !slices.Contains(p.DataCenters(r.Context()), req.DC) {
-		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a data center RunPod offers", req.DC)}
-	}
-	v, err := svc.CreateVolume(r.Context(), "", req.Name, req.SizeGB, req.DC)
+	prov, err := s.backend(svc, req.Provider)
 	if err != nil {
 		return nil, err
 	}
-	return VolumeView{ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size}, nil
+	dcs, known, err := dataCenters(r.Context(), prov)
+	if err != nil {
+		return nil, err
+	}
+	if known && !slices.Contains(dcs, req.DC) {
+		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a data center %s offers", req.DC, prov.Name())}
+	}
+	v, err := svc.CreateVolume(r.Context(), prov.Name(), req.Name, req.SizeGB, req.DC)
+	if err != nil {
+		return nil, err
+	}
+	return VolumeView{Provider: v.Provider, ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size}, nil
 }
 
 // deleteVolume deletes a volume only when the request repeats its name in
@@ -85,27 +121,75 @@ func (s *Server) deleteVolume(r *http.Request, svc *lifecycle.Service) (any, err
 	if req.Confirm == "" || req.Confirm != vols[i].Name {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("type the volume's name (%s) to delete it", vols[i].Name)}
 	}
-	if err := svc.DeleteVolume(r.Context(), "", req.ID); err != nil {
+	if err := svc.DeleteVolume(r.Context(), vols[i].Provider, req.ID); err != nil {
 		return nil, err
 	}
 	return map[string]string{"deleted": vols[i].Name}, nil
 }
 
-// regions lists data centers to probe: the US ones by default, every one with
-// ?all=1, plus megh.yaml's default so the page can mark it.
+// regions answers "where can a box run" for one backend (?provider=, default
+// the request's default). A backend with a catalog (a Locator: Hetzner, Vultr)
+// answers with offers for the size in ?vcpu=, cheapest first, and the page
+// shows them as they are. RunPod has none, so it answers with data centers to
+// probe: the US ones by default, every one with ?all=1. Either way megh.yaml's
+// default data center comes back so the page can mark it.
 func (s *Server) regions(r *http.Request, svc *lifecycle.Service) (any, error) {
-	p, err := proberOf(svc)
+	q := r.URL.Query()
+	prov, err := s.backend(svc, q.Get("provider"))
+	if err != nil {
+		return nil, err
+	}
+	def := s.Config.Provider(prov.Name()).DefaultDC
+	if l, ok := prov.(providers.Locator); ok {
+		o, err := s.shape(prov.Name(), q.Get("vcpu"))
+		if err != nil {
+			return nil, err
+		}
+		offers, err := l.Offers(r.Context(), o.VCPU, o.RAMGiB, o.DiskGiB)
+		if err != nil {
+			return nil, err
+		}
+		dcs := make([]string, 0, len(offers))
+		for _, of := range offers {
+			dcs = append(dcs, of.DC)
+		}
+		return map[string]any{"provider": prov.Name(), "dcs": dcs, "offers": offers, "default": def}, nil
+	}
+	p, err := proberOf(prov)
 	if err != nil {
 		return nil, err
 	}
 	all := p.DataCenters(r.Context())
 	dcs := all
-	if r.URL.Query().Get("all") != "1" {
+	if q.Get("all") != "1" {
 		if us := runpod.USDataCenters(all); len(us) > 0 {
 			dcs = us
 		}
 	}
-	return map[string]any{"dcs": dcs, "default": s.Config.Provider("runpod").DefaultDC}, nil
+	return map[string]any{"provider": prov.Name(), "dcs": dcs, "default": def}, nil
+}
+
+// shape is the vCPU/RAM/disk for an offered size ("" or "0" = the provider's
+// configured default), as the launch form would ask for it.
+func (s *Server) shape(provider, vcpu string) (providers.Options, error) {
+	cfgP := s.Config.Provider(provider)
+	o := providers.Options{
+		VCPU:    firstPositive(cfgP.VCPU, 2),
+		RAMGiB:  firstPositive(cfgP.RAM, 8),
+		DiskGiB: firstPositive(cfgP.Disk, 20),
+	}
+	n, err := strconv.Atoi(cmp.Or(vcpu, "0"))
+	if err != nil {
+		return o, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a vCPU count", vcpu)}
+	}
+	if n != 0 {
+		size, ok := boxSizes[n]
+		if !ok {
+			return o, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", n)}
+		}
+		o.VCPU, o.RAMGiB, o.DiskGiB = n, size.ram, size.disk
+	}
+	return o, nil
 }
 
 // ProbeView is one data center's answer to a probe.
@@ -124,34 +208,30 @@ type ProbeView struct {
 // first rentable region, then createVolume there.
 func (s *Server) probe(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
-		DC   string `json:"dc"`
-		VCPU int    `json:"vcpu"` // 0 = megh.yaml's default size
+		Provider string `json:"provider"` // "" = the default backend
+		DC       string `json:"dc"`
+		VCPU     int    `json:"vcpu"` // 0 = megh.yaml's default size
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
 	}
-	p, err := proberOf(svc)
+	prov, err := s.backend(svc, req.Provider)
+	if err != nil {
+		return nil, err
+	}
+	p, err := proberOf(prov)
 	if err != nil {
 		return nil, err
 	}
 	if !slices.Contains(p.DataCenters(r.Context()), req.DC) {
-		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a data center RunPod offers", req.DC)}
+		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a data center %s offers", req.DC, prov.Name())}
 	}
-	cfgP := s.Config.Provider("runpod")
-	o := providers.Options{
-		DataCenter: req.DC,
-		Image:      s.Config.DefaultImage(s.Config.DefaultFlavor),
-		VCPU:       firstPositive(cfgP.VCPU, 2),
-		RAMGiB:     firstPositive(cfgP.RAM, 8),
-		DiskGiB:    firstPositive(cfgP.Disk, 20),
+	o, err := s.shape(prov.Name(), strconv.Itoa(req.VCPU))
+	if err != nil {
+		return nil, err
 	}
-	if req.VCPU != 0 {
-		size, ok := boxSizes[req.VCPU]
-		if !ok {
-			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", req.VCPU)}
-		}
-		o.VCPU, o.RAMGiB, o.DiskGiB = req.VCPU, size.ram, size.disk
-	}
+	o.DataCenter = req.DC
+	o.Image = s.Config.DefaultImage(s.Config.DefaultFlavor)
 	if o.Image == "" {
 		return nil, &apiError{http.StatusBadRequest, "no image to probe with: set registries[0].namespace in megh.yaml"}
 	}
