@@ -7,7 +7,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -32,16 +31,10 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List megh dev boxes (use --all for every pod on the account)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, listProvider)
+		provider := resolve(cmd, "provider", listProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		pods, err := newService().List(context.Background(), provider, listAll)
 		if err != nil {
 			return err
-		}
-		pods, err := prov.List(context.Background())
-		if err != nil {
-			return err
-		}
-		if !listAll {
-			pods = providers.Managed(pods)
 		}
 		if len(pods) == 0 {
 			fmt.Println("no boxes")

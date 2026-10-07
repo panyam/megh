@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/panyam/megh/internal/providers"
 )
 
 // List returns all provisioned pods on the account.
 func List(ctx context.Context) ([]providers.Box, error) {
-	apiKey := os.Getenv("RUNPOD_API_KEY")
+	apiKey := keyFor(ctx)
 	if apiKey == "" {
 		return nil, fmt.Errorf("RUNPOD_API_KEY is not set")
 	}
@@ -65,7 +64,7 @@ func List(ctx context.Context) ([]providers.Box, error) {
 // Terminate deletes a pod by id. The attached network volume and its contents
 // are not affected (they persist independently of the pod).
 func Terminate(ctx context.Context, id string) error {
-	key := os.Getenv("RUNPOD_API_KEY")
+	key := keyFor(ctx)
 	if key == "" {
 		return fmt.Errorf("RUNPOD_API_KEY is not set")
 	}
