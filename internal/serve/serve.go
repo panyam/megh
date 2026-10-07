@@ -146,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /app.css", static("web/app.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/keys", s.keySources)
 	mux.HandleFunc("GET /api/boxes", s.api(s.boxes))
+	mux.HandleFunc("GET /api/volumes", s.api(s.volumes))
 	mux.HandleFunc("POST /api/up", s.api(s.up))
 	mux.HandleFunc("POST /api/down", s.api(s.down))
 	return secure(s.logged(s.authorized(mux)))
@@ -325,6 +326,32 @@ func (s *Server) boxes(r *http.Request, svc *lifecycle.Service) (any, error) {
 // tailnet hostname.
 var boxName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$`)
 
+// VolumeView is one scratch volume as the launch form offers it.
+type VolumeView struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	DC     string `json:"dc"`
+	SizeGB int    `json:"sizeGB"`
+}
+
+// volumes lists the scratch volumes a box can launch onto, and which one
+// megh.yaml names as the default. A box can only attach a volume in its own
+// data center, so picking a volume is how the page picks a region.
+func (s *Server) volumes(r *http.Request, svc *lifecycle.Service) (any, error) {
+	vols, errs := svc.Volumes(r.Context())
+	if len(vols) == 0 && len(errs) > 0 {
+		return nil, errs[0]
+	}
+	views := make([]VolumeView, 0, len(vols))
+	for _, v := range vols {
+		views = append(views, VolumeView{ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size})
+	}
+	return map[string]any{
+		"volumes": views,
+		"default": s.Config.Provider("runpod").DefaultVolume,
+	}, nil
+}
+
 // boxSize is a whole shape the page can ask for. RunPod caps the container
 // disk by instance size when a volume is attached (about 20 GB at 2 vCPU, 40 at
 // 4, 50 at 8), so RAM and disk are tied to the vCPU count rather than chosen
@@ -337,7 +364,8 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
 		Name   string `json:"name"`
 		Flavor string `json:"flavor"`
-		VCPU   int    `json:"vcpu"` // 0 = megh.yaml's default size
+		VCPU   int    `json:"vcpu"`   // 0 = megh.yaml's default size
+		Volume string `json:"volume"` // "" = megh.yaml's default volume and data center
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -355,6 +383,21 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", req.VCPU)}
 		}
 		up.VCPU, up.RAMGiB, up.DiskGiB = req.VCPU, size.ram, size.disk
+	}
+	if req.Volume != "" {
+		// Only a volume that exists, and the box goes to its data center: a pod
+		// can only attach a volume in its own DC.
+		vols, _ := svc.Volumes(r.Context())
+		found := false
+		for _, v := range vols {
+			if v.ID == req.Volume {
+				up.VolumeID, up.DataCenter, found = v.ID, v.DataCenter, true
+				break
+			}
+		}
+		if !found {
+			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("no volume %q on this account", req.Volume)}
+		}
 	}
 	res, err := svc.Up(r.Context(), up)
 	if errors.Is(err, runpod.ErrNoCapacity) {
