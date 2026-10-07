@@ -45,6 +45,7 @@ const (
 	HeaderRunPodKey   = "X-Megh-Runpod-Key"
 	HeaderHcloudToken = "X-Megh-Hcloud-Token"
 	HeaderVultrKey    = "X-Megh-Vultr-Key"
+	HeaderRegistry    = "X-Megh-Registry-Token"
 	HeaderTSID        = "X-Megh-Ts-Client-Id"
 	HeaderTSSecret    = "X-Megh-Ts-Client-Secret"
 )
@@ -65,6 +66,10 @@ type Keys struct {
 	Vultr          string
 	TSClientID     string
 	TSClientSecret string
+	// Registry is the image pull token a Hetzner or Vultr box logs in with on
+	// first boot. It opens no backend on its own, so it does not count toward
+	// the one-provider-key minimum.
+	Registry string
 }
 
 // anyProvider reports whether k holds a key for at least one backend.
@@ -72,7 +77,7 @@ func (k Keys) anyProvider() bool { return k.RunPod != "" || k.Hetzner != "" || k
 
 // values is every key k holds, for scrubbing.
 func (k Keys) values() []string {
-	return []string{k.RunPod, k.Hetzner, k.Vultr, k.TSClientID, k.TSClientSecret}
+	return []string{k.RunPod, k.Hetzner, k.Vultr, k.TSClientID, k.TSClientSecret, k.Registry}
 }
 
 // Server is the control plane. The zero value is not usable; build one with New.
@@ -103,6 +108,7 @@ func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
 		Vultr:          r.Header.Get(HeaderVultrKey),
 		TSClientID:     r.Header.Get(HeaderTSID),
 		TSClientSecret: r.Header.Get(HeaderTSSecret),
+		Registry:       r.Header.Get(HeaderRegistry),
 	}
 	k := hdr
 	var held Keys
@@ -116,12 +122,14 @@ func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
 		k.Vultr = cmp.Or(held.Vultr, hdr.Vultr)
 		k.TSClientID = cmp.Or(held.TSClientID, hdr.TSClientID)
 		k.TSClientSecret = cmp.Or(held.TSClientSecret, hdr.TSClientSecret)
+		k.Registry = cmp.Or(held.Registry, hdr.Registry)
 	}
 	return k, scrubber(hdr, held)
 }
 
-// keySources answers GET /api/keys: which keys the server holds, as booleans.
-// It needs no key itself, so the page can decide whether to ask for any.
+// keySources answers GET /api/keys: which keys the server holds, as booleans,
+// and the note's name for the registry pull token. It needs no key itself, so
+// the page can decide whether to ask for any.
 func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
 	var held Keys
 	resp := map[string]any{}
@@ -136,7 +144,9 @@ func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
 		"hetzner":   held.Hetzner != "",
 		"vultr":     held.Vultr != "",
 		"tailscale": held.TSClientID != "" && held.TSClientSecret != "",
+		"registry":  held.Registry != "",
 	}
+	resp["registryEnv"] = s.RegistryEnv()
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -169,6 +179,23 @@ func New(cfg config.Config) *Server {
 		},
 		Log: log.Default(),
 	}
+}
+
+// RegistryEnv is the note's name for the registry pull token: megh.yaml's
+// registries[0].token_env, else DefaultRegistryEnv.
+func (s *Server) RegistryEnv() string {
+	if len(s.Config.Registries) > 0 && s.Config.Registries[0].TokenEnv != "" {
+		return s.Config.Registries[0].TokenEnv
+	}
+	return DefaultRegistryEnv
+}
+
+type keysCtx struct{}
+
+// requestKeys are the merged keys api() resolved for r.
+func requestKeys(r *http.Request) Keys {
+	k, _ := r.Context().Value(keysCtx{}).(Keys)
+	return k
 }
 
 // Handler is the whole site: the page, its script and style, and /api/*.
@@ -284,7 +311,7 @@ func (s *Server) api(f apiFunc) http.HandlerFunc {
 			Out:       &out,
 			Err:       &out,
 		}
-		data, err := f(r, svc)
+		data, err := f(r.WithContext(context.WithValue(r.Context(), keysCtx{}, k)), svc)
 		if err != nil {
 			status := http.StatusBadGateway
 			var ae *apiError
@@ -446,7 +473,7 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if req.Flavor != "" && !contains(s.Config.Flavors, req.Flavor) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("unknown flavor %q", req.Flavor)}
 	}
-	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor, Provider: s.defaultProvider(svc)}
+	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor, Provider: s.defaultProvider(svc), PullToken: requestKeys(r).Registry}
 	if req.VCPU != 0 {
 		size, ok := boxSizes[req.VCPU]
 		if !ok {

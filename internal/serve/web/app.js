@@ -14,6 +14,7 @@ const HEADERS = {
   "megh.runpod": "X-Megh-Runpod-Key",
   "megh.hcloud": "X-Megh-Hcloud-Token",
   "megh.vultr": "X-Megh-Vultr-Key",
+  "megh.registry": "X-Megh-Registry-Token",
   "megh.tsid": "X-Megh-Ts-Client-Id",
   "megh.tssecret": "X-Megh-Ts-Client-Secret",
 };
@@ -28,17 +29,22 @@ function set(k, v) {
   try { v ? sessionStorage.setItem(k, v) : sessionStorage.removeItem(k); } catch (e) {}
 }
 
+// registryEnv is the note's name for the registry pull token, which follows
+// megh.yaml's registries[0].token_env; GET /api/keys says which name that is.
+let registryEnv = "GH_MEGH_TOKEN";
+
 // parseKeys accepts the note as pasted: KEY=value assignments, several to a
 // line or one per line, with or without "export", quotes or comments. Unknown
 // names are ignored.
-function parseKeys(text) {
+function parseKeys(text, regEnv = registryEnv) {
   const out = {};
   for (const line of text.split(/\r?\n/)) {
     for (const word of shellWords(line)) {
       const eq = word.indexOf("=");
       if (eq < 1) continue; // "export", or any other bare word
       const name = word.slice(0, eq);
-      if (STORE[name]) out[STORE[name]] = word.slice(eq + 1);
+      if (name === regEnv) out["megh.registry"] = word.slice(eq + 1);
+      else if (STORE[name]) out[STORE[name]] = word.slice(eq + 1);
     }
   }
   return out;
@@ -86,6 +92,7 @@ async function loadServerKeys() {
     const res = await fetch("/api/keys");
     const json = await res.json();
     server = json.server || server;
+    if (json.registryEnv) registryEnv = json.registryEnv;
     if (json.error) showLog(json.error, true);
   } catch (e) { /* no server keys; the page asks for them */ }
 }
