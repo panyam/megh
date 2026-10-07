@@ -270,3 +270,24 @@ func TestNewWithTokenPrefersItsOwnToken(t *testing.T) {
 		}
 	}
 }
+
+// The pull token comes from the caller, never this process's environment, so
+// a server with no GH_MEGH_TOKEN of its own can still launch a private image.
+func TestUpLogsInWithTheCallersPullTokenOnly(t *testing.T) {
+	userData := func(token string) string {
+		f := newFake(t)
+		p := testProvider(t, f, registryConfig())
+		o := opts(2, 8, 20)
+		o.PullToken = token
+		if _, err := p.Up(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+		return f.posted["user_data"].(string)
+	}
+	if ud := userData("from-request"); !strings.Contains(ud, "'from-request'") || !strings.Contains(ud, "docker login 'ghcr.io' -u 'acme'") {
+		t.Errorf("no login with the caller's token:\n%s", ud)
+	}
+	if ud := userData(""); strings.Contains(ud, "docker login") || strings.Contains(ud, "ghp_pull") {
+		t.Errorf("logged in with the environment's token:\n%s", ud)
+	}
+}

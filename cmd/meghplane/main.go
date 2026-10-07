@@ -46,7 +46,7 @@ func main() {
 	srv := serve.New(cfg)
 	srv.Authorize = authorize
 	if cfg.Serve.Secret != "" {
-		sec := &serve.GCPSecret{Name: cfg.Serve.Secret, Project: project}
+		sec := &serve.GCPSecret{Name: cfg.Serve.Secret, Project: project, RegistryEnv: srv.RegistryEnv()}
 		srv.Secrets = sec.Keys
 		// Report what the secret holds at startup (names only, never values),
 		// but start either way: a missing or unreadable secret falls back to
@@ -56,8 +56,8 @@ func main() {
 		case err != nil:
 			log.Printf("meghplane: secret %s unreadable, browser keys only: %v", cfg.Serve.Secret, err)
 		default:
-			log.Printf("meghplane: secret %s holds runpod=%t hetzner=%t vultr=%t tailscale=%t", cfg.Serve.Secret,
-				k.RunPod != "", k.Hetzner != "", k.Vultr != "", k.TSClientID != "" && k.TSClientSecret != "")
+			log.Printf("meghplane: secret %s holds runpod=%t hetzner=%t vultr=%t tailscale=%t registry=%t", cfg.Serve.Secret,
+				k.RunPod != "", k.Hetzner != "", k.Vultr != "", k.TSClientID != "" && k.TSClientSecret != "", k.Registry != "")
 		}
 	}
 	port := os.Getenv("PORT")

@@ -303,16 +303,16 @@ The note needs at least one provider key, `RUNPOD_API_KEY`, `HCLOUD_TOKEN` or
 boxes and volumes from all of them in one list, and a launch goes to the
 provider of the volume you pick. The Regions section probes RunPod's data
 centers, and for Hetzner and Vultr lists the locations selling the chosen size
-from their price lists, since those have nothing to probe. Two limits on the
-VM backends from here:
+from their price lists, since those have nothing to probe.
 
-- **A Vultr key used by meghplane must allow all IPs.** App Engine has no fixed
-  outbound address, so the key's IP allowlist (section 9) cannot name it.
-- **A Hetzner or Vultr box launched from the page pulls the image without a
-  registry login**, because the pull token comes from the launching machine's
-  environment (`registries[0].token_env`) and meghplane has none. A private
-  image therefore needs launching from the CLI for now; RunPod is unaffected,
-  since its pull credential lives in the RunPod console.
+A Hetzner or Vultr box pulls the image itself on first boot, so for a private
+image the note also needs the registry token, under the same name your secrets
+file uses (`registries[0].token_env`, `GH_MEGH_TOKEN` by default). Without it
+the VM boots and the pull fails. RunPod never needs it, since its pull
+credential lives in the RunPod console.
+
+**A Vultr key used by meghplane must allow all IPs.** App Engine has no fixed
+outbound address, so the key's IP allowlist (section 9) cannot name it.
 
 It checks who you are twice. IAP signs you in at Google's edge, and the app
 then verifies IAP's signed header itself (audience, issuer, signature, expiry,
@@ -407,7 +407,7 @@ asking for them.
    ```
 3. Add `secret: megh-control` under `serve:` in `megh.yaml` and redeploy. The
    startup log reports `secret megh-control holds runpod=true hetzner=false
-   vultr=false tailscale=true`, names only.
+   vultr=false tailscale=true registry=true`, names only.
 
 **Rotating** means `gcloud secrets versions add megh-control --data-file=-`,
 then **destroying** the old version (`gcloud secrets versions destroy <n>`).

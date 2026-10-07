@@ -34,6 +34,10 @@ type UpRequest struct {
 	// BoxEnv is copied into the box env (the CLI passes megh.yaml's box_envs,
 	// read from its own environment).
 	BoxEnv map[string]string
+	// PullToken is the registry token for a VM backend's image pull (see
+	// providers.Options.PullToken). The CLI reads it from registries[0]'s
+	// token_env; a server takes it from the request. Empty means no login.
+	PullToken string
 }
 
 // Up launches a box, or starts it again when a backend that can restart
@@ -67,6 +71,7 @@ func (s *Service) Up(ctx context.Context, r UpRequest) (providers.Result, error)
 		return nil, errors.New("no SSH public key to authorize on the box; pass one or set extra_pubkeys in megh.yaml")
 	}
 	o.ExtraEnv = s.boxEnv(r.BoxEnv)
+	o.PullToken = r.PullToken
 
 	// Names double as the Tailscale hostname, so refuse a duplicate before
 	// launching rather than let two boxes fight over one tailnet name.
