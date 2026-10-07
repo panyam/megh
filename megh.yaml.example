@@ -29,11 +29,11 @@ ssh_pubkey_file: ~/.ssh/id_ed25519.pub
 
 # Extra PUBLIC keys every box `megh up` creates will also accept, whichever
 # machine launched it. Use it for a key held in a password manager's SSH agent
-# (e.g. Bitwarden desktop), so any machine with that app can reach a box the
-# phone started. The box's public ip:port is listed in the portal. Public keys
+# (e.g. Bitwarden desktop), so any machine with that agent can reach a box
+# another device started. The box's public ip:port is listed in the portal. Public keys
 # only: `up` refuses anything that is not one.
 # extra_pubkeys:
-#   - ssh-ed25519 AAAA... megh-access (bitwarden)
+#   - ssh-ed25519 AAAA... megh-access (password manager)
 
 # The hosted web control plane (cmd/meghplane, SETUP.md section 7). Only these
 # Google accounts get in, checked against IAP's signed header; the app refuses
@@ -119,17 +119,18 @@ providers:
     # a channel to a box exactly like pod env and `files:` are.
     mounts:
       ~/projects: repos/projects
-      ~/dotfiles: repos/dotfiles/dotfiles
-      # Do NOT mount a whole directory whose entries are absolute host symlinks
-      # (~/personal is one). They dangle in the box, and the entrypoint replaces
-      # a dangling symlink rather than skipping it: read-only that ln fails and
-      # kills PID 1 under set -euo pipefail, read-write it rewrites your host
-      # copy. Mount the specific files instead, and let `symlinks:` rebuild the
-      # rest against the dotfiles mount.
-      ~/personal/box-envvars: /root/personal/envvars:ro
+      ~/dotfiles: repos/dotfiles
+      # Do NOT mount a directory whose entries are absolute host symlinks (a
+      # dotfiles-managed dir often is). They dangle in the box, and the
+      # entrypoint replaces a dangling symlink rather than skipping it: read-only
+      # that ln fails and kills PID 1 under set -euo pipefail, read-write it
+      # rewrites your host copy. Mount directories, never single files (an
+      # editor's save-by-rename kills a file mount), and let `symlinks:` rebuild
+      # the rest against the dotfiles mount. Secret env files need no mount:
+      # `files:` below copies them to local boxes too.
 
 # Optional: private mesh for phone/tablet browser access. Leave the env value
-# unset for SSH-only (Mac reaches boxes via `megh ssh`).
+# unset for SSH-only (a laptop reaches boxes via `megh ssh`).
 tailscale:
   authkey_env: TS_AUTHKEY
   # Optional control-plane token, used only from this machine, to delete tailnet
@@ -170,7 +171,6 @@ persist:
 # Map home paths onto volume locations so local paths/scripts work on the box.
 # Targets are relative to /mnt/work (or absolute); filled by `megh hydrate`.
 # symlinks:
-#   ~/newstack: repos/newstack
 #   ~/projects: repos/projects
 
 # Copy local files onto the box over SSH (mode 0600) — rc files and secret files
@@ -226,5 +226,8 @@ symlinks:
 #
 # SECURITY: never copy a file containing a provider credential. A box holding one
 # can terminate and launch your OTHER boxes (CONSTRAINTS.md C3).
+# A box env file (service tokens a box needs, never a provider key) is the usual
+# entry. It lands on the volume, so load it from the box's shell rc, e.g. a line
+# `[ -r /mnt/work/state/box.env ] && . /mnt/work/state/box.env` in its zshenv.
 files:
-  ~/personal/box-envvars: /mnt/work/state/personal/envvars
+  ~/.config/megh/box.env: /mnt/work/state/box.env

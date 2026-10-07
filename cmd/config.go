@@ -23,7 +23,11 @@ var configCmd = &cobra.Command{
 		fmt.Println()
 		fmt.Printf("default_provider: %s\n", cfg.DefaultProvider)
 		fmt.Printf("default_flavor:   %s\n", cfg.DefaultFlavor)
-		fmt.Printf("default_image:    %s\n", cfg.DefaultImage(cfg.DefaultFlavor))
+		if img := cfg.DefaultImage(cfg.DefaultFlavor); img != "" {
+			fmt.Printf("default_image:    %s\n", img)
+		} else {
+			fmt.Printf("default_image:    (none: set registries[0].namespace or MEGH_GHCR_NAMESPACE)\n")
+		}
 		fmt.Printf("ssh_pubkey_file:  %s\n", cfg.SSHPubKeyFile)
 		fmt.Printf("iterm profile:    %s (auto=%v)\n", cfg.ITermProfile(), cfg.ITermAuto())
 		fmt.Printf("iterm store:      %s\n", cfg.ITermProfilesDir(cfgSourcePath))
