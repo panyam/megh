@@ -35,12 +35,35 @@ var ghRawFile = func(repo, path string) ([]byte, error) {
 	return out, nil
 }
 
+// ghLogin is the GitHub login gh is signed in as. A var for tests.
+var ghLogin = func() (string, error) {
+	out, err := exec.Command("gh", "api", "user", "--jq", ".login").Output()
+	if err != nil {
+		return "", fmt.Errorf("gh api user: %w (is gh logged in?)", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// configRepo is where megh.yaml lives: the flag, then $MEGH_CONFIG_REPO, then
+// <your GitHub login>/dotfiles, the same default install.sh uses.
+func configRepo() (string, error) {
+	if r := cmp.Or(configPullRepo, os.Getenv("MEGH_CONFIG_REPO")); r != "" {
+		return r, nil
+	}
+	login, err := ghLogin()
+	if err != nil || login == "" {
+		return "", fmt.Errorf("no config repo: pass --repo owner/name or set MEGH_CONFIG_REPO (%v)", err)
+	}
+	return login + "/dotfiles", nil
+}
+
 var configPullCmd = &cobra.Command{
 	Use:   "pull",
 	Short: "Fetch your private megh.yaml from its repo into ~/.config/megh/megh.yaml",
 	Long: `Fetch megh.yaml from the private config repo with gh and write it to
 ~/.config/megh/megh.yaml, the same source install.sh uses (MEGH_CONFIG_REPO,
-default panyam/dotfiles, and MEGH_CONFIG_PATH, default megh/megh.yaml).
+default <your GitHub login>/dotfiles, and MEGH_CONFIG_PATH, default
+megh/megh.yaml).
 
 It is for a box nothing has touched yet: one launched from meghplane and entered
 through Tailscale's console or webterm, where no control machine ever copied the
@@ -49,7 +72,10 @@ write lands there and survives rebuilds. The content must parse as YAML before
 anything is overwritten.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo := cmp.Or(configPullRepo, os.Getenv("MEGH_CONFIG_REPO"), "panyam/dotfiles")
+		repo, err := configRepo()
+		if err != nil {
+			return err
+		}
 		path := cmp.Or(configPullPath, os.Getenv("MEGH_CONFIG_PATH"), "megh/megh.yaml")
 		data, err := ghRawFile(repo, path)
 		if err != nil {
@@ -99,7 +125,7 @@ func writeThrough(path string, data []byte) (string, error) {
 }
 
 func init() {
-	configPullCmd.Flags().StringVar(&configPullRepo, "repo", "", "config repo (default $MEGH_CONFIG_REPO, else panyam/dotfiles)")
+	configPullCmd.Flags().StringVar(&configPullRepo, "repo", "", "config repo (default $MEGH_CONFIG_REPO, else <your gh login>/dotfiles)")
 	configPullCmd.Flags().StringVar(&configPullPath, "path", "", "file in the repo (default $MEGH_CONFIG_PATH, else megh/megh.yaml)")
 	configCmd.AddCommand(configPullCmd)
 }

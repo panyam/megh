@@ -125,9 +125,37 @@ func TestWriteThroughFollowsADanglingSymlink(t *testing.T) {
 	}
 }
 
+func stubGhLogin(t *testing.T, login string, err error) {
+	t.Helper()
+	old := ghLogin
+	t.Cleanup(func() { ghLogin = old })
+	ghLogin = func() (string, error) { return login, err }
+}
+
+// The default config repo is the signed-in user's own dotfiles, never a
+// hardcoded account; an explicit setting wins without asking gh.
+func TestConfigRepoDefaultsToTheSignedInUser(t *testing.T) {
+	t.Setenv("MEGH_CONFIG_REPO", "")
+	stubGhLogin(t, "someone", nil)
+	if r, err := configRepo(); err != nil || r != "someone/dotfiles" {
+		t.Errorf("got %q %v", r, err)
+	}
+	t.Setenv("MEGH_CONFIG_REPO", "org/config")
+	stubGhLogin(t, "", errors.New("gh must not be asked"))
+	if r, err := configRepo(); err != nil || r != "org/config" {
+		t.Errorf("env should win: %q %v", r, err)
+	}
+	t.Setenv("MEGH_CONFIG_REPO", "")
+	if _, err := configRepo(); err == nil {
+		t.Error("no setting and no gh login must be an error naming the fix")
+	}
+}
+
 func TestConfigPullRefusesNonYAMLBeforeWriting(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("MEGH_CONFIG_REPO", "")
+	stubGhLogin(t, "someone", nil)
 	old := ghRawFile
 	t.Cleanup(func() { ghRawFile = old })
 	ghRawFile = func(repo, path string) ([]byte, error) { return []byte("<html>404</html>\n: : :"), nil }
@@ -138,7 +166,7 @@ func TestConfigPullRefusesNonYAMLBeforeWriting(t *testing.T) {
 		t.Error("nothing should have been written")
 	}
 	ghRawFile = func(repo, path string) ([]byte, error) {
-		if repo != "panyam/dotfiles" || path != "megh/megh.yaml" {
+		if repo != "someone/dotfiles" || path != "megh/megh.yaml" {
 			t.Errorf("fetched %s/%s", repo, path)
 		}
 		return []byte("default_flavor: slim\n"), nil
