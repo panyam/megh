@@ -13,7 +13,7 @@ const cases = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 
 let failed = 0;
 for (const c of cases) {
-  const raw = ctx.parseKeys(c.in);
+  const raw = ctx.parseKeys(c.in, c.registryEnv || "GH_MEGH_TOKEN");
   const got = {};
   for (const k of Object.keys(raw)) got[k.replace(/^megh\./, "")] = raw[k];
   const g = JSON.stringify(got, Object.keys(got).sort());
