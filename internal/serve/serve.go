@@ -1,16 +1,24 @@
 // Package serve is the web control plane: a page and a small JSON API over
 // internal/lifecycle, run locally by `megh serve` and hosted by cmd/meghplane.
 //
-// The server stores no credentials. The page keeps the user's keys in the
-// browser's sessionStorage and sends them as headers on every API call; each
-// request builds its own backends from them and drops them when it returns.
-// Requiring those headers is also the CSRF defence: another site cannot make a
-// browser attach custom headers to a cross-origin request without a CORS
-// preflight, and this server never answers one.
+// Keys come from two places, merged per key on every request. On meghplane the
+// server may hold them in Secret Manager (Server.Secrets), which is what makes
+// the page usable from a managed browser whose extensions could read anything
+// pasted into it. Whatever the server does not hold, the page supplies: it
+// keeps the user's keys in the tab's sessionStorage and sends them as headers
+// on every API call. Either way each request builds its own backends from the
+// merged keys and drops them when it returns.
+//
+// The API's write calls require application/json, which another site cannot
+// make a browser send cross-origin without a CORS preflight, and this server
+// never answers one. That is the CSRF defence, and it holds whether or not any
+// key travels in a header.
 package serve
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -64,7 +72,51 @@ type Server struct {
 	// Authorize says who is asking, or why they may not. Nil admits everyone,
 	// which only `megh serve` uses, and only on loopback.
 	Authorize func(*http.Request) (string, error)
-	Log       *log.Logger
+	// Secrets returns keys the server holds (Secret Manager on meghplane). Each
+	// non-empty field overrides the browser's header for that key; an empty one
+	// falls back to it. Nil means the browser supplies everything.
+	Secrets func(context.Context) (Keys, error)
+	Log     *log.Logger
+}
+
+// keysFor merges the server's keys over the request's headers, field by
+// field, and returns a scrubber covering every value either side supplied.
+func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
+	hdr := Keys{
+		RunPod:         r.Header.Get(HeaderRunPodKey),
+		TSClientID:     r.Header.Get(HeaderTSID),
+		TSClientSecret: r.Header.Get(HeaderTSSecret),
+	}
+	k := hdr
+	var held Keys
+	if s.Secrets != nil {
+		var err error
+		if held, err = s.Secrets(r.Context()); err != nil && s.Log != nil {
+			s.Log.Printf("server keys unavailable, using the browser's: %v", err)
+		}
+		k.RunPod = cmp.Or(held.RunPod, hdr.RunPod)
+		k.TSClientID = cmp.Or(held.TSClientID, hdr.TSClientID)
+		k.TSClientSecret = cmp.Or(held.TSClientSecret, hdr.TSClientSecret)
+	}
+	return k, scrubber(hdr, held)
+}
+
+// keySources answers GET /api/keys: which keys the server holds, as booleans.
+// It needs no key itself, so the page can decide whether to ask for any.
+func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
+	var held Keys
+	resp := map[string]any{}
+	if s.Secrets != nil {
+		var err error
+		if held, err = s.Secrets(r.Context()); err != nil {
+			resp["error"] = "server keys unavailable; paste yours"
+		}
+	}
+	resp["server"] = map[string]bool{
+		"runpod":    held.RunPod != "",
+		"tailscale": held.TSClientID != "" && held.TSClientSecret != "",
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // New returns a Server backed by RunPod with each request's own key.
@@ -92,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", static("web/index.html", "text/html; charset=utf-8"))
 	mux.HandleFunc("GET /app.js", static("web/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", static("web/app.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /api/keys", s.keySources)
 	mux.HandleFunc("GET /api/boxes", s.api(s.boxes))
 	mux.HandleFunc("POST /api/up", s.api(s.up))
 	mux.HandleFunc("POST /api/down", s.api(s.down))
@@ -176,14 +229,9 @@ type apiFunc func(r *http.Request, svc *lifecycle.Service) (any, error)
 // case a backend ever echoes one in an error.
 func (s *Server) api(f apiFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		k := Keys{
-			RunPod:         r.Header.Get(HeaderRunPodKey),
-			TSClientID:     r.Header.Get(HeaderTSID),
-			TSClientSecret: r.Header.Get(HeaderTSSecret),
-		}
-		scrub := scrubber(k)
+		k, scrub := s.keysFor(r)
 		if k.RunPod == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no RunPod key on this request; paste your keys into the page"})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no RunPod key: none stored on the server and none on this request; paste your keys into the page"})
 			return
 		}
 		if r.Method == http.MethodPost && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -212,11 +260,13 @@ func (s *Server) api(f apiFunc) http.HandlerFunc {
 	}
 }
 
-func scrubber(k Keys) func(string) string {
+func scrubber(sets ...Keys) func(string) string {
 	var secrets []string
-	for _, v := range []string{k.RunPod, k.TSClientID, k.TSClientSecret} {
-		if len(v) >= 4 {
-			secrets = append(secrets, v)
+	for _, k := range sets {
+		for _, v := range []string{k.RunPod, k.TSClientID, k.TSClientSecret} {
+			if len(v) >= 4 {
+				secrets = append(secrets, v)
+			}
 		}
 	}
 	return func(s string) string {

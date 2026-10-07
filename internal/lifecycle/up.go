@@ -19,14 +19,14 @@ import (
 // megh.yaml, then to built-in defaults, so the CLI fills in only what its flags
 // and environment said and a server fills in only what its form said.
 type UpRequest struct {
-	Name     string // as typed; the megh- marker is applied here
-	Provider string // "" = default_provider, then runpod
-	Flavor   string // "" = default_flavor, then slim; picks the default image
-	Image    string
-	VolumeID   string
-	DataCenter string
+	Name                  string // as typed; the megh- marker is applied here
+	Provider              string // "" = default_provider, then runpod
+	Flavor                string // "" = default_flavor, then slim; picks the default image
+	Image                 string
+	VolumeID              string
+	DataCenter            string
 	VCPU, RAMGiB, DiskGiB int
-	ExposeSSH *bool // nil = the provider's expose_ssh setting
+	ExposeSSH             *bool // nil = the provider's expose_ssh setting
 	// PubKey is the launching machine's own key, if it has one. A server has
 	// none and relies on extra_pubkeys; a launch with no key at all is refused,
 	// because the box would come up with nothing in authorized_keys.

@@ -66,7 +66,20 @@ function shellWords(line) {
   return words;
 }
 
-function haveKeys() { return get("megh.runpod") !== ""; }
+// server is what GET /api/keys reported the server holds (booleans only).
+let server = { runpod: false, tailscale: false };
+
+function haveKeys() { return server.runpod || get("megh.runpod") !== ""; }
+function haveLocalKeys() { return Object.keys(HEADERS).some((k) => get(k) !== ""); }
+
+async function loadServerKeys() {
+  try {
+    const res = await fetch("/api/keys");
+    const json = await res.json();
+    server = json.server || server;
+    if (json.error) showLog(json.error, true);
+  } catch (e) { /* no server keys; the page asks for them */ }
+}
 
 function showLog(text, isError) {
   const el = $("log");
@@ -186,7 +199,10 @@ function showState() {
   const ok = haveKeys();
   $("keys").hidden = ok;
   $("app").hidden = !ok;
-  $("forget").hidden = !ok;
+  $("forget").hidden = !haveLocalKeys();
+  $("source").textContent = !ok ? "" :
+    server.runpod ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
+    "Using keys pasted into this tab.";
   if (ok) refresh();
 }
 
@@ -215,5 +231,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("refresh").addEventListener("click", refresh);
   $("up").addEventListener("click", launch);
-  showState();
+  loadServerKeys().then(showState);
 });
