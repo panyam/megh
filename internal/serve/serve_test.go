@@ -48,6 +48,7 @@ func (f *fake) DeleteVolume(context.Context, string) error { return nil }
 // request carried, and the buffer its log goes to.
 func testServer(f *fake) (*Server, *[]Keys, *bytes.Buffer) {
 	cfg := config.Default()
+	cfg.Registries[0].Namespace = "acme"
 	cfg.ExtraPubKeys = []string{"ssh-ed25519 cGhvbmU= bitwarden"}
 	var seen []Keys
 	var logs bytes.Buffer

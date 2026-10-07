@@ -1,23 +1,27 @@
 # megh Makefile.
 #
-# Wraps the build / publish / launch flow and sources ~/personal/envvars so the
-# secrets it holds (RUNPOD_API_KEY, GH_PERSONAL_TOKEN) reach the tools without
-# living in the repo. Every recipe that needs secrets sources it via $(ENV).
+# Wraps the build / publish / launch flow and sources your secrets file
+# ($(ENVFILE), default ~/.config/megh/secrets.env) so the secrets it holds
+# (RUNPOD_API_KEY, GH_MEGH_TOKEN) reach the tools without living in the repo.
+# Every recipe that needs secrets sources it via $(ENV).
 #
-# Override anything on the command line, e.g.
+# Override anything on the command line or in the environment, e.g.
 #   make up VOLUME=abc123 DC=US-KS-2
-#   make image REPO=panyam/megh
-#   make up PUBKEY_FILE=~/.ssh/id_panyam.pub VCPU=8 RAM=32
+#   make image REPO=<owner>/megh
+#   make up PUBKEY_FILE=~/.ssh/id_ed25519.pub VCPU=8 RAM=32
+#   export ENVFILE=~/somewhere/secrets.env
 
 NUM_LINKED_GOMODS=`cat go.mod | grep -v "^\/\/" | grep replace | wc -l | sed -e "s/ *//g"`
 SHELL := /bin/bash
 
-# Source personal env if present. `set +u` because that file may assume it.
-ENVFILE ?= $(HOME)/personal/envvars
+# Source your secrets file if present. `set +u` because that file may assume it.
+ENVFILE ?= $(HOME)/.config/megh/secrets.env
 ENV := set +u; [ -f $(ENVFILE) ] && source $(ENVFILE);
 
 # --- overridable configuration ------------------------------------------------
-GHCR_NAMESPACE ?= panyam
+# Whose images: $MEGH_GHCR_NAMESPACE, else the GitHub login gh is signed in as.
+# Evaluated only by the recipes that use it.
+GHCR_NAMESPACE ?= $(or $(MEGH_GHCR_NAMESPACE),$(shell gh api user --jq .login 2>/dev/null))
 REPO           ?= $(GHCR_NAMESPACE)/megh
 IMAGE          ?= ghcr.io/$(GHCR_NAMESPACE)/megh-full:latest
 PUBKEY_FILE    ?= $(HOME)/.ssh/id_ed25519.pub
@@ -173,10 +177,13 @@ doctor: build ## probe a box's health (tailscale/surfaces/scratch); BOX=<name-or
 clean: ## remove build artifacts
 	rm -f bin/megh
 
-GCP_PROJECT ?= meghplane
+# The GCP project hosting meghplane (SETUP.md section 7). No default: deploying
+# to the wrong project is not a mistake worth making easy.
+GCP_PROJECT ?=
 
 .PHONY: deploy
 deploy: checklinks
+	@test -n "$(GCP_PROJECT)" || { echo "set GCP_PROJECT=<your project>, e.g. make deploy GCP_PROJECT=my-meghplane"; exit 1; }
 	gcloud app deploy app.yaml --project $(GCP_PROJECT) --verbosity=info
 
 .PHONY: checklinks
