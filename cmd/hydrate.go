@@ -27,15 +27,21 @@ ones are cloned. Each repo authenticates as its GitHub identity (repo key, else
 default_gh_key) via that identity's forwarded key; private keys never touch the
 box. The box's ~/.ssh/config gets a per-identity Host alias first.
 
+On a box it runs right there (no box name, no RUNPOD_API_KEY). With an SSH
+agent forwarded it clones as above; without one (Tailscale's console, webterm)
+it clones over https using gh's login, so run 'gh auth login' once per volume.
+A box nothing has touched yet also needs its megh.yaml: 'megh config pull'.
+
 --check reports drift: declared-but-missing on the volume, and on-volume-but-
 undeclared (with origin url to copy into megh.yaml).`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// --local: run ON a box (no jump box). Clone the repos: list straight into
-		// /mnt/work/repos using the box's own git (the SSH agent forwarded by
-		// `megh ssh` and the gh-* aliases it set up handle auth). No SSH-to-self,
-		// no RunPod API key needed.
-		if hydrateLocal {
+		// Local: run ON a box (no jump box), which is the default when megh is
+		// on one and no box is named. Clone the repos: list straight into
+		// /mnt/work/repos with the box's own git: over the SSH agent `megh ssh`
+		// forwards when there is one, else over https with gh's login (see
+		// cloneTransport). No SSH-to-self, no RunPod API key needed.
+		if hydrateRunsHere(hydrateLocal, args) {
 			if len(cfg.Repos) == 0 && !hydrateCheck {
 				return fmt.Errorf("no repos: declared in megh.yaml")
 			}
@@ -101,6 +107,15 @@ undeclared (with origin url to copy into megh.yaml).`,
 	},
 }
 
+// hydrateRunsHere is enableRunsHere for hydrate: --local, or on a box with no
+// box named, clones on this machine; naming a box always targets that box.
+func hydrateRunsHere(local bool, args []string) bool {
+	if local {
+		return true
+	}
+	return len(args) == 0 && onABox()
+}
+
 // repoDest is the path under /mnt/work/repos: explicit dir, else URL basename.
 func repoDest(r config.Repo) string {
 	if r.Dir != "" {
@@ -109,17 +124,35 @@ func repoDest(r config.Repo) string {
 	return repoDir(r.URL)
 }
 
+// cloneTransport picks how the box's git authenticates, once per run. A usable
+// SSH agent (megh ssh/hydrate forward one) keeps the gh-<identity> aliases. With
+// none, as in Tailscale's console or webterm, it clones over https through gh's
+// credential helper, and refuses up front if gh is not logged in rather than
+// letting git stop at a password prompt nobody will answer.
+const cloneTransport = `if ssh-add -l >/dev/null 2>&1; then via=ssh; else
+  via=https
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "megh: no SSH agent here and gh is not logged in, so private repos cannot be cloned." >&2
+    echo "megh: run 'gh auth login -h github.com -p https -w' (once per volume), then hydrate again." >&2
+    exit 1
+  fi
+  gh auth setup-git >/dev/null 2>&1 || true
+  export GIT_TERMINAL_PROMPT=0
+  echo "megh: no SSH agent; cloning over https with gh's credentials"
+fi
+`
+
 func applyScript(c config.Config) string {
 	var b strings.Builder
 	b.WriteString("set -e\nexport GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\nmkdir -p /mnt/work/repos\n")
+	b.WriteString(cloneTransport)
 	for _, r := range c.Repos {
 		d := repoDest(r)
-		u := aliasedURL(r.URL, c.GHKey(r))
 		fmt.Fprintf(&b,
 			"dest=/mnt/work/repos/%s; mkdir -p \"$(dirname \"$dest\")\"; "+
 				"if [ -d \"$dest/.git\" ]; then echo 'exists  %s'; "+
-				"else echo 'clone   %s'; git clone %q \"$dest\"; fi\n",
-			d, d, d, u)
+				"else echo 'clone   %s'; u=%q; [ \"$via\" = https ] && u=%q; git clone \"$u\" \"$dest\"; fi\n",
+			d, d, d, aliasedURL(r.URL, c.GHKey(r)), githubHTTPS(r.URL))
 	}
 	return b.String()
 }
