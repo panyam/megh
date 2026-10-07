@@ -9,6 +9,7 @@ package lifecycle
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -87,7 +88,9 @@ func (s *Service) Volumes(ctx context.Context) ([]providers.Volume, []error) {
 	for _, p := range s.Providers {
 		got, err := p.Volumes(ctx)
 		if err != nil {
-			errs = append(errs, err)
+			if !errors.Is(err, providers.ErrNotConfigured) {
+				errs = append(errs, err)
+			}
 			continue
 		}
 		vols = append(vols, got...)

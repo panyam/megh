@@ -329,7 +329,8 @@ func Default() Config {
 		}},
 		Flavors: []string{"full", "slim"},
 		Providers: map[string]Provider{
-			"runpod": {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
+			"runpod":  {APIKeyEnv: "RUNPOD_API_KEY", VCPU: 2, RAM: 8, Disk: 20},
+			"hetzner": {APIKeyEnv: "HCLOUD_TOKEN", VCPU: 2, RAM: 4, Disk: 40},
 		},
 		Tailscale: Tailscale{
 			AuthKeyEnv:      "TS_AUTHKEY",

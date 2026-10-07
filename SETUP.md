@@ -438,6 +438,45 @@ narrower choice: `gh auth login --with-token < pat.txt`. Boxes reached through
 **Old deploy images pile up.** Each deploy stores a build image; add a cleanup
 policy in Artifact Registry keeping the last few so storage stays free.
 
+## 8. Hetzner Cloud: a second provider
+
+A Hetzner box is a VM that runs the same megh image under Docker, with its
+volume at `/workspace`, so everything inside the box behaves as on RunPod. What
+differs is outside: you pick any size per launch, and when RunPod's CPU pool is
+dry Hetzner is a separate pool.
+
+1. Create a Hetzner Cloud project and an API token with read/write access
+   (Security > API tokens). Put it in your secrets file as `HCLOUD_TOKEN`.
+2. Create a volume in a location. US locations are `ash` (Ashburn) and `hil`
+   (Hillsboro). Hetzner formats it at creation:
+   ```sh
+   megh storage create --provider hetzner --name megh-work --size 50 --dc ash
+   ```
+3. Launch, at whatever size this session needs:
+   ```sh
+   megh up dev --provider hetzner --volume <id> --vcpu 4 --ram 8
+   ```
+   megh picks the cheapest current x86 server type in the volume's location
+   with at least that many cores, that much memory, and the `--disk` you ask
+   for. First boot installs Docker and pulls the image, so allow a few minutes
+   before `ssh -p 2222 root@<vm-ip>` (printed by `up`) or the tailnet answers.
+4. Set `providers.hetzner.default_volume`/`default_dc` (and `default_provider:
+   hetzner` if it becomes your main one) so `up` needs no flags.
+
+How it is put together:
+
+- **The VM is only a Docker host.** Its own sshd is switched off; you log into
+  the box, whose sshd is published on port 2222.
+- **The image pull uses your registry token** (`registries[0].token_env`, e.g.
+  `GH_MEGH_TOKEN`) in the VM's first-boot script, which logs in, pulls, and
+  logs out. The box is cut off from the metadata service, where that script
+  could otherwise be read. Public images skip the login entirely.
+- **Terminate deletes the VM; the volume survives** and attaches to the next
+  box in its location, so `megh hydrate` and your logins carry over, exactly as
+  with a RunPod network volume.
+- **Not yet**: launching Hetzner boxes from meghplane (it only takes a RunPod
+  key per request today) and `megh regions` for Hetzner.
+
 ## What is not here yet
 
 - The mesh (Headscale/Tailscale) so you reach the box by name without RunPod's

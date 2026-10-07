@@ -71,6 +71,19 @@ providers:
     disk: 20                       # ephemeral container disk (capped by size)
     expose_ssh: true               # false = zero public ports, reach the box over the tailnet
 
+  # Hetzner Cloud: a box is a VM running the megh image under Docker, sized per
+  # launch from Hetzner's server types (the cheapest x86 type with at least the
+  # vCPU/RAM/disk asked for). A volume is required and fixes the location
+  # (US: ash, hil). SETUP.md section 8. `megh up --provider hetzner <name>`.
+  hetzner:
+    api_key_env: HCLOUD_TOKEN      # a project API token (read/write)
+    # default_dc: ash
+    # default_volume: "12345678"   # from `megh storage list`
+    vcpu: 2
+    ram: 4
+    disk: 40
+    expose_ssh: true               # the box's sshd on <vm-ip>:2222; the VM's own sshd is off
+
   # The LOCAL backend: a box is a container on this machine. Free, instant, and
   # the work trees are host paths, so an agent in the box edits your real repos.
   # `megh up --provider docker <name>`; list/ssh/down/enable/browse are unchanged.
