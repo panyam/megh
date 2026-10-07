@@ -3,6 +3,7 @@ package runpod
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -169,6 +170,11 @@ type ProbeResult struct {
 func (p ProbeResult) OutOfCapacity() bool {
 	if p.Err == nil {
 		return false
+	}
+	// createError turns RunPod's capacity reply into ErrNoCapacity, whose text
+	// no longer carries RunPod's own wording, so check the sentinel first.
+	if errors.Is(p.Err, ErrNoCapacity) {
+		return true
 	}
 	m := strings.ToLower(p.Err.Error())
 	for _, s := range []string{"no longer any instances", "no instances", "not enough free", "unavailable", "out of capacity", "insufficient"} {

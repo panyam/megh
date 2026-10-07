@@ -72,6 +72,17 @@ func (p *Provider) CreateVolume(ctx context.Context, name string, sizeGiB int, d
 	return CreateVolume(p.with(ctx), name, sizeGiB, dc)
 }
 
+// Probe is the package-level Probe run with this provider's key, so a server
+// can test capacity with the key the request carried.
+func (p *Provider) Probe(ctx context.Context, o providers.Options) ProbeResult {
+	return Probe(p.with(ctx), o)
+}
+
+// DataCenters lists the data centers RunPod accepts for a CPU pod. It reads
+// RunPod's public API spec and needs no key; it is a method so callers holding
+// only a provider can reach it.
+func (p *Provider) DataCenters(ctx context.Context) []string { return DataCenters(ctx) }
+
 func (p *Provider) DeleteVolume(ctx context.Context, id string) error {
 	return DeleteVolume(p.with(ctx), id)
 }
