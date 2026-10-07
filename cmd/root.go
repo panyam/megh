@@ -12,6 +12,7 @@ import (
 	"github.com/panyam/megh/internal/providers/docker"
 	"github.com/panyam/megh/internal/providers/hetzner"
 	"github.com/panyam/megh/internal/providers/runpod"
+	"github.com/panyam/megh/internal/providers/vultr"
 )
 
 // Backends are registered here, by name, in one visible list. Deliberately not
@@ -25,6 +26,7 @@ func init() {
 	// PersistentPreRunE, so a value captured here would be the empty default.
 	providers.Register(docker.New(func() config.Config { return cfg }))
 	providers.Register(hetzner.New(func() config.Config { return cfg }))
+	providers.Register(vultr.New(func() config.Config { return cfg }))
 }
 
 // cfg is the resolved configuration, loaded once in PersistentPreRunE and read

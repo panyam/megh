@@ -176,6 +176,40 @@ Two things to check FIRST, both cheap and both able to sink the plan:
 - **Probe the new DC** if it differs: `megh regions probe --dc <DC> -y`. Storage
   and CPU must coexist in one DC and a defined flavor is not a rentable one.
 
+## Comparing storage across providers
+
+RunPod's volume is a network filesystem; Hetzner's and Vultr's are network
+block devices with a local ext4 on top, and the difference shows most on
+small-file work. Run this on a box from each provider (the same size, a fresh
+volume, nothing else running) and compare the numbers rather than guessing:
+
+```sh
+cd /mnt/work && mkdir -p bench && cd bench
+sudo apt-get install -y fio >/dev/null 2>&1 || apt-get install -y fio >/dev/null
+
+# 1. Raw disk: 4k random read/write (small files) and 1M sequential (big files).
+fio --name=rand --rw=randrw --bs=4k --size=1G --numjobs=4 --iodepth=16 --direct=1 \
+    --runtime=60 --time_based --group_reporting --ioengine=libaio | grep -E 'read:|write:'
+fio --name=seq --rw=readwrite --bs=1M --size=2G --direct=1 --runtime=60 --time_based \
+    --group_reporting --ioengine=libaio | grep -E 'read:|write:'
+
+# 2. What you actually do: clone, install, status.
+rm -rf r && time git clone -q --depth 1 https://github.com/microsoft/TypeScript r
+cd r && time npm ci --ignore-scripts --silent && cd ..
+sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
+time git -C r status >/dev/null      # cold: after dropping caches
+time git -C r status >/dev/null      # warm
+cd /mnt/work && rm -rf bench
+```
+
+Inside a box (a container) dropping the page cache is usually refused, so the
+"cold" `git status` may be warm; for a true cold read, run that line right
+after a fresh `megh up`, before anything else touches the repo.
+
+Record the provider, region, plan and volume type next to the numbers. The
+cold `git status` and the 4k random IOPS are the two most likely to differ;
+a warm `git status` mostly measures memory.
+
 ## Lessons captured
 
 - Trust the live API over the docs; the RunPod REST schema differed on nearly
