@@ -83,6 +83,13 @@ let server = { runpod: false, hetzner: false, vultr: false, tailscale: false };
 // enough; the server builds only the backends it has a key for.
 const PROVIDER_KEYS = ["megh.runpod", "megh.hcloud", "megh.vultr"];
 
+// PROVIDER_STORE is the session key holding each provider's key.
+const PROVIDER_STORE = { runpod: "megh.runpod", hetzner: "megh.hcloud", vultr: "megh.vultr" };
+
+// allProviders is every provider the server can build, with the note variable
+// that unlocks it (GET /api/keys). The page offers all of them, keyed or not.
+let allProviders = [];
+
 function serverHasProvider() { return server.runpod || server.hetzner || server.vultr; }
 function haveKeys() { return serverHasProvider() || PROVIDER_KEYS.some((k) => get(k) !== ""); }
 function haveLocalKeys() { return Object.keys(HEADERS).some((k) => get(k) !== ""); }
@@ -93,6 +100,7 @@ async function loadServerKeys() {
     const json = await res.json();
     server = json.server || server;
     if (json.registryEnv) registryEnv = json.registryEnv;
+    allProviders = json.providers || allProviders;
     if (json.error) showLog(json.error, true);
   } catch (e) { /* no server keys; the page asks for them */ }
 }
@@ -202,15 +210,17 @@ async function loadAdmin() {
   try {
     const rv = await call("GET", "/api/volumes");
     const d = rv.data || {};
+    keyed = d.providers || [];
     const prov = $("volprov");
     const keepProv = prov.value;
     prov.replaceChildren();
-    for (const p of d.providers || []) {
-      const o = el("option", p);
+    const names = allProviders.length ? allProviders.map((p) => p.name) : keyed;
+    for (const p of names) {
+      const o = el("option", keyed.includes(p) ? p : p + " (no key)");
       o.value = p;
       prov.append(o);
     }
-    prov.value = (d.providers || []).includes(keepProv) ? keepProv : (d.provider || "");
+    prov.value = names.includes(keepProv) ? keepProv : (d.provider || "");
 
     const ul = $("volumes");
     ul.replaceChildren();
@@ -225,6 +235,8 @@ async function loadAdmin() {
       ul.append(li);
     }
 
+    if (!keyed.includes(prov.value)) { showUnkeyed(prov.value); return; }
+    $("volcreate").disabled = false;
     const q = new URLSearchParams({ provider: prov.value });
     if ($("allregions").checked) q.set("all", "1");
     if ($("size").value) q.set("vcpu", $("size").value);
@@ -248,6 +260,39 @@ async function loadAdmin() {
   } catch (e) {
     showLog(e.message, true);
   }
+}
+
+// keyed is the providers this request holds a key for (GET /api/volumes).
+let keyed = [];
+
+function envFor(provider) {
+  const p = allProviders.find((x) => x.name === provider);
+  return p ? p.env : "its key";
+}
+
+// showUnkeyed is the Volumes and Regions sections for a provider with no key:
+// nothing to list or create until one is added under Keys.
+function showUnkeyed(provider) {
+  regionList = [];
+  catalog = false;
+  $("voldc").replaceChildren();
+  $("volcreate").disabled = true;
+  $("probe-help").hidden = $("probe-row").hidden = $("offer-help").hidden = true;
+  $("probes").replaceChildren(el("li", "No " + provider + " key yet. Add " + envFor(provider) + " under Keys (top of the page) to create volumes and launch boxes there.", "muted"));
+}
+
+// showKeyStatus lists where each key comes from: the server, this tab, or
+// nowhere yet.
+function showKeyStatus() {
+  const ul = $("keystatus");
+  ul.replaceChildren();
+  const row = (label, onServer, inTab, env) => {
+    const where = onServer ? "on the server" : inTab ? "in this tab" : "missing";
+    ul.append(el("li", label + ": " + where + (onServer || inTab ? "" : " (" + env + ")"), onServer || inTab ? "" : "muted"));
+  };
+  for (const p of allProviders) row(p.name, server[p.name], get(PROVIDER_STORE[p.name]) !== "", p.env);
+  row("tailscale", server.tailscale, get("megh.tsid") !== "" && get("megh.tssecret") !== "", "MEGH_TAILSCALE_CLIENT_ID and _SECRET");
+  row("registry pull token", server.registry, get("megh.registry") !== "", registryEnv);
 }
 
 // showRegions switches the Regions section between RunPod's probe buttons and
@@ -404,12 +449,14 @@ async function terminate(name) {
 
 function showState() {
   const ok = haveKeys();
-  $("keys").hidden = ok;
+  if (!ok) $("keys").open = true;
   $("app").hidden = !ok;
+  showKeyStatus();
   $("forget").hidden = !haveLocalKeys();
   $("source").textContent = !ok ? "" :
-    serverHasProvider() ? "Using keys stored on the server" + (server.tailscale ? "." : " (no Tailscale keys there, so new boxes won't join the tailnet).") :
-    "Using keys pasted into this tab.";
+    (serverHasProvider() && haveLocalKeys() ? "Using keys from the server and this tab" :
+      serverHasProvider() ? "Using keys stored on the server" : "Using keys pasted into this tab") +
+    (server.tailscale || (get("megh.tsid") && get("megh.tssecret")) ? "." : " (no Tailscale keys, so new boxes won't join the tailnet).");
   if (ok) { refresh(); loadVolumes(); loadAdmin(); }
 }
 
@@ -417,11 +464,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("savekeys").addEventListener("click", () => {
     const keys = parseKeys($("keyblock").value);
     $("keyblock").value = "";
-    if (!PROVIDER_KEYS.some((k) => keys[k])) {
-      showLog("no RUNPOD_API_KEY=, HCLOUD_TOKEN= or VULTR_API_KEY= line found", true);
+    if (!Object.keys(keys).length) {
+      showLog("no recognized KEY=value line found", true);
       return;
     }
-    for (const k in HEADERS) set(k, keys[k] || "");
+    // Adds to what this tab holds rather than replacing it, so a key the
+    // server lacks can sit beside the ones it has.
+    for (const k in keys) set(k, keys[k]);
+    showLog("", false);
+    $("keys").open = !haveKeys();
     showState();
   });
   $("forget").addEventListener("click", () => {
@@ -455,7 +506,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("probe").addEventListener("click", probe);
   $("place").addEventListener("click", place);
   $("allregions").addEventListener("change", loadAdmin);
-  $("volprov").addEventListener("change", loadAdmin);
+  $("volprov").addEventListener("change", async () => {
+    await loadAdmin();
+    if (!keyed.includes($("volprov").value)) {
+      $("keys").open = true;
+      $("keyblock").focus();
+    }
+  });
   $("size").addEventListener("change", loadAdmin);
   loadServerKeys().then(showState);
 });

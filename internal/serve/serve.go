@@ -58,6 +58,26 @@ const csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 's
 //go:embed web
 var web embed.FS
 
+// keyVars names the note's variable for each provider a server can build, in
+// menu order. The page lists every one of them, keyed or not, so a provider
+// with no key yet is something to add rather than something missing.
+var keyVars = []struct{ provider, env string }{
+	{"runpod", "RUNPOD_API_KEY"},
+	{"hetzner", "HCLOUD_TOKEN"},
+	{"vultr", "VULTR_API_KEY"},
+}
+
+// keyVar is the note variable that unlocks provider, or "" for one this
+// server cannot build.
+func keyVar(provider string) string {
+	for _, kv := range keyVars {
+		if kv.provider == provider {
+			return kv.env
+		}
+	}
+	return ""
+}
+
 // Keys are the credentials one request carried. They live for that request.
 // Each provider key is optional on its own; a request needs at least one.
 type Keys struct {
@@ -128,7 +148,8 @@ func (s *Server) keysFor(r *http.Request) (Keys, func(string) string) {
 }
 
 // keySources answers GET /api/keys: which keys the server holds, as booleans,
-// and the note's name for the registry pull token. It needs no key itself, so
+// every provider the page can offer with the variable that unlocks it, and the
+// note's name for the registry pull token. It needs no key itself, so
 // the page can decide whether to ask for any.
 func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
 	var held Keys
@@ -147,6 +168,11 @@ func (s *Server) keySources(w http.ResponseWriter, r *http.Request) {
 		"registry":  held.Registry != "",
 	}
 	resp["registryEnv"] = s.RegistryEnv()
+	all := make([]map[string]string, 0, len(keyVars))
+	for _, kv := range keyVars {
+		all = append(all, map[string]string{"name": kv.provider, "env": kv.env})
+	}
+	resp["providers"] = all
 	writeJSON(w, http.StatusOK, resp)
 }
 

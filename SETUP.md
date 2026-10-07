@@ -299,8 +299,12 @@ keys as headers on each request, and the server drops them when the request
 ends. Closing the tab forgets them.
 
 The note needs at least one provider key, `RUNPOD_API_KEY`, `HCLOUD_TOKEN` or
-`VULTR_API_KEY`, and the page works with whichever backends it holds a key for:
-boxes and volumes from all of them in one list, and a launch goes to the
+`VULTR_API_KEY`, and the page works with whichever backends it holds a key for.
+The provider menu still lists all three, marking the ones with no key. The
+Keys panel at the top says where each key comes from (the server, this tab, or
+missing), and pasting a line there adds that key beside the rest, so a Vultr
+key can sit in the tab while RunPod's stays in Secret Manager. Boxes and
+volumes from every keyed provider share one list, and a launch goes to the
 provider of the volume you pick. The Regions section probes RunPod's data
 centers, and for Hetzner and Vultr lists the locations selling the chosen size
 from their price lists, since those have nothing to probe.

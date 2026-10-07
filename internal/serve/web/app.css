@@ -46,3 +46,4 @@ pre.error { color: var(--danger); }
 summary { cursor: pointer; color: var(--accent); }
 li.error { color: var(--danger); }
 label { display: inline-flex; gap: 4px; align-items: center; }
+#keystatus li { border: none; padding: 2px 0; margin: 0; background: none; }
