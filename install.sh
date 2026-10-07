@@ -1,15 +1,22 @@
 #!/usr/bin/env sh
-# megh installer. One command on any machine that will be a control device:
+# megh installer. One command on any machine that will run megh:
 #
 #   curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | sh
 #
-# The repo and its releases are public, so the script and the binary need no
-# auth. The CONFIG is a separate matter: a real megh.yaml names every repo you
-# work on, so it lives in a private repo and is fetched with gh when available.
-# Without gh you still get a working install and the template to edit.
+# or, when the repo is not public, through a logged-in gh:
+#
+#   gh api repos/panyam/megh/contents/install.sh -H 'Accept: application/vnd.github.raw' | sh
+#
+# The binary comes from the repo's release: through gh when it is logged in
+# (which also works for a private repo), else plain curl. The CONFIG is a
+# separate matter: a real megh.yaml names every repo you work on, so it lives
+# in a private repo of yours (default <your GitHub login>/dotfiles, file
+# megh/megh.yaml) and is fetched with gh. Without gh you still get a working
+# install and the template to edit.
 #
 # Idempotent. Re-run it to upgrade; it never overwrites an existing megh.yaml.
-# MEGH_CONFIG_REPO / MEGH_CONFIG_PATH point the config fetch somewhere else.
+# MEGH_REPO / MEGH_RELEASE pick the release; MEGH_CONFIG_REPO / MEGH_CONFIG_PATH
+# point the config fetch somewhere else.
 set -eu
 
 REPO="${MEGH_REPO:-panyam/megh}"
@@ -63,8 +70,8 @@ say "install: $bindir/megh"
 # --- 3. Prerequisites --------------------------------------------------------
 command -v curl >/dev/null 2>&1 || die "needs curl"
 command -v tar  >/dev/null 2>&1 || die "needs tar"
-# gh is optional now that the release is public. It is only used to fetch the
-# private config, and its absence costs you that, not the install.
+# gh is optional while the repo is public: without it the release comes over
+# curl and only the private config is skipped. A private repo needs it.
 have_gh=no
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then have_gh=yes; fi
 # megh shells out to these for every box operation; better to say so now than to
@@ -77,12 +84,23 @@ done
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 say "downloading $RELEASE ..."
-base="https://github.com/$REPO/releases/download/$RELEASE"
-for f in "megh-$target" "megh.yaml.example" "SHA256SUMS"; do
-  # Only the binary is required; the other two are conveniences.
-  curl -fsSL -o "$tmp/$f" "$base/$f" 2>/dev/null || true
-done
-[ -f "$tmp/megh-$target" ] || die "no asset megh-$target in the $RELEASE release"
+# gh first: it authenticates, so the same command works whether the repo is
+# public or private. curl is the fallback for a machine without gh.
+if [ "$have_gh" = yes ]; then
+  gh release download "$RELEASE" -R "$REPO" -D "$tmp" --clobber \
+    -p "megh-$target" -p "megh.yaml.example" -p "SHA256SUMS" >/dev/null 2>&1 || true
+fi
+if [ ! -f "$tmp/megh-$target" ]; then
+  base="https://github.com/$REPO/releases/download/$RELEASE"
+  for f in "megh-$target" "megh.yaml.example" "SHA256SUMS"; do
+    # Only the binary is required; the other two are conveniences.
+    curl -fsSL -o "$tmp/$f" "$base/$f" 2>/dev/null || true
+  done
+fi
+if [ ! -f "$tmp/megh-$target" ]; then
+  [ "$have_gh" = no ] && die "no asset megh-$target in the $RELEASE release of $REPO (if the repo is private, log in first: gh auth login)"
+  die "no asset megh-$target in the $RELEASE release of $REPO"
+fi
 
 # --- 5. Verify ---------------------------------------------------------------
 # A tampered or truncated download should not become an executable on PATH.
@@ -107,19 +125,23 @@ mv "$tmp/megh-$target" "$bindir/megh"
 # you work on and does not belong in a public one. If it is unreachable, the
 # template is installed instead, which is enough to edit into shape.
 cfg="$HOME/.config/megh/megh.yaml"
-CONFIG_REPO="${MEGH_CONFIG_REPO:-panyam/dotfiles}"
+CONFIG_REPO="${MEGH_CONFIG_REPO:-}"
+if [ -z "$CONFIG_REPO" ] && [ "$have_gh" = yes ]; then
+  login="$(gh api user --jq .login 2>/dev/null || true)"
+  [ -n "$login" ] && CONFIG_REPO="$login/dotfiles"
+fi
 CONFIG_PATH="${MEGH_CONFIG_PATH:-megh/megh.yaml}"
 if [ -f "$cfg" ]; then
   say "config:  $cfg already exists, left alone"
 else
   mkdir -p "$(dirname "$cfg")"
-  if [ "$have_gh" = yes ] && gh api "repos/$CONFIG_REPO/contents/$CONFIG_PATH" \
+  if [ "$have_gh" = yes ] && [ -n "$CONFIG_REPO" ] && gh api "repos/$CONFIG_REPO/contents/$CONFIG_PATH" \
        -H "Accept: application/vnd.github.raw" > "$tmp/cfg" 2>/dev/null && [ -s "$tmp/cfg" ]; then
     cp "$tmp/cfg" "$cfg"
     say "config:  $cfg (from $CONFIG_REPO)"
   elif [ -f "$tmp/megh.yaml.example" ]; then
     cp "$tmp/megh.yaml.example" "$cfg"
-    say "config:  $cfg (TEMPLATE; $CONFIG_REPO/$CONFIG_PATH not reachable)"
+    say "config:  $cfg (TEMPLATE; ${CONFIG_REPO:-<no config repo>}/$CONFIG_PATH not reachable)"
     [ "$have_gh" = no ] && say "         gh is not logged in, so the private config was skipped"
     say "         edit it, or drop your own over the top"
   fi
