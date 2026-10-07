@@ -318,10 +318,13 @@ func Default() Config {
 		DefaultFlavor:   "slim",
 		SSHPubKeyFile:   "~/.ssh/id_ed25519.pub",
 		Registries: []Registry{{
-			Name:      "ghcr",
-			Host:      "ghcr.io",
-			Namespace: env("MEGH_GHCR_NAMESPACE", "panyam"),
-			Username:  env("MEGH_GHCR_USER", "panyam"),
+			Name: "ghcr",
+			Host: "ghcr.io",
+			// No built-in owner: images live under whoever builds them, so the
+			// namespace comes from megh.yaml or the environment. Empty means
+			// DefaultImage has nothing to offer and `up` asks for one.
+			Namespace: env("MEGH_GHCR_NAMESPACE", ""),
+			Username:  env("MEGH_GHCR_USER", os.Getenv("MEGH_GHCR_NAMESPACE")),
 			TokenEnv:  "GH_MEGH_TOKEN",
 		}},
 		Flavors: []string{"full", "slim"},
@@ -409,7 +412,9 @@ func findConfig(explicit string) string {
 func (c Config) Provider(name string) Provider { return c.Providers[name] }
 
 // DefaultImage returns <host>/<namespace>/megh-<flavor>:latest from the first
-// registry. Used by `megh up` when neither --image nor $MEGH_IMAGE is set.
+// registry. Used by `megh up` when neither --image nor $MEGH_IMAGE is set. It
+// is "" when no registry or namespace is configured, which callers report as
+// a missing setting rather than launching an image named ghcr.io//megh-slim.
 func (c Config) DefaultImage(flavor string) string {
 	if flavor == "" {
 		flavor = c.DefaultFlavor
@@ -417,7 +422,7 @@ func (c Config) DefaultImage(flavor string) string {
 	if flavor == "" {
 		flavor = "slim"
 	}
-	if len(c.Registries) == 0 {
+	if len(c.Registries) == 0 || c.Registries[0].Namespace == "" {
 		return ""
 	}
 	r := c.Registries[0]

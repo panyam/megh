@@ -62,6 +62,7 @@ func svc(p providers.Provider, c config.Config) *Service {
 func TestUpFillsUnsetFieldsFromConfigThenDefaults(t *testing.T) {
 	f := &fake{name: "runpod"}
 	c := config.Default()
+	c.Registries[0].Namespace = "acme"
 	c.Providers = map[string]config.Provider{
 		"runpod": {DefaultDC: "US-IL-1", DefaultVolume: "vol1", VCPU: 4},
 	}
