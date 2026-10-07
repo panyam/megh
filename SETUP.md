@@ -477,6 +477,40 @@ How it is put together:
 - **Not yet**: launching Hetzner boxes from meghplane (it only takes a RunPod
   key per request today) and `megh regions` for Hetzner.
 
+## 9. Vultr: another provider, with more US regions
+
+A Vultr box has the same shape as a Hetzner one (section 8): a VM running the
+megh image under Docker, sized per launch from Vultr's plans. Vultr has 9 US
+regions (`ewr` New Jersey, `ord` Chicago, `atl`, `sea`, `mia`, `dfw`, `sjc`,
+`lax`, `hnl`).
+
+1. Create an API key (Account > API). **Vultr API keys have an IP
+   allowlist**: add the addresses of every machine that runs megh with it, or
+   allow all, or every call fails with an authorization error.
+2. Put it in your secrets file as `VULTR_API_KEY`.
+3. Create a volume. It is NVMe (`high_perf`) unless `providers.vultr.block_type`
+   says `storage_opt` (HDD, cheaper, not in every region):
+   ```sh
+   megh storage create --provider vultr --name megh-work --size 50 --dc ewr
+   ```
+4. Launch at the size you need:
+   ```sh
+   megh up dev --provider vultr --volume <id> --vcpu 4 --ram 8
+   ```
+   megh creates the instance, then attaches the volume, retrying for up to
+   about three minutes while Vultr finishes creating it. If it never attaches,
+   megh terminates the instance so nothing bills with no volume to boot onto.
+
+**A Vultr volume arrives blank, so the first box formats it, once.** The boot
+script picks the one unpartitioned, unmounted disk whose size matches the
+volume exactly, asks `blkid -p` whether it holds a filesystem, and formats it
+only when the answer is a definite "no" (exit 2). A filesystem means mount it
+as is; any other answer stops the boot without formatting, because a failed
+launch is recoverable and a wiped volume is not. Later boxes on the same volume
+only mount it, and `/workspace/.megh-volume` records when it was first
+formatted. If the first boot ever stops at this step, `/var/log/megh-boot.log`
+(through Vultr's web console) says which check refused.
+
 ## What is not here yet
 
 - The mesh (Headscale/Tailscale) so you reach the box by name without RunPod's

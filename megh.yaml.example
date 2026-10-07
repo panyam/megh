@@ -84,6 +84,20 @@ providers:
     disk: 40
     expose_ssh: true               # the box's sshd on <vm-ip>:2222; the VM's own sshd is off
 
+  # Vultr: the same VM-runs-the-image shape as Hetzner, sized per launch from
+  # Vultr's plans, with 9 US regions (ewr, ord, atl, sea, mia, dfw, sjc, lax,
+  # hnl). Volumes arrive blank; the first box formats one, later boxes only
+  # mount it. SETUP.md section 9. `megh up --provider vultr <name>`.
+  vultr:
+    api_key_env: VULTR_API_KEY     # allow your machines' IPs on the key (Vultr API keys have an IP allowlist)
+    # default_dc: ewr
+    # default_volume: "<block id>" # from `megh storage list`
+    block_type: high_perf          # NVMe; storage_opt is HDD, cheaper, fewer regions
+    vcpu: 2
+    ram: 4
+    disk: 50
+    expose_ssh: true
+
   # The LOCAL backend: a box is a container on this machine. Free, instant, and
   # the work trees are host paths, so an agent in the box edits your real repos.
   # `megh up --provider docker <name>`; list/ssh/down/enable/browse are unchanged.
