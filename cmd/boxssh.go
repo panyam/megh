@@ -34,6 +34,21 @@ func aliasedURL(url, ghKey string) string {
 	return url
 }
 
+// githubHTTPS is url's https form when it names a GitHub repo over ssh, for
+// cloning with gh's credential helper where no SSH agent exists (a box reached
+// through Tailscale's console or webterm). Anything else is returned unchanged.
+func githubHTTPS(url string) string {
+	for _, p := range []string{"git@github.com:", "ssh://git@github.com/"} {
+		if rest, ok := strings.CutPrefix(url, p); ok {
+			if !strings.HasSuffix(rest, ".git") {
+				rest += ".git"
+			}
+			return "https://github.com/" + rest
+		}
+	}
+	return url
+}
+
 // ghSetupScript writes the profile's GitHub public keys and a megh-managed
 // ~/.ssh/config section on the box, one Host alias (gh-<name>) per identity that
 // selects that key via the forwarded agent (private keys never touch the box).

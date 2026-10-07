@@ -402,6 +402,32 @@ What it costs you is the second factor. With the keys on the server, getting
 past IAP and `serve.allowed_emails` is enough to launch and terminate boxes, so
 your Google account's 2FA is now the whole lock.
 
+### 7.2 Setting up a box from inside it
+
+A box launched from meghplane and entered through Tailscale's browser console
+(or webterm) has had nothing done to it: no control machine ran `megh ssh` or
+`megh hydrate`, so `files:` never copied `megh.yaml` or `box-envvars` in, no
+repo was cloned, and the dotfiles your shell expects are missing. Everything
+below runs on the box, with no RunPod key and no phone.
+
+```sh
+gh auth login -h github.com -p https -w   # once per volume: ~/.config/gh is persisted
+megh config pull                          # your private megh.yaml -> ~/.config/megh/megh.yaml (on the volume)
+megh hydrate                              # on a box this runs locally; no agent here, so it clones over https via gh
+exec zsh
+```
+
+Then paste your `box-envvars` note with its target set to
+`/mnt/work/state/personal/envvars`, the path the box's `~/personal/envvars`
+points at.
+
+**Choose the GitHub credential deliberately.** It lives on the volume, so every
+later box on that volume inherits it, and without a forwarded agent it is also
+how you push. `gh auth login` grants your account's full repo access. A
+fine-grained PAT limited to the repos you work in (contents read/write) is the
+narrower choice: `gh auth login --with-token < pat.txt`. Boxes reached through
+`megh ssh` never need either, since they clone and push with your forwarded key.
+
 **Old deploy images pile up.** Each deploy stores a build image; add a cleanup
 policy in Artifact Registry keeping the last few so storage stays free.
 
