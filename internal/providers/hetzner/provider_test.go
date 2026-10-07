@@ -238,3 +238,35 @@ func TestShqRoundTripsThroughBash(t *testing.T) {
 		}
 	}
 }
+
+// Offers is the region search: every location with a fitting x86 type, at the
+// type Up would pick there, cheapest first.
+func TestOffersListsEachLocationsCheapestFittingType(t *testing.T) {
+	p := testProvider(t, newFake(t), registryConfig())
+	got, err := p.Offers(context.Background(), 4, 8, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []providers.Offer{{DC: "fsn1", Type: "cpx21eu", PerHr: 0.0010}, {DC: "ash", Type: "cpx31", PerHr: 0.0236}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if got, _ := p.Offers(context.Background(), 64, 512, 50); len(got) != 0 {
+		t.Errorf("an unsellable shape has no offers: %+v", got)
+	}
+}
+
+// A token handed in per request wins over the environment, and an empty one
+// falls back to it, as runpod.NewWithKey does.
+func TestNewWithTokenPrefersItsOwnToken(t *testing.T) {
+	f := newFake(t)
+	t.Setenv("HCLOUD_TOKEN", "from-env")
+	for tok, want := range map[string]string{"from-request": "from-request", "": "from-env"} {
+		p := NewWithToken(registryConfig, tok)
+		p.base = f.srv.URL
+		p.List(context.Background())
+		if f.gotToken != "Bearer "+want {
+			t.Errorf("token %q: sent %q", tok, f.gotToken)
+		}
+	}
+}

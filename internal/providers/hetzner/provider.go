@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -29,18 +30,30 @@ const vmImage = "ubuntu-24.04"
 // Provider is the Hetzner backend. Like the docker backend it takes a config
 // accessor, because cfg is loaded after registration.
 type Provider struct {
-	cfg  func() config.Config
-	base string // API base, overridable for tests
+	cfg   func() config.Config
+	base  string // API base, overridable for tests
+	token string // "" = read the environment
 }
 
 // New returns the Hetzner backend for the registration list in cmd/root.go.
+// It reads its token from HCLOUD_TOKEN (or providers.hetzner.api_key_env).
 func New(cfg func() config.Config) *Provider { return &Provider{cfg: cfg, base: apiBase} }
 
-var _ providers.Provider = (*Provider)(nil)
+// NewWithToken returns a Hetzner backend that authenticates with token instead
+// of the environment, so one web request's token is never another's. An empty
+// token behaves like New.
+func NewWithToken(cfg func() config.Config, token string) *Provider {
+	return &Provider{cfg: cfg, base: apiBase, token: token}
+}
+
+var (
+	_ providers.Provider = (*Provider)(nil)
+	_ providers.Locator  = (*Provider)(nil)
+)
 
 func (p *Provider) client() *client {
 	env := cmp.Or(p.cfg().Provider("hetzner").APIKeyEnv, "HCLOUD_TOKEN")
-	return &client{base: p.base, token: os.Getenv(env)}
+	return &client{base: p.base, token: cmp.Or(p.token, os.Getenv(env))}
 }
 
 // Name is "hetzner".
@@ -125,15 +138,52 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 // least the requested cores, memory and disk. x86 because the megh image is
 // published for linux/amd64.
 func (p *Provider) pickServerType(ctx context.Context, c *client, loc string, vcpu, ramGiB, diskGiB int) (serverType, error) {
+	types, err := listServerTypes(ctx, c)
+	if err != nil {
+		return serverType{}, err
+	}
+	best, ok := cheapestByLocation(types, vcpu, ramGiB, diskGiB)[loc]
+	if !ok {
+		return serverType{}, fmt.Errorf("hetzner sells no x86 server type in %s with %d vCPU, %d GB RAM and %d GB disk", loc, vcpu, ramGiB, diskGiB)
+	}
+	return best.typ, nil
+}
+
+// Offers lists every location selling an x86 type that fits, with the type Up
+// would pick there, cheapest first.
+func (p *Provider) Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]providers.Offer, error) {
+	types, err := listServerTypes(ctx, p.client())
+	if err != nil {
+		return nil, err
+	}
+	var out []providers.Offer
+	for loc, b := range cheapestByLocation(types, vcpu, ramGiB, diskGiB) {
+		out = append(out, providers.Offer{DC: loc, Type: b.typ.Name, PerHr: b.perHr})
+	}
+	slices.SortFunc(out, func(a, b providers.Offer) int {
+		return cmp.Or(cmp.Compare(a.PerHr, b.PerHr), cmp.Compare(a.DC, b.DC))
+	})
+	return out, nil
+}
+
+func listServerTypes(ctx context.Context, c *client) ([]serverType, error) {
 	var out struct {
 		ServerTypes []serverType `json:"server_types"`
 	}
-	if err := c.do(ctx, "GET", "/server_types?per_page=50", nil, &out); err != nil {
-		return serverType{}, err
-	}
-	var best serverType
-	bestPrice := -1.0
-	for _, t := range out.ServerTypes {
+	err := c.do(ctx, "GET", "/server_types?per_page=50", nil, &out)
+	return out.ServerTypes, err
+}
+
+type priced struct {
+	typ   serverType
+	perHr float64
+}
+
+// cheapestByLocation is, per location, the cheapest current x86 type with at
+// least the requested cores, memory and disk.
+func cheapestByLocation(types []serverType, vcpu, ramGiB, diskGiB int) map[string]priced {
+	best := map[string]priced{}
+	for _, t := range types {
 		if t.Architecture != "x86" || t.Deprecation != nil {
 			continue
 		}
@@ -141,22 +191,16 @@ func (p *Provider) pickServerType(ctx context.Context, c *client, loc string, vc
 			continue
 		}
 		for _, pr := range t.Prices {
-			if pr.Location != loc {
-				continue
-			}
 			f, err := strconv.ParseFloat(pr.PriceHourly.Gross, 64)
 			if err != nil {
 				continue
 			}
-			if bestPrice < 0 || f < bestPrice {
-				best, bestPrice = t, f
+			if cur, ok := best[pr.Location]; !ok || f < cur.perHr {
+				best[pr.Location] = priced{t, f}
 			}
 		}
 	}
-	if bestPrice < 0 {
-		return serverType{}, fmt.Errorf("hetzner sells no x86 server type in %s with %d vCPU, %d GB RAM and %d GB disk", loc, vcpu, ramGiB, diskGiB)
-	}
-	return best, nil
+	return best
 }
 
 type result struct {

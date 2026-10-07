@@ -226,3 +226,37 @@ func TestNoKeyIsNotConfigured(t *testing.T) {
 		t.Errorf("got %v", err)
 	}
 }
+
+// Offers is the region search: every region with a fitting plan, at the plan
+// Up would pick there, cheapest first.
+func TestOffersListsEachRegionsCheapestFittingPlan(t *testing.T) {
+	p := testProvider(t, newFake(t), cfg())
+	got, err := p.Offers(context.Background(), 2, 4, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].DC != "ord" || got[0].Type != "vc2-2c-4gb-ord-only" || got[1].DC != "ewr" || got[1].Type != "vc2-2c-4gb" {
+		t.Fatalf("got %+v", got)
+	}
+	if got[1].PerHr != 20.0/730 {
+		t.Errorf("ewr per hour = %v", got[1].PerHr)
+	}
+}
+
+func TestNewWithKeyPrefersItsOwnKey(t *testing.T) {
+	var sent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent = r.Header.Get("Authorization")
+		io.WriteString(w, `{"blocks":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("VULTR_API_KEY", "from-env")
+	for key, want := range map[string]string{"from-request": "from-request", "": "from-env"} {
+		p := NewWithKey(cfg, key)
+		p.base = srv.URL
+		p.Volumes(context.Background())
+		if sent != "Bearer "+want {
+			t.Errorf("key %q: sent %q", key, sent)
+		}
+	}
+}
