@@ -24,6 +24,7 @@ import (
 var (
 	enableProvider string
 	enableLocal    bool
+	enablePrint    bool
 )
 
 // featureName restricts what can be run to a simple slug.
@@ -68,6 +69,21 @@ func isTerminal(f *os.File) bool {
 // it prints the list and returns "", which the caller treats as "nothing to do"
 // rather than an error — `megh enable` with no arguments has always been the way
 // to ask what exists, and a prompt there would block a `megh enable | grep`.
+// enableRunsHere decides between running a feature script on this machine and
+// piping it to a box. --local always means here; naming a box always means
+// there; otherwise it is here exactly when this machine is itself a box, so
+// enabling a feature from inside one needs no provider key and no control
+// machine.
+func enableRunsHere(local bool, args []string) bool {
+	if local {
+		return true
+	}
+	if len(args) == 2 {
+		return false
+	}
+	return onABox()
+}
+
 func chooseFeature(in *os.File, out io.Writer, names []string) (string, error) {
 	if !isTerminal(in) {
 		printFeatures(out, names)
@@ -154,8 +170,15 @@ works against any box (piped over SSH) and needs no image rebuild.
                           Multi-tenant, one tenant per project. Off until you
                           run 'lgtm start' on the box.
 
-Runs from the control machine and ssh-es to the box (sole box, or name it as the
-second arg). Use --local when running on the box itself.`,
+On a box it runs right there, the way apt-get would: 'megh enable postgres'.
+From anywhere else, or when you name a box as the second arg, it ssh-es to that
+box (or the sole box) and pipes the same script. --local forces running here,
+and --print writes the script to stdout instead, to read it or run it yourself:
+  megh enable --print redis | bash
+
+The scripts are embedded in megh, so a box runs the versions its own megh
+carries, which are as old as its image. To take newer ones without rebuilding:
+  curl -fsSL https://raw.githubusercontent.com/panyam/megh/main/install.sh | MEGH_INSTALL_DIR=/usr/local/bin sh`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := ""
@@ -177,12 +200,22 @@ second arg). Use --local when running on the box itself.`,
 		if err != nil {
 			return fmt.Errorf("%w (run `megh enable` to list)", err)
 		}
+		// --print is the script alone, to read or to pipe into a local bash,
+		// which inherits this shell's MEGH_* knobs on its own. The export lines
+		// added below exist only for a remote bash that inherits nothing.
+		if enablePrint {
+			_, err := os.Stdout.Write(script)
+			return err
+		}
 		// Feature scripts take MEGH_*-prefixed knobs (storage roots, pinned
 		// versions, tenant lists). The script is piped to a remote `bash -s`, which
 		// inherits nothing from this shell, so carry those vars across explicitly.
 		script = append(meghEnv(), script...)
 
-		if enableLocal {
+		if enableRunsHere(enableLocal, args) {
+			if !enableLocal {
+				fmt.Fprintf(os.Stderr, "megh: on a box, enabling %q here (name a box to target another)\n", name)
+			}
 			c := exec.Command("bash", "-s")
 			c.Stdin = bytes.NewReader(script)
 			c.Stdout, c.Stderr = os.Stdout, os.Stderr
@@ -215,6 +248,7 @@ second arg). Use --local when running on the box itself.`,
 
 func init() {
 	enableCmd.Flags().StringVar(&enableProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	enableCmd.Flags().BoolVar(&enableLocal, "local", false, "run on the box itself instead of ssh-ing to one")
+	enableCmd.Flags().BoolVar(&enableLocal, "local", false, "run here, even off a box (the default on a box)")
+	enableCmd.Flags().BoolVar(&enablePrint, "print", false, "print the feature's script instead of running it (megh enable --print redis | bash)")
 	rootCmd.AddCommand(enableCmd)
 }
