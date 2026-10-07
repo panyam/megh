@@ -189,6 +189,15 @@ megh credentials. The elevation rules above still describe what is sanctioned;
 nothing currently uses them. If a box must launch for a while, the keys go in a
 RAM-only file (`/dev/shm`), never on the volume, and die with the box.
 
+**The second launcher (2026-10-07) is meghplane**, which is not a box: it runs
+on App Engine, holds a key only in Secret Manager when `serve.secret` is set,
+and otherwise takes keys from the browser per request. **Keep the set
+minimal**: `RUNPOD_API_KEY` alone is enough (the Tailscale pair is optional,
+since a box can join later from the phone), stored in one place, and nothing
+else (service tokens, SSH keys) ever goes to meghplane. Secret Manager holds
+only what a machine must read unattended; everything a person uses stays in
+Bitwarden.
+
 Tailnet control-plane credentials are a separate and stricter case: they are
 denied by name regardless of elevation. See C5.
 

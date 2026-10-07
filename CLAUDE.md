@@ -355,6 +355,11 @@ persisted so this survives rebuilds. Check the whole set with
   (`internal/providers/runpod`); its Terraform provider is too flaky.
 - megh is **stateless**: the provider is the source of truth. No local state file.
   Managed resources identified by a `megh-` **name prefix** (RunPod has no tags).
+- Box lifecycle (up/down/list/volumes) lives in `internal/lifecycle`, which reads
+  no globals and no environment: credentials arrive in the providers and
+  Tailscale factory a caller builds. The CLI builds them from env; `megh serve`
+  and `cmd/meghplane` (`internal/serve`) build them per HTTP request from Secret
+  Manager or the browser's headers. `runpod.NewWithKey` exists for that.
 - Canonical state = git (code + checkpoints). Transcripts stay on the volume.
   No restic. Scratch = per-provider network volume at `/mnt/work`, DC-pinned,
   shareable by multiple boxes in the same DC.
@@ -438,6 +443,15 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Gotchas (things that bit us)
 
+- **A misindented `megh.yaml` block is silently ignored, not an error.** The
+  parser drops unknown keys, so `serve:` indented under `requires:` became
+  `requires.serve` and meghplane saw no allowlist (it refused to start, which is
+  the fail-closed path working). `megh config` and a startup log are the only
+  tells. Measured 2026-10-07 on the first meghplane deploy.
+- **meghplane fails closed, and each refusal has its own symptom.** A 503 means
+  the instance exited at startup; Google pages mean IAP; a plain `not authorized`
+  means the app's allowlist. SETUP.md §7 has the symptom table, the deploy
+  account's roles, and the custom OAuth client a personal project needs.
 - **Termux can hand megh its own path as the first argument.** Android forbids
   executing app-data files, so termux-exec runs a binary as `/system/bin/linker64
   <path> args...`, and every command then failed with `unknown command
@@ -681,16 +695,24 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
 
 ## Live-validation debt
 
-Unproven from the 2026-10-06 session (phone-as-launcher), all code merged:
+Unproven from the 2026-10-06/07 sessions (phone-as-launcher, meghplane), all
+code merged:
 
 - **A two-line `PUBLIC_KEY` through RunPod's REST env map** (`extra_pubkeys`,
   #79). Docker passes it as an argv `-e`, which is fine; RunPod is unseen. The
   first `megh up` with `extra_pubkeys` set should show both lines in
   `~/.ssh/authorized_keys`.
-- **The Termux linker-argv fix** (#80) on a real phone, and the Bitwarden
-  bootstrap note (SETUP.md §6.5) end to end.
+- **A launch from meghplane end to end** (#82): `up` from the page, reach the
+  box with an `extra_pubkeys` key, `down` from the page. The lifecycle refactor
+  (#85) has not met real RunPod either, so this covers both.
+- **meghplane reading Secret Manager** (#90): only the fake-server tests have run.
 - **Bitwarden desktop's SSH agent** reaching a box via the portal's ssh line
   (SETUP.md §6.7).
+
+Validated 2026-10-07: the Bitwarden bootstrap note on a real phone, past the
+Termux linker-argv bug (#80); and meghplane on App Engine behind IAP, with
+Google sign-in, the app's own check of IAP's signed header (via oneauth), the
+`serve.allowed_emails` refusal, and pasted keys all working live.
 
 Unproven from the 2026-09-21 session, which ran on a local box with no tailnet:
 
