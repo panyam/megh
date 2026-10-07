@@ -171,7 +171,7 @@ async function launch() {
   $("up").disabled = true;
   showLog("launching " + name + " ...", false);
   try {
-    const r = await call("POST", "/api/up", { name, flavor: $("flavor").value });
+    const r = await call("POST", "/api/up", { name, flavor: $("flavor").value, vcpu: Number($("size").value) || 0 });
     showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
     $("name").value = "";
     await refresh();
