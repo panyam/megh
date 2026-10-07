@@ -5,12 +5,12 @@ Maintained by /checkpoint: one thread per branch, pruned when the branch merges.
 
 ## At a glance
 
-- No open branches.
-- #95 (needs-live-test): the box launched from meghplane can tick several items now
-  (`extra_pubkeys` in `authorized_keys`, the in-box bootstrap from #93, local `megh enable`).
-- #82 closes once a page-launched box is reached and then terminated from the page.
-- #98: going private is prepared but deliberately not done; #87: the web page's missing verbs.
-- This run: #92–#94, #96, #97 merged since the last checkpoint; filed #95 and #98.
+- No open branches. Next up is #104 (Hetzner and Vultr on meghplane): the plan is agreed except
+  one choice, whether the launch provider is derived from the chosen volume (recommended) or
+  picked from an explicit menu.
+- #95 now lists live checks for Hetzner and Vultr; both providers have only run against fakes.
+- This run: #100–#103 and #105 merged since the last checkpoint; closed #51 (delivered) and #52
+  (superseded by approach B); #98 (go private) and #77 (docker in a box) unchanged.
 
 ## Across threads
 
