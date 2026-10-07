@@ -175,8 +175,7 @@ Exits non-zero if anything is FAIL. Warnings do not fail: they describe reduced
 function (no tailnet, no docker CLI), not a blocked one.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, err := os.Stat(boxMarker)
-		onABox := err == nil
+		onABox := onABox()
 		where := "control machine"
 		if onABox {
 			where = "a megh box"
