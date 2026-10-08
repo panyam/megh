@@ -232,6 +232,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /app.js", static("web/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", static("web/app.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/keys", s.keySources)
+	mux.HandleFunc("GET /api/capabilities", s.capabilities)
 	mux.HandleFunc("GET /api/boxes", s.api(s.boxes))
 	mux.HandleFunc("GET /api/volumes", s.api(s.volumes))
 	mux.HandleFunc("POST /api/volumes", s.api(s.createVolume))
