@@ -22,15 +22,23 @@ type locator struct {
 	fake
 	offers []providers.Offer
 	asked  []int
+	wantDC string
 }
 
-func (l *locator) Offers(_ context.Context, vcpu, ram, disk int) ([]providers.Offer, error) {
-	l.asked = append(l.asked, vcpu, ram, disk)
-	return l.offers, nil
+func (l *locator) Offers(_ context.Context, w providers.Want) ([]providers.Offer, error) {
+	l.asked = append(l.asked, w.VCPU, w.RAMGiB, w.DiskGiB)
+	l.wantDC = w.DC
+	var out []providers.Offer
+	for _, o := range l.offers {
+		if w.DC == "" || o.DC == w.DC {
+			out = append(out, o)
+		}
+	}
+	return out, nil
 }
 
 func newLocator() *locator {
-	l := &locator{offers: []providers.Offer{{DC: "ord", Type: "vc2-2c-4gb", PerHr: 0.027}, {DC: "ewr", Type: "vc2-2c-8gb", PerHr: 0.05}}}
+	l := &locator{offers: []providers.Offer{{DC: "ord", Type: "vc2-2c-4gb", VCPU: 2, RAMGiB: 4, DiskGiB: 80, PerHr: 0.027}, {DC: "ewr", Type: "vc2-2c-8gb", VCPU: 2, RAMGiB: 8, DiskGiB: 100, PerHr: 0.05}}}
 	l.name = "vultr"
 	l.vols = []providers.Volume{{Provider: "vultr", ID: "b1", Name: "megh-vw", DataCenter: "ewr", Size: 50}}
 	return l
@@ -194,9 +202,9 @@ func TestRegionsForACatalogBackendAreOffers(t *testing.T) {
 	v := newLocator()
 	s := twoBackends(&fake{}, v)
 	h := s.Handler()
-	w := do(t, h, "GET", "/api/regions?provider=vultr&vcpu=4", "", withKey)
+	w := do(t, h, "GET", "/api/regions?provider=vultr&vcpu=4&ram=16&disk=40", "", withKey)
 	body := w.Body.String()
-	if w.Code != http.StatusOK || !strings.Contains(body, `"offers":[{"dc":"ord","type":"vc2-2c-4gb","perHr":0.027}`) || !strings.Contains(body, `"dcs":["ord","ewr"]`) {
+	if w.Code != http.StatusOK || !strings.Contains(body, `"offers":[{"dc":"ord","type":"vc2-2c-4gb","vcpu":2,"ramGiB":4,"diskGiB":80,"perHr":0.027}`) || !strings.Contains(body, `"dcs":["ord","ewr"]`) {
 		t.Errorf("code=%d body=%s", w.Code, body)
 	}
 	if !slices.Equal(v.asked, []int{4, 16, 40}) {
@@ -297,5 +305,57 @@ func TestAFailingPlaceLookupLeavesBareCodes(t *testing.T) {
 	w := do(t, twoBackends(&fake{}, v).Handler(), "GET", "/api/regions?provider=vultr&vcpu=2", "", withKey)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"dcs":["ord","ewr"]`) || strings.Contains(w.Body.String(), "Chicago") {
 		t.Errorf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// The launch form's table is every machine at or above the minimums, not one
+// per location, and a backend that prices per data center must be given one.
+func TestOffersListEveryMachineAtOrAboveTheMinimums(t *testing.T) {
+	v := newPlacer()
+	v.offers = append(v.offers, providers.Offer{DC: "ord", Type: "vc2-4c-16gb", VCPU: 4, RAMGiB: 16, DiskGiB: 200, PerHr: 0.11})
+	h := twoBackends(&fake{}, v).Handler()
+	w := do(t, h, "GET", "/api/offers?provider=vultr&dc=ord&vcpu=2&ram=4&disk=50", "", withKey)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || strings.Count(body, `"type":`) != 2 || !strings.Contains(body, `"type":"vc2-4c-16gb"`) || !strings.Contains(body, `"ord":"Chicago, US"`) {
+		t.Fatalf("code=%d body=%s", w.Code, body)
+	}
+	if !slices.Equal(v.asked[len(v.asked)-3:], []int{2, 4, 50}) || v.wantDC != "ord" {
+		t.Errorf("asked %v in %q", v.asked, v.wantDC)
+	}
+	for _, bad := range []string{"vcpu=3", "ram=12", "disk=5", "disk=2000", "vcpu=x"} {
+		if w := do(t, h, "GET", "/api/offers?provider=vultr&"+bad, "", withKey); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d", bad, w.Code)
+		}
+	}
+	p := newProber()
+	p.name = "runpod"
+	s, _, _ := testServer(&p.fake)
+	s.Backends = func(Keys) []providers.Provider { return []providers.Provider{&catalogProber{prober: p}} }
+	if w := do(t, s.Handler(), "GET", "/api/offers?provider=runpod&vcpu=2", "", withKey); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "data center") {
+		t.Errorf("runpod without dc: code=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+// catalogProber is RunPod's shape: probed for capacity, priced from a catalog.
+type catalogProber struct{ *prober }
+
+func (c *catalogProber) Offers(context.Context, providers.Want) ([]providers.Offer, error) { return nil, nil }
+
+// A launch carries the picked machine and the minimums through to the backend.
+func TestUpLaunchesThePickedMachine(t *testing.T) {
+	v := newPlacer()
+	v.vols = []providers.Volume{{Provider: "vultr", ID: "b1", Name: "megh-vw", DataCenter: "ord", Size: 50}}
+	h := twoBackends(&fake{}, v).Handler()
+	w := do(t, h, "POST", "/api/up", `{"name":"ab","vcpu":4,"ram":16,"disk":100,"type":"vc2-4c-16gb","volume":"b1"}`, withKey)
+	if w.Code != http.StatusOK || v.upOpts == nil {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	if o := v.upOpts; o.Type != "vc2-4c-16gb" || o.VCPU != 4 || o.RAMGiB != 16 || o.DiskGiB != 100 {
+		t.Errorf("launched %+v", o)
+	}
+	for _, bad := range []string{`{"name":"ab","type":"Bad Type!"}`, `{"name":"ab","ram":12}`, `{"name":"ab","disk":5000}`} {
+		if w := do(t, h, "POST", "/api/up", bad, withKey); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d", bad, w.Code)
+		}
 	}
 }

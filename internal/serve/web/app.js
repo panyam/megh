@@ -250,7 +250,7 @@ async function loadAdmin() {
     $("volcreate").disabled = false;
     const q = new URLSearchParams({ provider: prov.value });
     if ($("allregions").checked) q.set("all", "1");
-    if ($("size").value) q.set("vcpu", $("size").value);
+    for (const [k, v] of Object.entries(minimums())) if (v) q.set(k, v);
     const rr = await call("GET", "/api/regions?" + q);
     const r = rr.data || {};
     regionList = r.dcs || [];
@@ -348,12 +348,12 @@ function probeRow(text, cls) {
 // one, which is what placing a volume wants.
 async function sweep(stopAtFirst) {
   $("probes").replaceChildren();
-  const vcpu = Number($("size").value) || 0;
+  const m = minimums();
   for (const dc of regionList) {
     const label = where(dc, regionPlaces[dc]);
     const row = probeRow(label + " … probing", "muted");
     try {
-      const r = await call("POST", "/api/regions/probe", { provider: $("volprov").value, dc, vcpu });
+      const r = await call("POST", "/api/regions/probe", { provider: $("volprov").value, dc, ...m });
       const p = r.data;
       row.textContent = label + ": " + p.verdict;
       row.className = p.rentable ? "" : "muted";
@@ -416,7 +416,66 @@ async function loadVolumes() {
       sel.append(o);
     }
     sel.value = keep;
+    volumeIndex = { list: d.volumes || [], defaultID: d.default || "", provider: d.provider || "" };
+    loadOffers();
   } catch (e) { /* the default entry still works */ }
+}
+
+// The launch catalog. volumeIndex is what GET /api/volumes said; picked is the
+// machine type chosen from the table, "" for the cheapest that fits.
+let volumeIndex = { list: [], defaultID: "", provider: "" };
+let picked = "";
+
+// minimums is what the form asks for: vCPU (0 = any), RAM and disk in GB.
+function minimums() {
+  return { vcpu: Number($("mincpu").value) || 0, ram: Number($("minram").value) || 0, disk: Number($("mindisk").value) || 0 };
+}
+
+// target is the provider and location a launch goes to: the chosen volume's,
+// or the default volume's, or just the default provider when there is none.
+function target() {
+  const id = $("where").value || volumeIndex.defaultID;
+  const v = volumeIndex.list.find((x) => x.id === id);
+  return v ? { provider: v.provider, dc: v.dc } : { provider: volumeIndex.provider, dc: "" };
+}
+
+// loadOffers fills the machine table for the target and minimums. A pick that
+// no longer meets them is dropped, so Launch never sends a type the table no
+// longer shows.
+async function loadOffers() {
+  const t = target();
+  const tbl = $("offers");
+  if (!t.provider) { tbl.replaceChildren(); return; }
+  const q = new URLSearchParams({ provider: t.provider });
+  if (t.dc) q.set("dc", t.dc);
+  for (const [k, v] of Object.entries(minimums())) if (v) q.set(k, v);
+  try {
+    const r = await call("GET", "/api/offers?" + q);
+    const d = r.data || {};
+    const offers = d.offers || [];
+    if (!offers.some((o) => o.type === picked)) picked = "";
+    const head = el("tr");
+    for (const h of ["", "machine", "vCPU", "RAM", "disk", "$/hr", "where", "stock"]) head.append(el("th", h));
+    const rows = [head];
+    const auto = el("tr", "", picked ? "" : "picked");
+    auto.append(el("td", picked ? "○" : "●"), el("td", "cheapest that fits (" + (offers[0] ? offers[0].type : "none") + ")"));
+    auto.addEventListener("click", () => { picked = ""; loadOffers(); });
+    rows.push(auto);
+    for (const o of offers.slice(0, 40)) {
+      const tr = el("tr", "", o.type === picked ? "picked" : "");
+      tr.append(el("td", o.type === picked ? "●" : "○"), el("td", o.type), el("td", String(o.vcpu)),
+        el("td", o.ramGiB + " GB"), el("td", o.diskGiB + " GB"), el("td", money(o.perHr)),
+        el("td", where(o.dc, (d.places || {})[o.dc])), el("td", o.stock || ""));
+      tr.addEventListener("click", () => { picked = o.type; loadOffers(); });
+      rows.push(tr);
+    }
+    if (!offers.length) rows.push(el("tr", "", "muted"));
+    tbl.replaceChildren(...rows);
+    if (!offers.length) tbl.lastChild.append(el("td"), el("td", "nothing sold at or above these minimums here"));
+  } catch (e) {
+    tbl.replaceChildren(el("tr", "", "muted"));
+    tbl.lastChild.append(el("td"), el("td", e.message));
+  }
 }
 
 async function refresh() {
@@ -436,7 +495,7 @@ async function launch() {
   showLog("launching " + name + " ...", false);
   try {
     const r = await call("POST", "/api/up", {
-      name, flavor: $("flavor").value, vcpu: Number($("size").value) || 0, volume: $("where").value,
+      name, flavor: $("flavor").value, volume: $("where").value, type: picked, ...minimums(),
     });
     showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
     $("name").value = "";
@@ -527,6 +586,9 @@ document.addEventListener("DOMContentLoaded", () => {
       $("keyblock").focus();
     }
   });
-  $("size").addEventListener("change", loadAdmin);
+  for (const id of ["mincpu", "minram"]) $(id).addEventListener("change", () => { loadAdmin(); loadOffers(); });
+  $("mindisk").addEventListener("input", () => { $("mindiskval").textContent = $("mindisk").value + " GB"; });
+  $("mindisk").addEventListener("change", () => { loadAdmin(); loadOffers(); });
+  $("where").addEventListener("change", loadOffers);
   loadServerKeys().then(showState);
 });

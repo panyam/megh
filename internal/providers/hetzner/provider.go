@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,7 +122,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 		return nil, fmt.Errorf("volume %s is in %s, not %s; a box can only attach a volume in its own location", o.VolumeID, loc, o.DataCenter)
 	}
 
-	st, err := p.pickServerType(ctx, c, loc, o.VCPU, o.RAMGiB, o.DiskGiB)
+	st, err := p.pickServerType(ctx, c, loc, o)
 	if err != nil {
 		return nil, err
 	}
@@ -167,36 +166,72 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	return &result{name: providers.ShortName(name), typ: st, loc: loc, ip: sr.Server.PublicNet.IPv4.IP, ssh: o.ExposeSSH}, nil
 }
 
-// pickServerType is the cheapest current x86 server type sold in loc with at
-// least the requested cores, memory and disk. x86 because the megh image is
-// published for linux/amd64.
-func (p *Provider) pickServerType(ctx context.Context, c *client, loc string, vcpu, ramGiB, diskGiB int) (serverType, error) {
+// pickServerType is the server type Up creates in loc: the one o.Type names,
+// or the cheapest current x86 type with at least o's cores, memory and disk.
+// x86 because the megh image is published for linux/amd64.
+func (p *Provider) pickServerType(ctx context.Context, c *client, loc string, o providers.Options) (serverType, error) {
 	types, err := listServerTypes(ctx, c)
 	if err != nil {
 		return serverType{}, err
 	}
-	best, ok := cheapestByLocation(types, vcpu, ramGiB, diskGiB)[loc]
+	if o.Type != "" {
+		for _, t := range types {
+			if t.Name == o.Type && rentable(t) {
+				if _, ok := priceIn(t, loc); !ok {
+					return serverType{}, fmt.Errorf("hetzner does not sell %s in %s, where the volume is", o.Type, loc)
+				}
+				return t, nil
+			}
+		}
+		return serverType{}, fmt.Errorf("hetzner has no current x86 server type %q", o.Type)
+	}
+	best, ok := cheapestByLocation(types, o.VCPU, o.RAMGiB, o.DiskGiB)[loc]
 	if !ok {
-		return serverType{}, fmt.Errorf("hetzner sells no x86 server type in %s with %d vCPU, %d GB RAM and %d GB disk", loc, vcpu, ramGiB, diskGiB)
+		return serverType{}, fmt.Errorf("hetzner sells no x86 server type in %s with %d vCPU, %d GB RAM and %d GB disk", loc, o.VCPU, o.RAMGiB, o.DiskGiB)
 	}
 	return best.typ, nil
 }
 
-// Offers lists every location selling an x86 type that fits, with the type Up
-// would pick there, cheapest first.
-func (p *Provider) Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]providers.Offer, error) {
+// Offers is every current x86 server type meeting w's minimums, in each
+// location that prices it (or only w.DC), cheapest first.
+func (p *Provider) Offers(ctx context.Context, w providers.Want) ([]providers.Offer, error) {
 	types, err := listServerTypes(ctx, p.client())
 	if err != nil {
 		return nil, err
 	}
 	var out []providers.Offer
-	for loc, b := range cheapestByLocation(types, vcpu, ramGiB, diskGiB) {
-		out = append(out, providers.Offer{DC: loc, Type: b.typ.Name, PerHr: b.perHr})
+	for _, t := range types {
+		if !rentable(t) || t.Cores < w.VCPU || t.Memory < float64(w.RAMGiB) || t.Disk < w.DiskGiB {
+			continue
+		}
+		for _, pr := range t.Prices {
+			if w.DC != "" && pr.Location != w.DC {
+				continue
+			}
+			f, err := strconv.ParseFloat(pr.PriceHourly.Gross, 64)
+			if err != nil {
+				continue
+			}
+			out = append(out, providers.Offer{DC: pr.Location, Type: t.Name, VCPU: t.Cores, RAMGiB: int(t.Memory),
+				DiskGiB: t.Disk, PerHr: f})
+		}
 	}
-	slices.SortFunc(out, func(a, b providers.Offer) int {
-		return cmp.Or(cmp.Compare(a.PerHr, b.PerHr), cmp.Compare(a.DC, b.DC))
-	})
+	providers.SortOffers(out)
 	return out, nil
+}
+
+// rentable is a server type megh will create: x86 and not deprecated.
+func rentable(t serverType) bool { return t.Architecture == "x86" && t.Deprecation == nil }
+
+// priceIn is t's hourly price in loc, if it is sold there.
+func priceIn(t serverType, loc string) (float64, bool) {
+	for _, pr := range t.Prices {
+		if pr.Location == loc {
+			f, err := strconv.ParseFloat(pr.PriceHourly.Gross, 64)
+			return f, err == nil
+		}
+	}
+	return 0, false
 }
 
 func listServerTypes(ctx context.Context, c *client) ([]serverType, error) {
@@ -217,7 +252,7 @@ type priced struct {
 func cheapestByLocation(types []serverType, vcpu, ramGiB, diskGiB int) map[string]priced {
 	best := map[string]priced{}
 	for _, t := range types {
-		if t.Architecture != "x86" || t.Deprecation != nil {
+		if !rentable(t) {
 			continue
 		}
 		if t.Cores < vcpu || t.Memory < float64(ramGiB) || t.Disk < diskGiB {

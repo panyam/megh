@@ -233,10 +233,11 @@ func TestNoKeyIsNotConfigured(t *testing.T) {
 // Up would pick there, cheapest first.
 func TestOffersListsEachRegionsCheapestFittingPlan(t *testing.T) {
 	p := testProvider(t, newFake(t), cfg())
-	got, err := p.Offers(context.Background(), 2, 4, 50)
+	all, err := p.Offers(context.Background(), providers.Want{VCPU: 2, RAMGiB: 4, DiskGiB: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := providers.CheapestPerDC(all)
 	if len(got) != 2 || got[0].DC != "ord" || got[0].Type != "vc2-2c-4gb-ord-only" || got[1].DC != "ewr" || got[1].Type != "vc2-2c-4gb" {
 		t.Fatalf("got %+v", got)
 	}
@@ -290,5 +291,44 @@ func TestPlacesNamesEachRegion(t *testing.T) {
 	got, err := p.Places(context.Background())
 	if err != nil || got["ord"] != "Chicago, US" || got["ams"] != "Amsterdam, NL" {
 		t.Fatalf("got %v %v", got, err)
+	}
+}
+
+// The catalog is every plan meeting the minimums, not one per region, so the
+// user can pick; each carries what it actually has.
+func TestOffersListsEveryPlanMeetingTheMinimums(t *testing.T) {
+	p := testProvider(t, newFake(t), cfg())
+	got, err := p.Offers(context.Background(), providers.Want{VCPU: 4, RAMGiB: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Type != "vc2-4c-8gb" || got[0].VCPU != 4 || got[0].RAMGiB != 8 || got[0].DiskGiB != 160 ||
+		got[1].Type != "vc2-8c-32gb" || got[1].RAMGiB != 32 {
+		t.Fatalf("got %+v", got)
+	}
+	ord, _ := p.Offers(context.Background(), providers.Want{VCPU: 2, RAMGiB: 4, DC: "ord"})
+	if len(ord) != 2 || ord[0].DC != "ord" || ord[1].DC != "ord" {
+		t.Fatalf("DC filter: got %+v", ord)
+	}
+}
+
+// A picked type is launched as picked, even when a cheaper one also fits; a
+// type the volume's region does not sell is refused before anything is made.
+func TestUpLaunchesThePickedType(t *testing.T) {
+	f := newFake(t)
+	p := testProvider(t, f, cfg())
+	o := opts(2, 4, 50)
+	o.Type = "vc2-8c-32gb"
+	if _, err := p.Up(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if f.instance["plan"] != "vc2-8c-32gb" {
+		t.Errorf("plan = %v", f.instance["plan"])
+	}
+	f2 := newFake(t)
+	p2 := testProvider(t, f2, cfg())
+	o.Type = "vc2-2c-4gb-ord-only"
+	if _, err := p2.Up(context.Background(), o); err == nil || !strings.Contains(err.Error(), "ewr") || f2.instance != nil {
+		t.Errorf("unsold type: err=%v created=%v", err, f2.instance != nil)
 	}
 }

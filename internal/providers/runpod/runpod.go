@@ -79,12 +79,16 @@ func up(ctx context.Context, o providers.Options) (*Result, error) {
 		podPorts = append(podPorts, sshPort)
 	}
 
+	vcpu, flavors, err := podShape(o)
+	if err != nil {
+		return nil, err
+	}
 	payload := map[string]any{
 		"name":              o.Name,
 		"imageName":         o.Image,
 		"computeType":       "CPU",
-		"vcpuCount":         o.VCPU,
-		"cpuFlavorIds":      cpuFlavorIDs(o.VCPU, o.RAMGiB),
+		"vcpuCount":         vcpu,
+		"cpuFlavorIds":      flavors,
 		"cpuFlavorPriority": "availability",
 		"containerDiskInGb": o.DiskGiB,
 		"dataCenterIds":     []string{o.DataCenter},

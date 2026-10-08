@@ -209,7 +209,7 @@ func pickPlan(plans []plan, region string, vcpu, ramGiB, diskGiB int) (plan, err
 func cheapestByRegion(plans []plan, vcpu, ramGiB, diskGiB int) map[string]plan {
 	best := map[string]plan{}
 	for _, pl := range plans {
-		if !slices.Contains(planTypes, pl.Type) || strings.HasSuffix(pl.ID, "-v6") {
+		if !rentable(pl) {
 			continue
 		}
 		if pl.VCPUCount < vcpu || pl.RAM < ramGiB*1024 || pl.Disk < diskGiB {
@@ -224,22 +224,52 @@ func cheapestByRegion(plans []plan, vcpu, ramGiB, diskGiB int) map[string]plan {
 	return best
 }
 
-// Offers lists every region selling a CPU plan that fits, with the plan Up
-// would pick there, cheapest first. The hourly price is the monthly one over
-// 730 hours, as List reports it.
-func (p *Provider) Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]providers.Offer, error) {
+// Offers is every CPU plan meeting w's minimums, in each region that sells it
+// (or only w.DC), cheapest first. The hourly price is the monthly one over 730
+// hours, as List reports it.
+func (p *Provider) Offers(ctx context.Context, w providers.Want) ([]providers.Offer, error) {
 	plans, err := p.plans(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var out []providers.Offer
-	for r, pl := range cheapestByRegion(plans, vcpu, ramGiB, diskGiB) {
-		out = append(out, providers.Offer{DC: r, Type: pl.ID, PerHr: pl.MonthlyCost / 730})
+	for _, pl := range plans {
+		if !rentable(pl) || pl.VCPUCount < w.VCPU || pl.RAM < w.RAMGiB*1024 || pl.Disk < w.DiskGiB {
+			continue
+		}
+		for _, r := range pl.Locations {
+			if w.DC != "" && r != w.DC {
+				continue
+			}
+			out = append(out, providers.Offer{DC: r, Type: pl.ID, VCPU: pl.VCPUCount, RAMGiB: pl.RAM / 1024,
+				DiskGiB: pl.Disk, PerHr: pl.MonthlyCost / 730})
+		}
 	}
-	slices.SortFunc(out, func(a, b providers.Offer) int {
-		return cmp.Or(cmp.Compare(a.PerHr, b.PerHr), cmp.Compare(a.DC, b.DC))
-	})
+	providers.SortOffers(out)
 	return out, nil
+}
+
+// rentable is a plan megh will create: a CPU family, and not IPv6-only (-v6),
+// since the box's SSH and tailnet bring-up want IPv4.
+func rentable(pl plan) bool {
+	return slices.Contains(planTypes, pl.Type) && !strings.HasSuffix(pl.ID, "-v6")
+}
+
+// planFor is the plan Up creates in region: the one o.Type names, or the
+// cheapest meeting o's minimums.
+func planFor(plans []plan, region string, o providers.Options) (plan, error) {
+	if o.Type == "" {
+		return pickPlan(plans, region, o.VCPU, o.RAMGiB, o.DiskGiB)
+	}
+	for _, pl := range plans {
+		if pl.ID == o.Type && rentable(pl) {
+			if !slices.Contains(pl.Locations, region) {
+				return plan{}, fmt.Errorf("vultr does not sell %s in %s, where the volume is", o.Type, region)
+			}
+			return pl, nil
+		}
+	}
+	return plan{}, fmt.Errorf("vultr has no CPU plan %q", o.Type)
 }
 
 // ubuntuID is the os_id of Ubuntu 24.04 x64, looked up rather than hardcoded.
@@ -289,7 +319,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	if err != nil {
 		return nil, err
 	}
-	pl, err := pickPlan(plans, vol.Region, o.VCPU, o.RAMGiB, o.DiskGiB)
+	pl, err := planFor(plans, vol.Region, o)
 	if err != nil {
 		return nil, err
 	}
