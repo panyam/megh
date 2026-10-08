@@ -65,6 +65,9 @@ var gatewayUpCmd = &cobra.Command{
 		if cfg.Tailnet == "" {
 			return fmt.Errorf("set tailnet: in megh.yaml (the MagicDNS suffix, e.g. tail1234.ts.net); the gateway routes <box>.localhost to <box>.<tailnet>")
 		}
+		if _, err := localEngine(); err != nil {
+			return err
+		}
 		image := gatewayImage()
 		switch state := gatewayState(ctx); state {
 		case "running":
@@ -73,11 +76,8 @@ var gatewayUpCmd = &cobra.Command{
 			// The container runs `megh gw serve` and `megh gw nc` from the image,
 			// so an image older than both can't be a gateway.
 			if out, err := engineOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
-				if strings.Contains(out, "unknown command") {
-					return fmt.Errorf("%s has no `megh gw nc`; pull a newer one, or build one with `make image-local-gw` and set tailscale.gateway_image", image)
-				}
 				e, _ := localEngine()
-				return fmt.Errorf("can't run %s (a private GHCR image needs `%s login ghcr.io` with GH_MEGH_TOKEN first): %w", image, e.Name, err)
+				return gatewayImageCheckError(image, e.Name, out, err)
 			}
 			if _, err := engineOut(ctx, gatewayRunArgs(image, cfg.Tailnet)...); err != nil {
 				return err
@@ -352,6 +352,25 @@ var gatewayShellCmd = &cobra.Command{
 		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return c.Run()
 	},
+}
+
+// gatewayImageCheckError says why the image check failed: an image too old
+// to have `gw nc`, a pull the registry refused (log in), or anything else,
+// shown as the engine reported it rather than blamed on the login.
+func gatewayImageCheckError(image, engine, out string, err error) error {
+	low := strings.ToLower(out)
+	switch {
+	case strings.Contains(low, "unknown command"):
+		return fmt.Errorf("%s has no `megh gw nc`; pull a newer one, or build one with `make image-local-gw` and set tailscale.gateway_image", image)
+	case strings.Contains(low, "unauthorized"), strings.Contains(low, "denied"), strings.Contains(low, "authentication required"):
+		return fmt.Errorf("can't pull %s: the registry refused it; a private GHCR image needs `%s login ghcr.io` with GH_MEGH_TOKEN first (%s)", image, engine, strings.TrimSpace(out))
+	default:
+		msg := err.Error()
+		if o := strings.TrimSpace(out); o != "" && !strings.Contains(msg, o) {
+			msg += ": " + o
+		}
+		return fmt.Errorf("can't run %s: %s", image, msg)
+	}
 }
 
 // gatewayShellArgs opens sh in the gateway: the image is Alpine, with no bash.

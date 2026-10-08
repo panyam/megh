@@ -46,6 +46,14 @@ func ResolveEngine(c config.Provider) (Engine, error) {
 	if want == "" {
 		want, src = c.Engine, "providers.local.engine"
 	}
+	if want == "" && c.Context != "" && onPath("podman") {
+		// A context belongs to one engine, and until podman support every
+		// context megh saw was docker's; on a detected podman it would become
+		// an unknown --connection. With only docker installed there is nothing
+		// to guess, so existing docker configs keep working; with podman there
+		// is, so ask.
+		return e, fmt.Errorf("providers.local.context is %q but no engine is named, so megh can't tell whose it is: set providers.local.engine to docker (a docker context) or podman (a podman connection)", c.Context)
+	}
 	if want == "" {
 		for _, n := range detectOrder {
 			if _, err := exec.LookPath(n); err == nil {
@@ -63,6 +71,11 @@ func ResolveEngine(c config.Provider) (Engine, error) {
 		return e, fmt.Errorf("%w: %s is not on PATH (%s names it; install it, or change that)", providers.ErrNotConfigured, e.Name, src)
 	}
 	return e, nil
+}
+
+func onPath(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // Args prefixes the context flag, so every call reaches the same daemon or

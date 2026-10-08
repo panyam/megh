@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -81,5 +82,23 @@ func TestGatewayRunsUnderPlainSh(t *testing.T) {
 	}
 	if got := strings.Join(gatewayShellArgs(), " "); got != "exec -it megh-gw sh" {
 		t.Errorf("shell: got %q", got)
+	}
+}
+
+// Only an auth failure is a login problem; anything else is shown as itself.
+func TestGatewayImageCheckNamesTheRealFailure(t *testing.T) {
+	run := errors.New("podman run: exit status 125")
+	for _, tc := range []struct {
+		out, want, notWant string
+	}{
+		{"Error: unknown command \"gw\" for \"megh\"", "make image-local-gw", "login"},
+		{"Error: initializing source docker://ghcr.io/x/megh-gw:latest: reading manifest latest: unauthorized", "podman login ghcr.io", ""},
+		{"denied: requested access to the resource is denied", "podman login ghcr.io", ""},
+		{"Error: read cli flags: connection \"default\" not found", "connection \"default\" not found", "login"},
+	} {
+		err := gatewayImageCheckError("ghcr.io/x/megh-gw:latest", "podman", tc.out, run)
+		if !strings.Contains(err.Error(), tc.want) || (tc.notWant != "" && strings.Contains(err.Error(), tc.notWant)) {
+			t.Errorf("%q: got %v", tc.out, err)
+		}
 	}
 }
