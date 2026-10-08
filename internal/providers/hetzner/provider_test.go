@@ -245,15 +245,20 @@ func TestShqRoundTripsThroughBash(t *testing.T) {
 // type Up would pick there, cheapest first.
 func TestOffersListsEachLocationsCheapestFittingType(t *testing.T) {
 	p := testProvider(t, newFake(t), registryConfig())
-	got, err := p.Offers(context.Background(), 4, 8, 50)
+	all, err := p.Offers(context.Background(), providers.Want{VCPU: 4, RAMGiB: 8, DiskGiB: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []providers.Offer{{DC: "fsn1", Type: "cpx21eu", PerHr: 0.0010}, {DC: "ash", Type: "cpx31", PerHr: 0.0236}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	got := providers.CheapestPerDC(all)
+	type key struct {
+		DC, Type string
+		PerHr    float64
+	}
+	want := []key{{"fsn1", "cpx21eu", 0.0010}, {"ash", "cpx31", 0.0236}}
+	if len(got) != len(want) || (key{got[0].DC, got[0].Type, got[0].PerHr}) != want[0] || (key{got[1].DC, got[1].Type, got[1].PerHr}) != want[1] {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
-	if got, _ := p.Offers(context.Background(), 64, 512, 50); len(got) != 0 {
+	if got, _ := p.Offers(context.Background(), providers.Want{VCPU: 64, RAMGiB: 512, DiskGiB: 50}); len(got) != 0 {
 		t.Errorf("an unsellable shape has no offers: %+v", got)
 	}
 }
@@ -299,5 +304,36 @@ func TestPlacesNamesEachLocation(t *testing.T) {
 	got, err := p.Places(context.Background())
 	if err != nil || got["ash"] != "Ashburn, VA, US" || got["fsn1"] != "Falkenstein, DE" {
 		t.Fatalf("got %v %v", got, err)
+	}
+}
+
+func TestOffersListsEveryTypeMeetingTheMinimums(t *testing.T) {
+	p := testProvider(t, newFake(t), registryConfig())
+	got, err := p.Offers(context.Background(), providers.Want{VCPU: 4, RAMGiB: 8, DC: "ash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Type != "cpx31" || got[0].VCPU != 4 || got[0].RAMGiB != 8 || got[0].DiskGiB != 160 ||
+		got[1].Type != "cpx41" || got[1].RAMGiB != 16 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestUpLaunchesThePickedType(t *testing.T) {
+	f := newFake(t)
+	p := testProvider(t, f, registryConfig())
+	o := opts(2, 2, 20)
+	o.Type = "cpx41"
+	if _, err := p.Up(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if f.posted["server_type"] != "cpx41" {
+		t.Errorf("server_type = %v", f.posted["server_type"])
+	}
+	f2 := newFake(t)
+	p2 := testProvider(t, f2, registryConfig())
+	o.Type = "cpx21eu"
+	if _, err := p2.Up(context.Background(), o); err == nil || !strings.Contains(err.Error(), "ash") || f2.posted != nil {
+		t.Errorf("unsold type: err=%v posted=%v", err, f2.posted)
 	}
 }

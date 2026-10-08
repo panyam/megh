@@ -251,3 +251,13 @@ func TestUpPassesThePullTokenThroughAndReadsNoneItself(t *testing.T) {
 		t.Errorf("read the environment: %q", g.upOpts.PullToken)
 	}
 }
+
+func TestUpPassesThePickedTypeThrough(t *testing.T) {
+	f := &fake{name: "runpod"}
+	if _, err := svc(f, config.Default()).Up(context.Background(), UpRequest{Name: "a", PubKey: key, Type: "cpu3g-4-16"}); err != nil {
+		t.Fatal(err)
+	}
+	if f.upOpts.Type != "cpu3g-4-16" {
+		t.Errorf("type = %q", f.upOpts.Type)
+	}
+}

@@ -1,7 +1,9 @@
 package providers
 
 import (
+	"cmp"
 	"context"
+	"slices"
 
 	"github.com/panyam/megh/internal/config"
 )
@@ -57,6 +59,11 @@ type Options struct {
 	// ignores it, since its pull credential lives in the RunPod console, and
 	// so does docker, which pulls with the host's own login.
 	PullToken string
+	// Type is the exact machine to create, as an Offer names it (a Vultr plan,
+	// a Hetzner server type, a RunPod instance such as "cpu3g-4-16"). Empty
+	// means the cheapest type meeting VCPU/RAMGiB/DiskGiB, which is what a
+	// launch did before the catalog existed.
+	Type string
 }
 
 // Result is a successful launch. Only the human-facing summary is shared: what
@@ -99,22 +106,56 @@ type StoppedBoxStarter interface {
 	StartStopped(ctx context.Context, id string) (Result, error)
 }
 
-// Offer is one location that sells a box of a requested shape, with the
-// cheapest type that fits there and its hourly price.
-type Offer struct {
-	DC    string  `json:"dc"`
-	Type  string  `json:"type"`
-	PerHr float64 `json:"perHr"`
+// Want is a request to a backend's catalog: the least a machine must have, and
+// optionally the one location to look in. Zero means no minimum.
+type Want struct {
+	VCPU    int
+	RAMGiB  int
+	DiskGiB int
+	DC      string // "" = every location; some backends need one (RunPod prices per data center)
 }
 
-// Locator answers "where can this shape run" from the backend's own catalog.
-// Hetzner and Vultr list which types each location sells, so a query answers
-// it; RunPod has no such catalog and is probed instead (runpod.Probe).
+// Offer is one machine type a backend sells in one location: what Up creates
+// when Options.Type names it. DiskGiB is the most disk the type comes with or
+// allows. Stock is the backend's own availability hint when it gives one
+// ("High", "Low"), and is a hint only: capacity is proved by renting.
+type Offer struct {
+	DC      string  `json:"dc"`
+	Type    string  `json:"type"`
+	VCPU    int     `json:"vcpu"`
+	RAMGiB  int     `json:"ramGiB"`
+	DiskGiB int     `json:"diskGiB"`
+	PerHr   float64 `json:"perHr"`
+	Stock   string  `json:"stock,omitempty"`
+}
+
+// Locator answers "what can I rent that has at least this much" from the
+// backend's own catalog: every machine type meeting Want in every location
+// (or in Want.DC), cheapest first.
 type Locator interface {
-	// Offers is every location selling a type with at least vcpu cores,
-	// ramGiB memory and diskGiB disk, cheapest first. A location appears once,
-	// with the type Up would pick there.
-	Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]Offer, error)
+	Offers(ctx context.Context, w Want) ([]Offer, error)
+}
+
+// SortOffers orders offers cheapest first, then by location and type, so a
+// listing is stable from one call to the next.
+func SortOffers(o []Offer) {
+	slices.SortFunc(o, func(a, b Offer) int {
+		return cmp.Or(cmp.Compare(a.PerHr, b.PerHr), cmp.Compare(a.DC, b.DC), cmp.Compare(a.Type, b.Type))
+	})
+}
+
+// CheapestPerDC keeps the cheapest offer in each location, in the order given:
+// the answer to "where can this run", as opposed to "what can I rent".
+func CheapestPerDC(o []Offer) []Offer {
+	seen := map[string]bool{}
+	var out []Offer
+	for _, x := range o {
+		if !seen[x.DC] {
+			seen[x.DC] = true
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // Placer names a backend's location codes for people: "Chicago, US" for

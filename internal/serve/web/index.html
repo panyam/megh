@@ -48,16 +48,33 @@
         <option value="slim">slim</option>
         <option value="full">full</option>
       </select>
-      <select id="size" title="Smaller boxes are easier to rent when a data center is busy">
-        <option value="">default size</option>
-        <option value="2">2 vCPU · 8 GB · 20 GB disk</option>
-        <option value="4">4 vCPU · 16 GB · 40 GB disk</option>
-        <option value="8">8 vCPU · 32 GB · 50 GB disk</option>
-      </select>
       <select id="where" title="A box starts on its volume's provider, in its data center">
         <option value="">default volume</option>
       </select>
       <button id="up" type="button">Launch</button>
+    </div>
+    <div class="row">
+      <label>Min CPU
+        <select id="mincpu">
+          <option value="0">Any</option>
+          <option value="2">2 vCPU</option>
+          <option value="4">4 vCPU</option>
+          <option value="6">6 vCPU</option>
+          <option value="8">8 vCPU</option>
+        </select></label>
+      <label>Min memory
+        <select id="minram">
+          <option value="4">4 GB</option>
+          <option value="8" selected>8 GB</option>
+          <option value="16">16 GB</option>
+          <option value="32">32 GB</option>
+        </select></label>
+      <label>Min disk <input id="mindisk" type="range" min="10" max="1000" step="10" value="20">
+        <output id="mindiskval">20 GB</output></label>
+    </div>
+    <p id="pickhelp" class="muted">Machines that meet these minimums where the chosen volume
+    is. Pick one, or launch with none picked to get the cheapest.</p>
+    <table id="offers"></table>
     </div>
   </section>
 
@@ -88,7 +105,7 @@
     then creates a volume there.</p>
     <p id="offer-help" class="muted" hidden>This provider publishes which locations sell
     each size, so there is nothing to probe: these are the locations selling the
-    size chosen under Launch, cheapest first, with the type a box would get.</p>
+    minimums chosen under Launch, cheapest first, with the type a box would get.</p>
     <div id="probe-row" class="row">
       <label><input id="allregions" type="checkbox"> all regions</label>
       <button id="probe" type="button">Probe</button>

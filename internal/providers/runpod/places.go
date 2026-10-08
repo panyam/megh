@@ -28,26 +28,6 @@ func (p *Provider) Places(ctx context.Context) (map[string]string, error) {
 	if p.places != nil {
 		return p.places, nil
 	}
-	body, _ := json.Marshal(map[string]string{"query": "{ dataCenters { id location } }"})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphqlEndpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	key := keyFor(p.with(ctx))
-	if key == "" {
-		return nil, fmt.Errorf("%w: runpod has no API key (set RUNPOD_API_KEY)", providers.ErrNotConfigured)
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("runpod: graphql HTTP %d", resp.StatusCode)
-	}
 	var out struct {
 		Data struct {
 			DataCenters []struct {
@@ -56,8 +36,8 @@ func (p *Provider) Places(ctx context.Context) (map[string]string, error) {
 			} `json:"dataCenters"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("runpod: graphql: %w", err)
+	if err := p.graphql(ctx, "{ dataCenters { id location } }", &out); err != nil {
+		return nil, err
 	}
 	m := make(map[string]string, len(out.Data.DataCenters))
 	for _, dc := range out.Data.DataCenters {
@@ -91,4 +71,33 @@ var usStates = map[string]string{
 	"SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
 	"VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming",
 	"DC": "District of Columbia",
+}
+
+// graphql runs one query against RunPod's GraphQL API and decodes the reply
+// into out. The key travels in the Authorization header, never the URL.
+func (p *Provider) graphql(ctx context.Context, query string, out any) error {
+	key := keyFor(p.with(ctx))
+	if key == "" {
+		return fmt.Errorf("%w: runpod has no API key (set RUNPOD_API_KEY)", providers.ErrNotConfigured)
+	}
+	body, _ := json.Marshal(map[string]string{"query": query})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, graphqlEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("runpod: graphql HTTP %d", resp.StatusCode)
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("runpod: graphql: %w", err)
+	}
+	return nil
 }
