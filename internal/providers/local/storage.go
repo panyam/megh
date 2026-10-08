@@ -1,4 +1,4 @@
-package docker
+package local
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func (p *Provider) Volumes(ctx context.Context) ([]providers.Volume, error) {
 		if os.IsNotExist(err) {
 			return nil, nil // no local volumes yet is not an error
 		}
-		return nil, fmt.Errorf("docker: read %s: %w", root, err)
+		return nil, fmt.Errorf("local: read %s: %w", root, err)
 	}
 	var out []providers.Volume
 	for _, e := range entries {
@@ -38,7 +38,7 @@ func (p *Provider) Volumes(ctx context.Context) ([]providers.Volume, error) {
 			continue
 		}
 		out = append(out, providers.Volume{
-			Provider:   "docker",
+			Provider:   "local",
 			ID:         e.Name(),
 			Name:       e.Name(),
 			DataCenter: "local",
@@ -65,7 +65,7 @@ func (p *Provider) CreateVolume(ctx context.Context, name string, sizeGiB int, d
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	return &providers.Volume{Provider: "docker", ID: name, Name: name, DataCenter: "local"}, nil
+	return &providers.Volume{Provider: "local", ID: name, Name: name, DataCenter: "local"}, nil
 }
 
 // DeleteVolume removes an EMPTY volume directory and refuses a populated one.

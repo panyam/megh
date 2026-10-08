@@ -2,7 +2,7 @@
 
 Disposable cloud dev boxes for agentic coding. Provider-abstracted CLI with four
 backends: RunPod (CPU pods), Hetzner and Vultr (VMs sized per launch), and local
-docker. Read `DESIGN.md` for the settled architecture and
+containers (podman or docker). Read `DESIGN.md` for the settled architecture and
 `WORKFLOW.md` for the operational runbook. `SETUP.md` is first-run, and its §6
 covers using a phone as the control device (Termux, re-minted credentials, the
 new-box-key gotcha).
@@ -41,7 +41,7 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
                                   # a volume, which fixes the location (SETUP.md section 8)
                                   # runs anywhere the provider key is: holding it IS being the
                                   # control plane (C3), so there is nothing to declare
-                                  # --provider docker runs it as a LOCAL container (see below)
+                                  # --provider local runs it as a LOCAL container (see below)
 megh list [--all]                 # megh boxes on EVERY provider with a credential (PROVIDER column); --all = every pod
                                   # box commands (ssh/browse/doctor/down/...) also search every provider: only
                                   # --provider or MEGH_PROVIDER pins one; default_provider is where NEW boxes go
@@ -92,7 +92,7 @@ megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; R
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 megh serve [--addr 127.0.0.1:8080] # the web control plane, locally; loopback only. Hosted copy: cmd/meghplane (SETUP.md §7)
-megh gw up|down|status|shell      # a local docker container on the tailnet in this machine's place (alias: gateway),
+megh gw up|down|status|shell      # a local container (podman or docker) on the tailnet in this machine's place (alias: gateway),
                                   # from the megh-gw image (env/gw: tailscale + megh, amd64+arm64, CI-built);
                                   # http://<box>.localhost:7682/ etc. reach workers (SETUP.md §10), and ssh/tmux/
                                   # browse/hydrate to a CLOUD box go through it whenever it runs (even public-SSH boxes:
@@ -138,20 +138,30 @@ stdin as control COMMANDS, so `whoami` answers `parse error: unknown command` an
 `ls` silently runs tmux's list-sessions. That asymmetry is why the default is off
 rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 
-## The local (docker) backend
+## The local backend
 
-`megh up --provider docker <name>` runs a box as a container on this machine.
+`megh up --provider local <name>` runs a box as a container on this machine,
+under podman or docker (`providers.local.engine`; unset auto-detects, podman
+first, the same order as the Makefile's `CONTAINER_CMD`; `MEGH_ENGINE` overrides
+both; `megh config` says which it picked and why). It was called `docker`
+until it ran podman too, and that name still works for `--provider`,
+`MEGH_PROVIDER`, `default_provider` and the `providers:` key, with a note. A
+named engine that is not installed is an error, never a switch to the other,
+and an engine that is installed but down says how to start it (`podman machine
+start`, Docker Desktop). The engine's CLI is the whole interface: podman takes
+docker's verbs, and `local.Engine` absorbs the two differences (`--context` vs
+`--connection`, and podman's `info` having no ServerVersion).
 `list`, `ssh`, `down`, `enable`, `browse`, `doctor`, `storage` and `sessions` all
 work against it unchanged, because a local box runs sshd and megh reaches it the
 same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` has nothing
-for it and says so: probing has no meaning locally and docker has no catalog.
+for it and says so: probing has no meaning locally and a container engine has no catalog.
 `megh mesh` works anywhere: it dials the box the same way every other command
 does, so it diagnoses a local box on the mesh exactly as it does a pod.
 
 Four things differ, and each is deliberate.
 
 - **No mesh unless you ask for one, and a tunnel either way.** `Provider.Mesh()`
-  reads `providers.docker.mesh`, so a local box joins no overlay by default:
+  reads `providers.local.mesh`, so a local box joins no overlay by default:
   `up` mints no node key and `down` skips the logout and the node prune. Over
   loopback an overlay buys nothing.
 
@@ -179,7 +189,7 @@ Four things differ, and each is deliberate.
   publishable port. This was tried, shipped a `up` summary full of URLs that
   returned nothing, and reverted; `TestRunArgsPublishesOnlyLoopbackSSH` now pins
   it.
-- **The work trees are bind mounts, not clones.** `providers.docker.mounts:` maps
+- **The work trees are bind mounts, not clones.** `providers.local.mounts:` maps
   a host path to a box path using the SAME convention as a `symlinks:` target
   (relative to the work mount unless absolute, `:ro` for read-only). Point a mount
   at the target `symlinks:` already uses and one megh.yaml serves both backends:
@@ -196,7 +206,7 @@ Four things differ, and each is deliberate.
   are x86_64), so on an arm64 machine the published image emulates. `make
   image-local-full` and `make image-local-slim` build for this machine's arch from
   the same `provision.sh`, using BuildKit's `TARGETARCH`; set
-  `providers.docker.image` to the tag the build prints. **One tag per flavor**, so
+  `providers.local.image` to the tag the build prints. **One tag per flavor**, so
   building one does not change what a box on the other flavor gets at its next
   recreate. There is no unflavored target: naming the flavor is the point.
 
@@ -232,12 +242,17 @@ recreated. A single env file mounted from the host and edited there is the
 typical victim. Mount the parent directory and reference the file inside it; a
 directory's inode survives its children being rewritten.
 
-**A box lives in ONE docker daemon; pin it with `providers.docker.context`.**
-With colima and Docker Desktop both installed there are two daemons, and megh
-shells out to plain `docker`, so without the key it asks whichever context the
-shell last selected. The box then vanishes: `megh list` says `no boxes` and
-`ssh`/`down` cannot find it, while it runs fine in the other daemon. `docker
-context ls` shows the `*`; the image must be built into the pinned daemon too.
+**A box lives in ONE engine and ONE daemon; pin both.** Podman and docker keep
+separate stores, and so do two docker daemons (colima and Docker Desktop) or
+two podman machines. Ask the wrong one and the box vanishes: `megh list` says
+`no boxes` and `ssh`/`down` cannot find it, while it runs fine elsewhere.
+`providers.local.engine` pins the engine, and `providers.local.context` the
+daemon (`docker context ls` / `podman system connection ls` show the default).
+Installing podman on a machine whose boxes are in docker is the easy way to hit
+this, since detection then picks podman, so when the engine was detected and
+the other one holds megh containers, `megh list` and `doctor control-plane` say
+how many and what to set. The image must be built into the same engine too
+(`make runtime` shows which one `make image-local-*` uses).
 
 **A local box is not a security sandbox.** Anything mounted read-write can be
 deleted from inside it. What it isolates is the rest of the machine.
@@ -312,7 +327,7 @@ through Tailscale's console never receives it: no `megh.yaml`, no env file.
 provider credential placed there is elevated on every box megh touches, cloud pods
 included, and silently. A box that is your control plane may hold one deliberately
 (C3 allows it), but elevate it through a channel scoped to the boxes you mean
-(`providers.docker.mounts:` for local boxes, which the cloud backends never read)
+(`providers.local.mounts:` for local boxes, which the cloud backends never read)
 and keep it out of any env file listed in `files:`. Split of concerns: versioned dotfiles
 -> a repo via `repos:` + `symlinks:`; secrets/unversioned rc files -> `files:`.
 
@@ -383,7 +398,7 @@ persisted so this survives rebuilds. Check the whole set with
 ## Architecture (one-liners; see DESIGN.md)
 
 - Dev env is a container image built from `env/base/provision.sh` (single source
-  of truth). Every backend runs that one image: RunPod as a pod, docker as a local
+  of truth). Every backend runs that one image: RunPod as a pod, podman or docker as a local
   container, and Hetzner/Vultr as a VM whose only job is to run it under Docker
   (`internal/providers/vmhost` renders that VM's first-boot script). The separate
   VM image DESIGN.md once planned was not needed.
@@ -473,7 +488,7 @@ exit, rather than leaving a proxy aimed at a dead port the way an installed-but-
 idle `:6080` does.
 
 Three things to know. **There is no GPU** — not on a CPU pod, and not on the
-docker backend either, where a macOS host's GPU is unreachable from a Linux container
+local backend either, where a macOS host's GPU is unreachable from a Linux container
 (measured, with the reasoning, in `internal/features/NOTES.md`). So GL is mesa's
 llvmpipe: fine for schematic capture, slow for pcbnew's GL canvas and the 3D
 viewer (pcbnew Preferences -> Graphics -> Fallback when it crawls). **apt installs onto the
@@ -713,7 +728,7 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   reduced function. **Holding the provider key IS being the control plane**
   (C3), so there is nothing to declare and the `provider key` row carries the
   whole question. What scopes elevation is the CHANNEL the key arrives by:
-  `providers.docker.mounts:` reaches local boxes only, while an env file listed
+  `providers.local.mounts:` reaches local boxes only, while an env file listed
   in `files:` reaches every box megh touches, cloud pods included.
 - **A profile's keys are per CONTROL MACHINE, not per box.** `megh profile gh add
   <name>` mints a NEW keypair into `~/.megh/profiles/<p>/gh/`, and only its

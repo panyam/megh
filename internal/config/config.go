@@ -48,7 +48,13 @@ type Provider struct {
 	// the default) or "storage_opt" (HDD, cheaper, fewer regions).
 	BlockType string `yaml:"block_type"`
 
-	// The rest are docker-only and inert everywhere else. They live on the same
+	// Engine is the container engine the local backend and `megh gw` run:
+	// "podman" or "docker", or a path to either. Empty auto-detects, podman
+	// first (MEGH_ENGINE overrides both). A value naming neither is an error at
+	// load.
+	Engine string `yaml:"engine"`
+
+	// The rest are local-only and inert everywhere else. They live on the same
 	// struct so `providers:` keeps one shape in the file rather than growing a
 	// parallel top-level block for one backend.
 
@@ -196,25 +202,28 @@ func (c Config) ITermAuto() bool {
 // Config is the resolved megh configuration. It contains settings and pointers
 // to secrets, never secret values.
 type Config struct {
-	DefaultProvider string              `yaml:"default_provider"`
-	DefaultFlavor   string              `yaml:"default_flavor"`
-	SSHPubKeyFile   string              `yaml:"ssh_pubkey_file"` // public key injected into boxes
-	SSHKeyFile      string              `yaml:"ssh_key_file"`    // private key; megh forwards ONLY this (scoped agent)
-	Registries      []Registry          `yaml:"registries"`
-	Flavors         []string            `yaml:"flavors"`
-	Providers       map[string]Provider `yaml:"providers"`
-	Tailscale       Tailscale           `yaml:"tailscale"`
-	DefaultGHKey    string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
-	Repos           []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
-	Requires        Requires            `yaml:"requires"`
-	Tailnet         string              `yaml:"tailnet"` // MagicDNS suffix (e.g. tailXXXX.ts.net); for portal surface URLs
-	ITerm           ITerm               `yaml:"iterm"`
-	Portal          Portal              `yaml:"portal"`
-	Persist         []string            `yaml:"persist"`       // home dirs symlinked to the volume so their state survives rebuilds
-	Symlinks        map[string]string   `yaml:"symlinks"`      // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
-	Files           map[string]string   `yaml:"files"`         // local path -> box path; copied over SSH (secrets/rc files not in a repo)
-	ExtraPubKeys    []string            `yaml:"extra_pubkeys"` // public keys authorized on every box beside the launcher's own (e.g. a Bitwarden SSH-agent key)
-	Serve           Serve               `yaml:"serve"`
+	DefaultProvider string `yaml:"default_provider"`
+	// Deprecations are notes about old spellings Load accepted and rewrote
+	// (providers.docker is now providers.local), for the CLI to print once.
+	Deprecations  []string            `yaml:"-"`
+	DefaultFlavor string              `yaml:"default_flavor"`
+	SSHPubKeyFile string              `yaml:"ssh_pubkey_file"` // public key injected into boxes
+	SSHKeyFile    string              `yaml:"ssh_key_file"`    // private key; megh forwards ONLY this (scoped agent)
+	Registries    []Registry          `yaml:"registries"`
+	Flavors       []string            `yaml:"flavors"`
+	Providers     map[string]Provider `yaml:"providers"`
+	Tailscale     Tailscale           `yaml:"tailscale"`
+	DefaultGHKey  string              `yaml:"default_gh_key"` // gh identity used by repos that don't set key
+	Repos         []Repo              `yaml:"repos"`          // cloned into /mnt/work/repos by `megh hydrate`
+	Requires      Requires            `yaml:"requires"`
+	Tailnet       string              `yaml:"tailnet"` // MagicDNS suffix (e.g. tailXXXX.ts.net); for portal surface URLs
+	ITerm         ITerm               `yaml:"iterm"`
+	Portal        Portal              `yaml:"portal"`
+	Persist       []string            `yaml:"persist"`       // home dirs symlinked to the volume so their state survives rebuilds
+	Symlinks      map[string]string   `yaml:"symlinks"`      // home path -> volume path (relative to /mnt/work, or absolute); maps repo trees into ~
+	Files         map[string]string   `yaml:"files"`         // local path -> box path; copied over SSH (secrets/rc files not in a repo)
+	ExtraPubKeys  []string            `yaml:"extra_pubkeys"` // public keys authorized on every box beside the launcher's own (e.g. a Bitwarden SSH-agent key)
+	Serve         Serve               `yaml:"serve"`
 }
 
 // Serve configures the hosted web control plane (cmd/meghplane). It lives in
@@ -371,10 +380,36 @@ func Load(explicit string) (Config, string, error) {
 	if err := yaml.Unmarshal(data, &c); err != nil {
 		return c, path, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if err := c.renameLocal(); err != nil {
+		return c, path, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := c.validate(); err != nil {
 		return c, path, fmt.Errorf("%s: %w", path, err)
 	}
 	return c, path, nil
+}
+
+// LocalAlias is the local backend's old name, still accepted for
+// --provider, MEGH_PROVIDER, default_provider and the providers: key.
+const LocalAlias = "docker"
+
+// renameLocal moves providers.docker to providers.local, the backend's name
+// since it runs podman as well as docker. Both present is refused: merging
+// them would mean guessing which setting the user meant.
+func (c *Config) renameLocal() error {
+	if old, ok := c.Providers[LocalAlias]; ok {
+		if _, both := c.Providers["local"]; both {
+			return fmt.Errorf("providers.docker and providers.local are the same backend; keep only providers.local")
+		}
+		c.Providers["local"] = old
+		delete(c.Providers, LocalAlias)
+		c.Deprecations = append(c.Deprecations, "providers.docker is now providers.local (it runs podman or docker); rename the key")
+	}
+	if c.DefaultProvider == LocalAlias {
+		c.DefaultProvider = "local"
+		c.Deprecations = append(c.Deprecations, "default_provider: docker is now default_provider: local")
+	}
+	return nil
 }
 
 // validate rejects settings that would otherwise fail far from their cause. A
@@ -384,6 +419,9 @@ func (c Config) validate() error {
 	for name, p := range c.Providers {
 		if p.Mesh != "" && p.Mesh != MeshTailscale {
 			return fmt.Errorf("providers.%s.mesh: unsupported value %q (supported: %s)", name, p.Mesh, MeshTailscale)
+		}
+		if e := filepath.Base(p.Engine); p.Engine != "" && e != "podman" && e != "docker" {
+			return fmt.Errorf("providers.%s.engine: unsupported value %q (podman or docker, or a path to either)", name, p.Engine)
 		}
 	}
 	return nil

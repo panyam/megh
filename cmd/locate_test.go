@@ -63,3 +63,22 @@ func TestTailnetAddressesAreTheCGNATAndULARanges(t *testing.T) {
 		}
 	}
 }
+
+// "docker" is the local backend's old name: it still works for --provider and
+// MEGH_PROVIDER, and means local.
+func TestDockerProviderNameMeansLocal(t *testing.T) {
+	t.Setenv("MEGH_PROVIDER", "")
+	c := providerCmd()
+	c.Flags().Set("provider", "docker")
+	if got := resolveProviderName(c, "docker"); got != "local" {
+		t.Errorf("--provider docker: got %q", got)
+	}
+	t.Setenv("MEGH_PROVIDER", "docker")
+	if got := resolveProviderName(providerCmd(), ""); got != "local" {
+		t.Errorf("MEGH_PROVIDER=docker: got %q", got)
+	}
+	t.Setenv("MEGH_PROVIDER", "vultr")
+	if got := resolveProviderName(providerCmd(), ""); got != "vultr" {
+		t.Errorf("other names pass through: got %q", got)
+	}
+}

@@ -1,4 +1,4 @@
-// Package docker is the megh local backend: a box is a container on this
+// Package local is the megh local backend: a box is a container on this
 // machine rather than a rented pod. It exists for two reasons. A local box is
 // free and instant, so the box contract (the entrypoint's persist/symlink/sshd
 // behavior, the feature scripts, hydrate) can be exercised without paying a
@@ -6,22 +6,24 @@
 // the containerized-agent setup people actually want: one Linux userland, the
 // real repos, and a tool login that persists separately from the host's.
 //
-// It shells out to the `docker` CLI rather than taking an SDK dependency, the
-// same way internal/registry talks to OCI registries with stdlib only.
+// It shells out to podman's or docker's CLI (engine.go picks one) rather than
+// taking an SDK dependency, the same way internal/registry talks to OCI
+// registries with stdlib only.
 //
 // A local box is reached over loopback, so it needs no overlay network to be
-// usable. It joins one only when `providers.docker.mesh` names a vendor, and
+// usable. It joins one only when `providers.local.mesh` names a vendor, and
 // even then only when asked: `megh mesh join` hands the node key over on the
 // bring-up script's stdin, after the box is up. The key therefore never enters
 // the container's stored env, where `docker inspect` would keep it for the life
 // of a box that runs agent code. The reason to join at all is a device that is
 // not this machine, a phone being the usual one, since an SSH tunnel only ever
 // reaches the machine that opened it.
-package docker
+package local
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -51,7 +53,7 @@ const tsAuthKeyEnv = "TS_AUTHKEY"
 // handling is identical on both backends.
 const workMount = "/workspace"
 
-// settings are the resolved `providers.docker` block. Unlike RunPod, whose
+// settings are the resolved `providers.local` block. Unlike RunPod, whose
 // configuration is a credential read from the environment per call, this
 // backend is configured with paths on this machine.
 type settings struct {
@@ -63,7 +65,7 @@ type settings struct {
 	context    string
 }
 
-// Provider is the local docker backend.
+// Provider is the local backend: boxes as podman or docker containers.
 //
 // It holds a config ACCESSOR rather than a config value, because the two are
 // available at different times: backends are registered from an init() so the
@@ -80,7 +82,7 @@ type Provider struct {
 func New(cfg func() config.Config) *Provider { return &Provider{cfg: cfg} }
 
 func (p *Provider) settings() settings {
-	c := p.cfg().Provider("docker")
+	c := p.cfg().Provider("local")
 	return settings{
 		image:      c.Image,
 		workDir:    orDefault(c.WorkDir, "~/.megh/volumes/local"),
@@ -100,9 +102,11 @@ func orDefault(v, def string) string {
 
 var _ providers.Provider = (*Provider)(nil)
 
-func (*Provider) Name() string { return "docker" }
+// Name is "local". "docker" is its old name, still accepted as an alias
+// (config.LocalAlias).
+func (*Provider) Name() string { return "local" }
 
-// Mesh is whatever `providers.docker.mesh` names, never at boot: see the
+// Mesh is whatever `providers.local.mesh` names, never at boot: see the
 // package comment for why a local box is handed its key afterwards.
 func (p *Provider) Mesh() providers.Mesh {
 	return providers.Mesh{Vendor: p.settings().mesh}
@@ -165,7 +169,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 		image = o.Image
 	}
 	if image == "" {
-		return nil, fmt.Errorf("no image: set providers.docker.image in megh.yaml (build one with `make image-local-full`)")
+		return nil, fmt.Errorf("no image: set providers.local.image in megh.yaml (build one with `make image-local-full`)")
 	}
 	name := providers.PrefixName(o.Name)
 
@@ -191,7 +195,7 @@ func (p *Provider) Up(ctx context.Context, o providers.Options) (providers.Resul
 	return &Result{ID: id, Name: providers.ShortName(name), SSHPort: box.SSHPort, Mesh: set.mesh}, nil
 }
 
-// StartStopped runs `docker start` on an existing container. The work mount,
+// StartStopped runs `<engine> start` on an existing container. The work mount,
 // bind mounts, and published SSH port are whatever the container was created
 // with; megh.yaml edits since then do not apply until down+up.
 func (p *Provider) StartStopped(ctx context.Context, id string) (providers.Result, error) {
@@ -216,7 +220,7 @@ func (p *Provider) StartStopped(ctx context.Context, id string) (providers.Resul
 
 var _ providers.StoppedBoxStarter = (*Provider)(nil)
 
-// runArgs builds the full `docker run` argv. Split out from Up so it can be
+// runArgs builds the full `<engine> run` argv. Split out from Up so it can be
 // asserted without a daemon: what this backend does to a box IS its argv, and a
 // test that cannot read the argv cannot check C3.
 func runArgs(set settings, name, image, work string, o providers.Options) ([]string, error) {
@@ -371,10 +375,10 @@ func (p *Provider) inspect(ctx context.Context, id string) (*providers.Box, erro
 func parseInspect(out string) (*providers.Box, error) {
 	var got []inspectOut
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		return nil, fmt.Errorf("docker: parse inspect: %w", err)
+		return nil, fmt.Errorf("local: parse inspect: %w", err)
 	}
 	if len(got) == 0 {
-		return nil, fmt.Errorf("docker: inspect returned nothing")
+		return nil, fmt.Errorf("local: inspect returned nothing")
 	}
 	c := got[0]
 	b := &providers.Box{
@@ -401,28 +405,44 @@ func parseInspect(out string) (*providers.Box, error) {
 	return b, nil
 }
 
-// check fails early and legibly when docker is missing or its daemon is down,
-// rather than letting every subcommand surface a raw exec error.
+// check fails early and legibly when no engine is installed or the one chosen
+// is down, rather than letting every subcommand surface a raw exec error.
+// Plain `info` works on both engines; podman has no {{.ServerVersion}}.
 func (p *Provider) check(ctx context.Context) error {
-	if _, err := exec.LookPath("docker"); err != nil {
-		return fmt.Errorf("%w: docker is not on PATH (the local backend needs Docker Desktop or a docker CLI)", providers.ErrNotConfigured)
+	e, err := p.engine()
+	if err != nil {
+		return err
 	}
-	if _, err := p.run(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
-		return fmt.Errorf("the docker daemon is not reachable: %w", err)
+	if _, err := p.run(ctx, "info"); err != nil {
+		var ee *engineError
+		if errors.As(err, &ee) {
+			return e.Unreachable(ee.msg)
+		}
+		return err
 	}
 	return nil
 }
 
-// run executes docker and returns stdout, folding stderr into the error so a
-// failure says what docker actually complained about. A configured context is
-// passed on every call, so megh reaches the same daemon whatever the shell's
-// active context or DOCKER_HOST says.
+func (p *Provider) engine() (Engine, error) { return ResolveEngine(p.cfg().Provider("local")) }
+
+// Engine is the engine this backend runs boxes under, for callers outside it
+// (megh gw, the ssh ProxyCommand, megh config) that must use the same one.
+func (p *Provider) Engine() (Engine, error) { return p.engine() }
+
+type engineError struct{ verb, msg string }
+
+func (e *engineError) Error() string { return e.verb + ": " + e.msg }
+
+// run executes the engine and returns stdout, folding stderr into the error so
+// a failure says what the engine actually complained about. A configured
+// context is passed on every call, so megh reaches the same daemon whatever
+// the shell's active context, connection or DOCKER_HOST says.
 func (p *Provider) run(ctx context.Context, args ...string) (string, error) {
-	verb := args[0]
-	if c := p.settings().context; c != "" {
-		args = append([]string{"--context", c}, args...)
+	e, err := p.engine()
+	if err != nil {
+		return "", err
 	}
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := e.Command(ctx, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -431,9 +451,30 @@ func (p *Provider) run(ctx context.Context, args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", fmt.Errorf("docker %s: %s", verb, msg)
+		return "", &engineError{verb: e.Name + " " + args[0], msg: msg}
 	}
 	return string(out), nil
+}
+
+// Elsewhere counts megh boxes in the engine megh did NOT pick, when it picked
+// by detection and the other one is installed too. A box created under docker
+// is invisible to podman, so without this, the day podman gets installed is
+// the day `megh list` says "no boxes" while the box runs fine. An engine named
+// on purpose is never second-guessed.
+func (p *Provider) Elsewhere(ctx context.Context) (string, int) {
+	e, err := p.engine()
+	if err != nil || e.Source != "auto-detected" {
+		return "", 0
+	}
+	other := e.Other()
+	if _, err := exec.LookPath(other); err != nil {
+		return "", 0
+	}
+	out, err := exec.CommandContext(ctx, other, "ps", "-a", "--filter", "label="+managedLabel+"=1", "--format", "{{.ID}}").Output()
+	if err != nil {
+		return "", 0
+	}
+	return other, len(strings.Fields(string(out)))
 }
 
 // volumePath is the host directory backing a named local volume.

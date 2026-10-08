@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/panyam/megh/internal/config"
+	"github.com/panyam/megh/internal/providers/local"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +46,7 @@ var configCmd = &cobra.Command{
 			// resources and there is one place to run. Printing it here would show
 			// a row of zeroes, which reads as a misconfiguration rather than as
 			// columns that do not apply. It gets its own block below.
-			if n == "docker" {
+			if n == "local" {
 				continue
 			}
 			p := cfg.Providers[n]
@@ -53,10 +54,15 @@ var configCmd = &cobra.Command{
 		}
 		w.Flush()
 
-		if d, ok := cfg.Providers["docker"]; ok {
-			fmt.Println("\n  docker (local):")
+		if d, ok := cfg.Providers["local"]; ok {
+			fmt.Println("\n  local:")
+			if e, err := local.ResolveEngine(d); err != nil {
+				fmt.Printf("    engine:      none (%v)\n", err)
+			} else {
+				fmt.Printf("    engine:      %s (%s)\n", e.Bin, e.Source)
+			}
 			fmt.Printf("    image:       %s\n", orUnset(d.Image))
-			fmt.Printf("    context:     %s\n", orDefaulted(d.Context, "active docker context"))
+			fmt.Printf("    context:     %s\n", orDefaulted(d.Context, "the engine's default context or connection"))
 			fmt.Printf("    work_dir:    %s\n", orDefaulted(d.WorkDir, "~/.megh/volumes/local"))
 			fmt.Printf("    volume_root: %s\n", orDefaulted(d.VolumeRoot, "~/.megh/volumes"))
 			if len(d.Mounts) == 0 {

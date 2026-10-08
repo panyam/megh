@@ -40,7 +40,7 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   is declared once, in `env/<flavor>/provision.sh`, and emitted as two artifacts
   that both call that script at build time so they cannot drift:
   - **Container image** (`Dockerfile`) for container-native providers (RunPod, and
-    the local docker backend). The platform runs it directly; there is no VM you
+    the local backend). The platform runs it directly; there is no VM you
     manage. `INSTALL_DOCKER=0` (a container needs no daemon inside it). The file
     names no architecture: BuildKit's `TARGETARCH` feeds provision.sh, so CI
     publishes amd64 for RunPod and `make image-local-full`/`-slim` build the host's
@@ -82,14 +82,14 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   transcripts to a private git repo; it was removed because collection was
   manual, so it captured nothing unless remembered, and every way to automate it
   needed a GitHub write credential on a box.
-- **A local docker backend, and it joins an overlay network only when asked.** A
+- **A local backend, and it joins an overlay network only when asked.** A
   box can be a container on your own machine rather than a rented pod. It earns its
   place twice: the box contract (the entrypoint, the feature scripts, hydrate)
   becomes testable without paying a provider, and a container with the real work
   trees bind-mounted is the containerized-agent setup the cloud boxes only
   approximate. It joins nothing by default, because over loopback an overlay buys
   nothing and skipping it means no key is minted and no node is left behind.
-  `providers.docker.mesh` turns one on for the case loopback cannot serve, which
+  `providers.local.mesh` turns one on for the case loopback cannot serve, which
   is a device that is not that machine. `Provider.Mesh()` carries both the vendor
   and whether boxes join at BOOT: a pod does, since nothing can SSH to it yet and
   with `expose_ssh: false` the overlay is the only way in, while a local box is
@@ -158,7 +158,7 @@ what makes the split worth naming (#130).
   and terminate boxes (C3). A laptop, a phone in Termux, meghplane, or a worker
   that was deliberately elevated.
 - **Gateway**: a tailnet identity and nothing else. `megh gw up` runs one as
-  a local docker container, from its own image (tailscale plus the megh binary,
+  a local container (podman or docker), from its own image (tailscale plus the megh binary,
   `env/gw`), so a machine that is NOT on the tailnet (a work
   laptop, say) can still open its workers' web surfaces. The container joins
   under its own tag (`tag:megh-gw`), so the ACL can give it exactly the surface

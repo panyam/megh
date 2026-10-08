@@ -50,8 +50,8 @@ and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 ```sh
 make image-local-full                  # build the dev-env image for this machine's arch
                                        # (image-local-slim drops the frontend stack)
-megh up --provider docker local1
-megh ssh --provider docker local1
+megh up --provider local local1
+megh ssh --provider local local1
 ```
 
 Same image, same entrypoint, same commands. What differs is that the work trees
@@ -64,7 +64,7 @@ logins live on the work dir, separately from the host's own `~/.claude`, so one
 It is not a security sandbox. An agent in the box can delete anything mounted
 read-write. What it isolates is the rest of the machine.
 
-Mounts are declared in `providers.docker.mounts` and are the only bind mounts
+Mounts are declared in `providers.local.mounts` and are the only bind mounts
 megh passes. `megh.yaml.example` documents the shape, including the one mount
 that will not work: a directory whose entries are absolute host symlinks.
 

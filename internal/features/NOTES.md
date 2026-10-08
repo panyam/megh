@@ -144,7 +144,7 @@ hardcoded) AND a feature, not one flag. Unverified: whether a RunPod GPU pod
 exposes `/dev/nvidia*` and the EGL ICD to an unprivileged container. That needs
 a real rent to answer.
 
-**The docker backend cannot reach a macOS host's GPU.** Measured on a live local box
+**The local backend cannot reach a macOS host's GPU.** Measured on a live local box
 (Apple Silicon):
 
     /dev/dri          No such file or directory

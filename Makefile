@@ -88,8 +88,20 @@ repo-create: ## create the private GitHub repo and push (triggers image build)
 image: ## push current HEAD to origin to trigger the GHCR image build
 	git push origin HEAD
 
+# The container engine local images are built with, picked the way megh picks
+# one for local boxes: $MEGH_ENGINE, else podman when installed, else docker.
+# Override: make CONTAINER_CMD=docker ...
+# A box is created from the image in its OWN engine's store, so build with the
+# engine your boxes run under; `megh config` shows which that is.
+CONTAINER_CMD ?= $(or $(MEGH_ENGINE),$(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo docker))
+
+.PHONY: runtime
+runtime: ## show the container engine local images build with
+	@echo "Container engine: $(CONTAINER_CMD)"
+	@echo "Override with: make CONTAINER_CMD=docker image-local-slim (or set MEGH_ENGINE)"
+
 # Build the dev-env image on THIS machine, for THIS machine's architecture, for
-# the docker backend. CI publishes linux/amd64 only (RunPod CPU pods are x86_64),
+# the local backend. CI publishes linux/amd64 only (RunPod CPU pods are x86_64),
 # so on an arm64 laptop the published image would run under emulation.
 #
 # It stages the same two files CI stages, from the same source of truth, so a
@@ -113,11 +125,11 @@ define build_local_image
 	@trap 'rm -f env/base/megh env/base/megh.yaml' EXIT; \
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(LOCAL_ARCH) go build -o env/base/megh . && \
 	cp megh.yaml.example env/base/megh.yaml && \
-	docker build \
+	$(CONTAINER_CMD) build \
 	  --build-arg MEGH_SLIM=$(2) \
 	  --build-arg MEGH_BUILD_REF=$$(git rev-parse --short HEAD)-local \
 	  -t $(1) env/base
-	@echo "built $(1); set providers.docker.image to it in megh.yaml"
+	@echo "built $(1); set providers.local.image to it in megh.yaml"
 endef
 
 .PHONY: image-local-full
@@ -128,7 +140,7 @@ image-local-full: ## build the FULL local image: Playwright, headed display and 
 image-local-gw: ## build the GATEWAY image (tailscale + megh) for this machine's arch
 	@trap 'rm -f env/gw/megh-$(LOCAL_ARCH)' EXIT; \
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(LOCAL_ARCH) go build -o env/gw/megh-$(LOCAL_ARCH) . && \
-	docker build -t megh-local-gw:$(LOCAL_ARCH) env/gw
+	$(CONTAINER_CMD) build -t megh-local-gw:$(LOCAL_ARCH) env/gw
 	@echo "built megh-local-gw:$(LOCAL_ARCH); set tailscale.gateway_image to it in megh.yaml"
 
 .PHONY: image-local-slim

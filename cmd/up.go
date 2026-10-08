@@ -101,7 +101,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 		// Flags and environment are this machine's say; megh.yaml and the
 		// built-in defaults are applied by the lifecycle service, so a server
 		// launching from a form gets the same fallbacks.
-		upProvider = resolve(cmd, "provider", upProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		upProvider = resolveProviderName(cmd, upProvider)
 		if _, err := resolveProvider(cmd, upProvider); err != nil {
 			return err
 		}

@@ -81,7 +81,7 @@ URLs (`megh ssh` is a plain shell). With Tailscale up, the same surfaces are
 served by name over the tailnet (phone / tablet friendly). `expose_ssh: false`
 drops even public 22/tcp; the RunPod console Web Terminal stays the break-glass.
 
-On the **local (docker) backend** the tunnel column is the only one: a local box
+On the **local backend** the tunnel column is the only one: a local box
 joins no tailnet, and the surfaces cannot be reached by publishing their ports.
 They bind the box's own `127.0.0.1` as the table above requires, and a docker
 publish forwards to the container's `eth0`, so a published `:7681` finds nothing
@@ -138,7 +138,7 @@ git and rehydrates onto a fresh volume. Agent transcripts and tool state live
 only on the volume; what is worth keeping from a session is checkpointed into
 the repo.
 
-On the local backend the volume is a host directory (`providers.docker.work_dir`)
+On the local backend the volume is a host directory (`providers.local.work_dir`)
 and the repos under it are bind mounts of your real trees, so `megh hydrate` has
 nothing to clone for them and "rehydrate" is a no-op. The `state/` half behaves
 identically: tool logins persist there across `down`/`up`, separately from the

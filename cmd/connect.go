@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/iterm"
 	"github.com/panyam/megh/internal/lifecycle"
 	"github.com/panyam/megh/internal/providers"
@@ -128,7 +129,11 @@ func (d *dial) preflight(pod *providers.Box) error {
 		if !strings.HasSuffix(d.host, "."+cfg.Tailnet) {
 			d.host = providers.ShortName(d.host) + "." + cfg.Tailnet
 		}
-		d.proxy = gatewayProxyCommand(cfg.Provider("docker").Context)
+		e, err := localEngine()
+		if err != nil {
+			return err
+		}
+		d.proxy = gatewayProxyCommand(e)
 		fmt.Fprintf(os.Stderr, "megh: this machine is not on the tailnet; reaching %s through the gateway (%s)\n", d.host, gatewayName)
 		return nil
 	}
@@ -324,5 +329,17 @@ func providerPinned(cmd *cobra.Command) bool {
 }
 
 func resolveProvider(cmd *cobra.Command, flagVal string) (providers.Provider, error) {
-	return providers.For(resolve(cmd, "provider", flagVal, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod"))
+	return providers.For(resolveProviderName(cmd, flagVal))
+}
+
+// resolveProviderName is resolve() for --provider, with the local backend's
+// old name ("docker", from the flag or MEGH_PROVIDER) mapped to "local" and a
+// note on stderr. megh.yaml's default_provider is mapped at load.
+func resolveProviderName(cmd *cobra.Command, flagVal string) string {
+	name := resolve(cmd, "provider", flagVal, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+	if name == config.LocalAlias {
+		fmt.Fprintln(os.Stderr, "megh: the docker provider is now called local (it runs podman or docker); --provider docker still works")
+		return "local"
+	}
+	return name
 }

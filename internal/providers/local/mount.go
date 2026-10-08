@@ -1,4 +1,4 @@
-package docker
+package local
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ type Mount struct {
 	ReadOnly bool
 }
 
-// Arg renders the mount as a docker -v value.
+// Arg renders the mount as an engine -v value (podman and docker take the same form).
 func (m Mount) Arg() string {
 	if m.ReadOnly {
 		return m.Host + ":" + m.Box + ":ro"

@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/panyam/megh/internal/providers"
-	"github.com/panyam/megh/internal/providers/docker"
 	"github.com/panyam/megh/internal/providers/hetzner"
+	"github.com/panyam/megh/internal/providers/local"
 	"github.com/panyam/megh/internal/providers/runpod"
 	"github.com/panyam/megh/internal/providers/vultr"
 )
@@ -24,7 +24,7 @@ func init() {
 	providers.Register(runpod.New())
 	// docker takes an accessor, not a value: cfg is not loaded until
 	// PersistentPreRunE, so a value captured here would be the empty default.
-	providers.Register(docker.New(func() config.Config { return cfg }))
+	providers.Register(local.New(func() config.Config { return cfg }))
 	providers.Register(hetzner.New(func() config.Config { return cfg }))
 	providers.Register(vultr.New(func() config.Config { return cfg }))
 }
@@ -69,6 +69,13 @@ the system level. Secrets are never stored in the repo.`,
 		}
 		cfg = c
 		cfgSourcePath = path
+		// Hidden commands run inside containers and ProxyCommands, where a note
+		// would land in someone else's output.
+		if !cmd.Hidden {
+			for _, d := range cfg.Deprecations {
+				fmt.Fprintf(os.Stderr, "megh: %s: %s\n", path, d)
+			}
+		}
 		if activeProfile != nil {
 			cfg.SSHKeyFile = activeProfile.BoxKeyFile()
 			cfg.SSHPubKeyFile = activeProfile.BoxPubKeyFile()
