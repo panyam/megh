@@ -187,7 +187,9 @@ cat > "$DIR/term.html" <<'HTML'
   var ws = null, token = '';
   function connect() {
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws', ['tty']);
+    // location.search carries ?arg=<session>; ttyd -a reads it from the
+    // WebSocket URL and hands it to megh-tmux-attach.
+    ws = new WebSocket(proto + '://' + location.host + '/ws' + location.search, ['tty']);
     ws.binaryType = 'arraybuffer';
     ws.onopen = function () {
       overlay(false);
@@ -390,6 +392,17 @@ HTML
 
 log "wrote ${DIR}/term.html (self-contained; xterm.js inlined)"
 
+# --- the attach helper both web terminals run ---------------------------------
+# ttyd -a passes each ?arg= in the page URL to this, so the URL picks the tmux
+# session (?arg=book), main when absent. Installed here, before the emit-only
+# exit, so an image build bakes it next to the page.
+ATTACH_BIN="${MEGH_ATTACH_BIN:-/usr/local/bin/megh-tmux-attach}"   # overridable for tests
+cat > "${ATTACH_BIN}" <<'ATTACH'
+@@TMUX_ATTACH@@
+ATTACH
+chmod 755 "${ATTACH_BIN}"
+log "wrote ${ATTACH_BIN} (?arg=<session> picks the tmux session)"
+
 # Emit-only: used at IMAGE BUILD time to bake the page into the image. Writes the
 # page and stops here — no ttyd, no tailscale. The entrypoint then serves it
 # directly, so the page is a first-class surface, not a boot-time generation.
@@ -403,12 +416,19 @@ if ! command -v ttyd >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- (re)start the second ttyd on its own port, same tmux session --------------
-# Kill any prior webterm ttyd so an updated page is always picked up.
+# --- (re)start both web terminals through the attach helper -------------------
+# Kill any prior ttyd so an updated page and helper are always picked up. :7681
+# (the stock page) is restarted too, so it gains ?arg=<session> on a box whose
+# image predates the helper; an open tab there reconnects on its own.
 pkill -f "ttyd.*-p ${PORT}" 2>/dev/null && sleep 0.3 || true
-ttyd -i 127.0.0.1 -p "${PORT}" -W -t titleFixed=megh-webterm \
-  --index "${DIR}/term.html" tmux new -A -s "${SESSION}" >/tmp/ttyd-webterm.log 2>&1 &
-log "webterm up on 127.0.0.1:${PORT} (mobile key bar; tmux session '${SESSION}')"
+MEGH_TMUX_SESSION="${SESSION}" ttyd -i 127.0.0.1 -p "${PORT}" -W -t titleFixed=megh-webterm \
+  --index "${DIR}/term.html" -a megh-tmux-attach >/tmp/ttyd-webterm.log 2>&1 &
+log "webterm up on 127.0.0.1:${PORT} (mobile key bar; ?arg=<session>, default '${SESSION}')"
+if [ "${PORT}" != 7681 ]; then
+  pkill -f "ttyd.*-p 7681" 2>/dev/null && sleep 0.3 || true
+  MEGH_TMUX_SESSION="${SESSION}" ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh -a megh-tmux-attach >/tmp/ttyd.log 2>&1 &
+  log "ttyd up on 127.0.0.1:7681 (?arg=<session>, default '${SESSION}')"
+fi
 
 # --- serve on the tailnet if it is up (skipped when the entrypoint owns serve) -
 if [ "${MEGH_WEBTERM_NO_SERVE:-0}" = "1" ]; then

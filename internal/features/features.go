@@ -22,7 +22,7 @@ var scripts embed.FS
 // to them stay out of the binary. Versions are pinned in vendor/versions.env and
 // their integrity is enforced by vendor_test.go (refresh with vendor/update.sh).
 //
-//go:embed vendor/xterm.js vendor/xterm.css vendor/addon-fit.js
+//go:embed vendor/xterm.js vendor/xterm.css vendor/addon-fit.js parts/tmux-attach.sh
 var vendorFS embed.FS
 
 // assetMarkers maps a placeholder token in a feature script to the vendored
@@ -31,6 +31,9 @@ var assetMarkers = map[string]string{
 	"@@XTERM_CSS@@": "vendor/xterm.css",
 	"@@XTERM_JS@@":  "vendor/xterm.js",
 	"@@FIT_JS@@":    "vendor/addon-fit.js",
+	// Not vendored, but inlined the same way: a helper the script installs.
+	// It lives under parts/ because every *.sh at the top level is a feature.
+	"@@TMUX_ATTACH@@": "parts/tmux-attach.sh",
 }
 
 // List returns the available feature names, sorted.

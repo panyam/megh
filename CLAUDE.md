@@ -48,6 +48,9 @@ megh list [--all]                 # megh boxes on EVERY provider with a credenti
                                   # ssh/tmux attach with no backend that knows the box fall back to its tailnet
                                   # name (<box>.<tailnet>, tailnet addresses only), so logging in needs no provider key
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
+                                  # webterm/ttyd take the session from the URL: http://<box>:7682/?arg=book attaches
+                                  # (or creates) "book" via megh-tmux-attach (plain names only); no ?arg = main.
+                                  # On an older box, `megh enable webterm` installs it and restarts both pages
                                   # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
 megh browse [box] [port...]       # tunnel box ports to localhost, print URLs
                                   # any listening port works (a dev server), no box restart

@@ -367,8 +367,12 @@ if command -v megh-tmux-checkpoint >/dev/null 2>&1; then
   fi
 fi
 # Bind to 127.0.0.1: no public listener. Reached via Tailscale or SSH tunnel.
-ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh tmux new -A -s main >/tmp/ttyd.log 2>&1 &
-log "ttyd up on 127.0.0.1:7681 (tmux session 'main')"
+# Both web terminals run megh-tmux-attach (baked with the webterm page), so a URL
+# picks the tmux session with ?arg=<name>; an image without it attaches main.
+if command -v megh-tmux-attach >/dev/null 2>&1; then attach="-a megh-tmux-attach"; else attach="tmux new -A -s main"; fi
+# shellcheck disable=SC2086  # attach is a command line on purpose
+ttyd -i 127.0.0.1 -p 7681 -W -t titleFixed=megh ${attach} >/tmp/ttyd.log 2>&1 &
+log "ttyd up on 127.0.0.1:7681 (${attach})"
 
 # Second page: a mobile/tablet-optimized web terminal on :7682 (on-screen key
 # bar for Esc/Ctrl/arrows/symbols/tmux + voice). Same tmux session as :7681, so
@@ -381,9 +385,10 @@ if [ ! -f "${webterm_html}" ] && command -v megh >/dev/null 2>&1; then
   MEGH_WEBTERM_EMIT_ONLY=1 megh enable webterm --local >/tmp/webterm-emit.log 2>&1 || true
 fi
 if [ -f "${webterm_html}" ]; then
+  # shellcheck disable=SC2086
   ttyd -i 127.0.0.1 -p 7682 -W -t titleFixed=megh-webterm \
-    --index "${webterm_html}" tmux new -A -s main >/tmp/ttyd-webterm.log 2>&1 &
-  log "webterm up on 127.0.0.1:7682 (mobile key bar; same tmux session 'main')"
+    --index "${webterm_html}" ${attach} >/tmp/ttyd-webterm.log 2>&1 &
+  log "webterm up on 127.0.0.1:7682 (mobile key bar; ${attach})"
 else
   log "webterm page unavailable; run 'megh enable webterm' to add the mobile web terminal"
 fi
