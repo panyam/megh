@@ -52,3 +52,9 @@ label { display: inline-flex; gap: 4px; align-items: center; }
 #offers td { padding: 4px 6px; border-top: 1px solid var(--line); cursor: pointer; }
 #offers tr.picked td { background: var(--code); font-weight: 600; }
 label { display: inline-flex; gap: 6px; align-items: center; }
+#busy { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; z-index: 10; }
+#busy[hidden] { display: none; }
+.busybox { background: var(--bg); color: var(--fg); border-radius: 10px; padding: 20px 28px; max-width: 80vw; text-align: center; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3); }
+.spinner { width: 28px; height: 28px; margin: 0 auto 10px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#capabilities li { border: none; padding: 2px 0; margin: 0; background: none; }
