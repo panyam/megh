@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/panyam/megh/internal/config"
 )
 
 // Every port the gateway publishes is bound to the host's 127.0.0.1: the proxy
@@ -49,5 +52,34 @@ func TestGatewayURLsNameEachBoxAtLocalhost(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s in:\n%s", want, got)
 		}
+	}
+}
+
+// The gateway runs its own small image, never the dev image a local box uses.
+func TestGatewayImageIsTheGatewayImageNotTheDevImage(t *testing.T) {
+	saved := cfg
+	t.Cleanup(func() { cfg = saved })
+	cfg.Registries = []config.Registry{{Host: "ghcr.io", Namespace: "acme"}}
+	cfg.Providers = map[string]config.Provider{"docker": {Image: "megh-local-slim:arm64"}}
+	cfg.Tailscale.GatewayImage = ""
+	if got := gatewayImage(); got != "ghcr.io/acme/megh-gw:latest" {
+		t.Errorf("default: got %q", got)
+	}
+	cfg.Tailscale.GatewayImage = "megh-local-gw:arm64"
+	if got := gatewayImage(); got != "megh-local-gw:arm64" {
+		t.Errorf("override: got %q", got)
+	}
+}
+
+// The gateway image is Alpine (busybox sh, no bash or zsh), so everything run
+// inside it must be plain sh.
+func TestGatewayRunsUnderPlainSh(t *testing.T) {
+	args := gatewayRunArgs("img", "tail123.ts.net")
+	script := args[len(args)-1]
+	if out, err := exec.Command("sh", "-n", "-c", script).CombinedOutput(); err != nil {
+		t.Errorf("container script is not valid sh: %v %s", err, out)
+	}
+	if got := strings.Join(gatewayShellArgs(), " "); got != "exec -it megh-gw sh" {
+		t.Errorf("shell: got %q", got)
 	}
 }

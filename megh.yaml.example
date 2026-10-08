@@ -173,6 +173,9 @@ tailscale:
   tag: tag:megh
   # The tag `megh gw` joins under (SETUP.md section 10).
   # gateway_tag: tag:megh-gw
+  # The image it runs: default <registry>/<namespace>/megh-gw:latest, which CI
+  # publishes for amd64 and arm64. `make image-local-gw` builds one locally.
+  # gateway_image: megh-local-gw:arm64
 
 # Optional: your tailnet's MagicDNS suffix (see `megh doctor ts status` Self DNSName),
 # used to build box surface URLs in the portal. `megh gw` requires it.
