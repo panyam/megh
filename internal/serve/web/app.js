@@ -215,6 +215,32 @@ function where(code, place) {
   return place ? place + " (" + code + ")" : code;
 }
 
+// busy covers the page while fn runs, saying what is happening, so a long
+// request can't be clicked twice and it is clear when it is done. setBusy
+// updates the message for a multi-step job (a probe sweep).
+async function busy(text, fn) {
+  setBusy(text);
+  $("busy").hidden = false;
+  try { return await fn(); } finally { $("busy").hidden = true; }
+}
+function setBusy(text) { $("busytext").textContent = text; }
+
+// capWarnings is, per provider, what a launch there would lack given the keys
+// present (GET /api/capabilities).
+let capWarnings = {};
+
+async function loadCapabilities() {
+  try {
+    const r = await call("GET", "/api/capabilities");
+    capWarnings = r.warnings || {};
+    const ul = $("capabilities");
+    ul.replaceChildren();
+    for (const c of r.capabilities || []) {
+      ul.append(el("li", (c.ok ? "✓ " : "✗ ") + c.label + (c.ok ? "" : " (" + c.fix + ")"), c.ok ? "" : "muted"));
+    }
+  } catch (e) { /* the list is advice; the page works without it */ }
+}
+
 function money(perHr) { return "$" + perHr.toFixed(3) + "/hr"; }
 
 async function loadAdmin() {
@@ -320,21 +346,25 @@ function showRegions(offers) {
 }
 
 async function createVolume(name, sizeGB, dc) {
-  const r = await call("POST", "/api/volumes", { provider: $("volprov").value, name, sizeGB, dc });
-  await Promise.all([loadAdmin(), loadVolumes()]);
-  return r.data;
+  return busy("Creating volume " + name + " (" + sizeGB + " GB) in " + where(dc, regionPlaces[dc]) + "…", async () => {
+    const r = await call("POST", "/api/volumes", { provider: $("volprov").value, name, sizeGB, dc });
+    await Promise.all([loadAdmin(), loadVolumes()]);
+    return r.data;
+  });
 }
 
 async function deleteVolume(v) {
   const typed = prompt("Deleting a volume destroys everything on it and cannot be undone.\nType " + v.name + " to delete it.");
   if (typed === null) return;
-  try {
-    await call("POST", "/api/volumes/delete", { id: v.id, confirm: typed });
-    showLog("deleted volume " + v.name, false);
-    await Promise.all([loadAdmin(), loadVolumes()]);
-  } catch (e) {
-    showLog(e.message, true);
-  }
+  await busy("Deleting volume " + v.name + "…", async () => {
+    try {
+      await call("POST", "/api/volumes/delete", { id: v.id, confirm: typed });
+      showLog("deleted volume " + v.name, false);
+      await Promise.all([loadAdmin(), loadVolumes()]);
+    } catch (e) {
+      showLog(e.message, true);
+    }
+  });
 }
 
 function probeRow(text, cls) {
@@ -349,8 +379,9 @@ function probeRow(text, cls) {
 async function sweep(stopAtFirst) {
   $("probes").replaceChildren();
   const m = minimums();
-  for (const dc of regionList) {
+  for (const [i, dc] of regionList.entries()) {
     const label = where(dc, regionPlaces[dc]);
+    setBusy("Probing " + label + " (" + (i + 1) + " of " + regionList.length + ")…");
     const row = probeRow(label + " … probing", "muted");
     try {
       const r = await call("POST", "/api/regions/probe", { provider: $("volprov").value, dc, ...m });
@@ -376,7 +407,7 @@ async function sweep(stopAtFirst) {
 async function probe() {
   if (!confirm("Probe " + regionList.length + " data center(s)? Each rents a real box for about a second, a fraction of a cent.")) return;
   $("probe").disabled = $("place").disabled = true;
-  try { await sweep(false); } finally { $("probe").disabled = $("place").disabled = false; }
+  try { await busy("Probing…", () => sweep(false)); } finally { $("probe").disabled = $("place").disabled = false; }
 }
 
 async function place() {
@@ -386,7 +417,7 @@ async function place() {
   if (!confirm("Probe until a data center rents, then create a " + size + " GB volume \"" + name + "\" there? The volume bills monthly until you delete it.")) return;
   $("probe").disabled = $("place").disabled = true;
   try {
-    const dc = await sweep(true);
+    const dc = await busy("Probing…", () => sweep(true));
     if (!dc) { showLog("no probed data center had capacity; try again later or include all regions", true); return; }
     const v = await createVolume(name, size, dc);
     $("where").value = v.id;
@@ -436,7 +467,7 @@ function minimums() {
 function target() {
   const id = $("where").value || volumeIndex.defaultID;
   const v = volumeIndex.list.find((x) => x.id === id);
-  return v ? { provider: v.provider, dc: v.dc } : { provider: volumeIndex.provider, dc: "" };
+  return v ? { provider: v.provider, dc: v.dc, place: v.place } : { provider: volumeIndex.provider, dc: "" };
 }
 
 // loadOffers fills the machine table for the target and minimums. A pick that
@@ -491,33 +522,36 @@ async function refresh() {
 async function launch() {
   const name = $("name").value.trim();
   if (!name) return;
-  $("up").disabled = true;
-  showLog("launching " + name + " ...", false);
-  try {
-    const r = await call("POST", "/api/up", {
-      name, flavor: $("flavor").value, volume: $("where").value, type: picked, ...minimums(),
-    });
-    showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
-    $("name").value = "";
-    await refresh();
-  } catch (e) {
-    showLog(e.message + (e.log ? "\n" + e.log : ""), true);
-  } finally {
-    $("up").disabled = false;
-  }
+  const t = target();
+  const warn = capWarnings[t.provider] || [];
+  if (warn.length && !confirm("This " + t.provider + " box:\n- " + warn.join("\n- ") + "\n\nLaunch anyway?")) return;
+  const at = t.dc ? " in " + where(t.dc, t.place) : "";
+  await busy("Launching " + name + " on " + (t.provider || "the default provider") + at + (picked ? " (" + picked + ")" : "") + "…", async () => {
+    try {
+      const r = await call("POST", "/api/up", {
+        name, flavor: $("flavor").value, volume: $("where").value, type: picked, ...minimums(),
+      });
+      $("name").value = "";
+      await refresh(); // first: refresh rewrites the log, which would wipe the summary
+      showLog((r.log || "") + (r.data ? r.data.summary : ""), false);
+    } catch (e) {
+      showLog(e.message + (e.log ? "\n" + e.log : ""), true);
+    }
+  });
 }
 
 async function terminate(name) {
   const typed = prompt("Type " + name + " to terminate it. The volume survives.");
   if (typed !== name) return;
-  showLog("terminating " + name + " ...", false);
-  try {
-    const r = await call("POST", "/api/down", { name });
-    showLog(r.log || ("terminated " + name), false);
-    await refresh();
-  } catch (e) {
-    showLog(e.message + (e.log ? "\n" + e.log : ""), true);
-  }
+  await busy("Terminating " + name + "…", async () => {
+    try {
+      const r = await call("POST", "/api/down", { name });
+      await refresh();
+      showLog(r.log || ("terminated " + name), false);
+    } catch (e) {
+      showLog(e.message + (e.log ? "\n" + e.log : ""), true);
+    }
+  });
 }
 
 function showState() {
@@ -530,6 +564,7 @@ function showState() {
     (serverHasProvider() && haveLocalKeys() ? "Using keys from the server and this tab" :
       serverHasProvider() ? "Using keys stored on the server" : "Using keys pasted into this tab") +
     (server.tailscale || (get("megh.tsid") && get("megh.tssecret")) ? "." : " (no Tailscale keys, so new boxes won't join the tailnet).");
+  loadCapabilities();
   if (ok) { refresh(); loadVolumes(); loadAdmin(); }
 }
 
