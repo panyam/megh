@@ -6,6 +6,7 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -65,7 +66,7 @@ var storageCreateCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("created volume %s  (%s, %dGB, %s)\n", v.ID, v.Name, v.Size, v.DataCenter)
-		fmt.Printf("launch onto it: megh up --provider runpod --volume %s --dc %s\n", v.ID, v.DataCenter)
+		fmt.Println(launchHint(*v))
 		return nil
 	},
 }
@@ -95,4 +96,12 @@ func init() {
 
 	storageCmd.AddCommand(storageListCmd, storageCreateCmd, storageRmCmd)
 	rootCmd.AddCommand(storageCmd)
+}
+
+// launchHint is the command that starts a box on a volume just created. It
+// names the volume's own provider, since a volume attaches only to boxes on
+// the backend that owns it, and keeps --dc, which RunPod needs and the VM
+// backends ignore.
+func launchHint(v providers.Volume) string {
+	return fmt.Sprintf("launch onto it: megh up <name> --provider %s --volume %s --dc %s", v.Provider, v.ID, v.DataCenter)
 }
