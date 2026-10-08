@@ -75,7 +75,10 @@ megh regions offers [--provider p] [--dc d] [--vcpu N --ram G --disk G]
                                   # EVERY machine at or above the minimums (type/vCPU/RAM/disk/$/hr/place/stock);
                                   # RunPod needs a DC (prices per DC, one batched GraphQL call; stock is a hint).
                                   # launch one: megh up <name> --type <TYPE>; no --type = cheapest that fits
-megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
+megh hydrate [--check]            # clone repos onto a box's volume (or report drift); one repo failing no
+                                  # longer stops the rest (skipped ones are listed, exit non-zero). A dest holding
+                                  # ONLY empty folders (the entrypoint makes symlink-target parents on a fresh
+                                  # volume) is cleared and cloned; a dest with any file is never touched
                                   # ON a box it runs locally; with no SSH agent (Tailscale console,
                                   # webterm) it clones over https via gh's login (SETUP.md §7.2)
 megh config pull                  # fetch the private megh.yaml (via gh) into ~/.config/megh/megh.yaml
