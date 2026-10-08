@@ -495,7 +495,9 @@ How it is put together:
   box in its location, so `megh hydrate` and your logins carry over, exactly as
   with a RunPod network volume.
 - **meghplane** launches Hetzner boxes too, with `HCLOUD_TOKEN` in its note
-  (section 7). `megh regions` on the CLI is still RunPod-only.
+  (section 7). `megh regions offers --provider hetzner --vcpu 4 --ram 8` lists
+  every server type a location sells, with prices; launch one with
+  `megh up --type <type>`.
 
 ## 9. Vultr: another provider, with more US regions
 
