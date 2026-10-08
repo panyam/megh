@@ -178,3 +178,82 @@ func TestConfigPullRefusesNonYAMLBeforeWriting(t *testing.T) {
 		t.Errorf("wrote %q", b)
 	}
 }
+
+// runApply runs the real hydrate script against a temp repos root, with a fake
+// git whose clone makes dest/.git (or fails for a URL containing "bad") and an
+// SSH agent present.
+func runApply(t *testing.T, c config.Config, setup func(root string)) (string, string, error) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash")
+	}
+	root, bin := t.TempDir(), t.TempDir()
+	setup(root)
+	os.WriteFile(filepath.Join(bin, "ssh-add"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "git"), []byte(`#!/bin/sh
+[ "$1" = clone ] || exit 0
+case "$2" in *bad*) echo "fatal: repository not found" >&2; exit 128;; esac
+[ -e "$3" ] && { echo "fatal: destination path '$3' already exists and is not an empty directory." >&2; exit 128; }
+mkdir -p "$3/.git"
+`), 0o755)
+	cmd := exec.Command(bash, "-c", applyScript(c))
+	cmd.Env = append(os.Environ(), "PATH="+bin+":/usr/bin:/bin", "MEGH_REPOS_ROOT="+root)
+	out, err := cmd.CombinedOutput()
+	return root, string(out), err
+}
+
+func repo(url, dir string) config.Repo { return config.Repo{URL: url, Dir: dir} }
+
+// On a fresh volume the entrypoint has already made the parents of every
+// symlink target, so a repo the links point into exists as empty folders.
+// Those are cleared and the clone goes ahead.
+func TestHydrateClonesOverFoldersTheEntrypointPreCreated(t *testing.T) {
+	c := config.Config{Repos: []config.Repo{repo("git@github.com:panyam/dotfiles.git", "dotfiles/dotfiles")}}
+	root, out, err := runApply(t, c, func(root string) {
+		os.MkdirAll(filepath.Join(root, "dotfiles/dotfiles/box"), 0o755)
+		os.MkdirAll(filepath.Join(root, "dotfiles/dotfiles/shared/claude"), 0o755)
+	})
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "dotfiles/dotfiles/.git")); err != nil {
+		t.Errorf("not cloned:\n%s", out)
+	}
+}
+
+// Anything with content is left alone, and one repo that can't be cloned
+// doesn't stop the rest: the run reports it and exits non-zero at the end.
+func TestHydrateSkipsAFolderWithContentAndCarriesOn(t *testing.T) {
+	c := config.Config{Repos: []config.Repo{
+		repo("git@github.com:panyam/notes.git", "projects/notes/main"),
+		repo("git@github.com:panyam/bad.git", "projects/bad/main"),
+		repo("git@github.com:panyam/megh.git", "newstack/megh"),
+	}}
+	root, out, err := runApply(t, c, func(root string) {
+		os.MkdirAll(filepath.Join(root, "projects/notes/main/drafts"), 0o755)
+		os.WriteFile(filepath.Join(root, "projects/notes/main/drafts/todo.md"), []byte("mine"), 0o644)
+	})
+	if err == nil {
+		t.Errorf("a run that skipped repos must exit non-zero:\n%s", out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "projects/notes/main/drafts/todo.md")); string(b) != "mine" {
+		t.Error("a file in the destination was touched")
+	}
+	if _, err := os.Stat(filepath.Join(root, "newstack/megh/.git")); err != nil {
+		t.Errorf("the repo after the failures was not cloned:\n%s", out)
+	}
+	for _, want := range []string{"skip    projects/notes/main", "drafts/todo.md", "failed  projects/bad/main", "did not clone: projects/notes/main projects/bad/main"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestHydrateLeavesAnExistingCloneAlone(t *testing.T) {
+	c := config.Config{Repos: []config.Repo{repo("git@github.com:panyam/megh.git", "newstack/megh")}}
+	_, out, err := runApply(t, c, func(root string) { os.MkdirAll(filepath.Join(root, "newstack/megh/.git"), 0o755) })
+	if err != nil || !strings.Contains(out, "exists  newstack/megh") {
+		t.Errorf("%v\n%s", err, out)
+	}
+}
