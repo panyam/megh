@@ -214,6 +214,13 @@ owes a positive assertion too, naming the loopback address it binds:
 `TestPlaywrightViewerBindsLoopback` is the shape, for the `pw-ui` script inside
 playwright.sh.
 
+**One exception: the gateway container** (`megh gateway`, DESIGN.md "Roles").
+Its proxy binds the container's `0.0.0.0`, because a docker publish forwards to
+the container's `eth0` and a loopback bind inside would accept nothing (the same
+measurement that makes 22 the only publishable port on a local box). What keeps
+it off the network is the other end of the publish, which is always the HOST's
+`127.0.0.1`. **Verify:** `go test ./cmd -run TestGatewayPublishesOnlyToTheHostsLoopback`.
+
 ## C5: the Tailscale API key stays on the control machine
 
 megh holds two Tailscale secrets and they are not interchangeable.

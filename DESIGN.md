@@ -146,6 +146,34 @@ Four layers, decoupled so the box is disposable and providers are swappable.
   whole desktop to read a trace was the tax that shape was paying.
 - **SSH** with agent forwarding — no long-lived git credentials on the box.
 
+## Roles
+
+A machine megh touches plays one or more of three roles, and what each holds is
+what makes the split worth naming (#130).
+
+- **Worker**: a box where code runs and agents work. It holds repos, tool
+  logins on its volume, and a forwarded SSH agent while a session is open. It
+  holds no provider key by default.
+- **Control**: a machine holding a provider key, which is what lets it launch
+  and terminate boxes (C3). A laptop, a phone in Termux, meghplane, or a worker
+  that was deliberately elevated.
+- **Gateway**: a tailnet identity and nothing else. `megh gateway up` runs one as
+  a local docker container so a machine that is NOT on the tailnet (a work
+  laptop, say) can still open its workers' web surfaces. The container joins
+  under its own tag (`tag:megh-gw`), so the ACL can give it exactly the surface
+  ports on `tag:megh` and no more, and it publishes each port to the host's
+  `127.0.0.1` only. `http://<box>.localhost:7682/` resolves to the host in every
+  current browser, and the proxy (`internal/gateway`) routes on that name to
+  `<box>.<tailnet>:7682` through tailscaled's SOCKS5 server, speaking TLS when the
+  worker's `tailscale serve` does. It refuses any other Host (DNS rebinding) and
+  any cross-origin request or Origin-less WebSocket (a page you visit typing into
+  your terminal).
+
+A worker can take on the other two, since they are things it holds rather than
+things it is: one with a provider key is a control plane too, and every worker is
+already on the tailnet. The gateway exists for the machine that should hold
+neither. SSH through it (`megh ssh` from an off-tailnet machine) is the next step.
+
 ## Control surface (how you drive megh)
 
 Goal: launch and reach boxes from a local terminal now, and from a phone later
