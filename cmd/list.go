@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/local"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +40,7 @@ var listCmd = &cobra.Command{
 		// Pinned (--provider / MEGH_PROVIDER): that backend only. Otherwise every
 		// backend with a credential, like `storage list`, so a box on a
 		// non-default backend is never invisible.
-		backends := []string{resolve(cmd, "provider", listProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")}
+		backends := []string{resolveProviderName(cmd, listProvider)}
 		if !providerPinned(cmd) {
 			backends = backends[:0]
 			for _, p := range providers.All() {
@@ -65,6 +67,9 @@ var listCmd = &cobra.Command{
 				rows = append(rows, row{name, p})
 			}
 		}
+		if slices.Contains(backends, "local") {
+			localElsewhereNotice(ctx)
+		}
 		if len(rows) == 0 {
 			fmt.Println("no boxes")
 			return nil
@@ -89,6 +94,23 @@ var listCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+// localElsewhereNotice says so when the engine megh guessed is not the one
+// holding some megh boxes: installing podman beside docker would otherwise
+// make every docker box vanish from list, ssh and down.
+func localElsewhereNotice(ctx context.Context) {
+	lp, err := providers.For("local")
+	if err != nil {
+		return
+	}
+	l, ok := lp.(*local.Provider)
+	if !ok {
+		return
+	}
+	if other, n := l.Elsewhere(ctx); n > 0 {
+		fmt.Fprintf(os.Stderr, "megh: %d megh box(es) are in %s, which this machine isn't using (it found podman first); set providers.local.engine: %s (or MEGH_ENGINE=%s) to manage them\n", n, other, other, other)
+	}
 }
 
 func init() {

@@ -100,22 +100,29 @@ providers:
 
   # The LOCAL backend: a box is a container on this machine. Free, instant, and
   # the work trees are host paths, so an agent in the box edits your real repos.
-  # `megh up --provider docker <name>`; list/ssh/down/enable/browse are unchanged.
+  # `megh up --provider local <name>`; list/ssh/down/enable/browse are unchanged.
   #
   # It is NOT a security sandbox. Anything mounted read-write can be deleted from
   # inside. What it does isolate is the rest of the machine.
-  docker:
+  # (This block was called `docker:` before it ran podman too; that key still
+  # loads, with a note.)
+  local:
+    # The container engine: podman or docker (or a path to either). Absent
+    # auto-detects, podman first; MEGH_ENGINE overrides both. A box lives in
+    # ONE engine's store, so if you have both installed and boxes in docker,
+    # say docker here or they vanish from list/ssh/down (megh list warns).
+    # engine: podman
     # Built by `make image-local-full` (or `-slim`) for this machine's
     # architecture. The published images are linux/amd64 only, so on an arm64
     # laptop they would emulate. One tag per flavor, so the two do not overwrite
     # each other and a box picks its flavor by naming the tag here.
     image: megh-local-full:arm64
-    # The docker context (daemon) megh talks to: `docker context ls` names them.
-    # Absent follows the shell's active context, which is fine with one daemon.
-    # With two (colima and Docker Desktop), pin it: a box lives in ONE daemon,
-    # and asking the other one makes it vanish from list/ssh/down. The image
-    # must be built into the same daemon (`docker context use <it>` before
-    # `make image-local-*`).
+    # Which daemon or VM megh talks to: a docker context (`docker context ls`)
+    # or a podman connection (`podman system connection ls`); megh passes it as
+    # --context or --connection. Absent follows the engine's default, which is
+    # fine with one. With two (colima and Docker Desktop, or two podman
+    # machines), pin it: a box lives in ONE, and asking the other makes it
+    # vanish from list/ssh/down. The image must be built into the same one.
     # context: colima
     # The host directory bound at the box's work mount: docker's network volume.
     # Tool logins persist here, separately from the host's own ~/.claude, so one

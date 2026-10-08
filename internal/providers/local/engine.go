@@ -1,0 +1,110 @@
+package local
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/panyam/megh/internal/config"
+	"github.com/panyam/megh/internal/providers"
+)
+
+// Engine is the container engine local boxes and the gateway run under. megh
+// shells out to its CLI, and podman's CLI takes docker's verbs and flags for
+// everything megh does, with two exceptions this type absorbs: picking a
+// daemon is --context on docker and --connection on podman, and podman's info
+// has no ServerVersion.
+type Engine struct {
+	// Name is "podman" or "docker", whatever Bin is called.
+	Name string
+	// Bin is what to execute: the name on PATH, or the configured path.
+	Bin string
+	// Source says how it was chosen ("MEGH_ENGINE", "providers.local.engine"
+	// or "auto-detected"), for `megh config` and the other-engine notice.
+	Source string
+	// Context is providers.local.context: a docker context or a podman
+	// connection. Empty uses the engine's own default.
+	Context string
+}
+
+// detectOrder is podman when installed, else docker; the Makefile's
+// CONTAINER_CMD uses the same order.
+var detectOrder = []string{"podman", "docker"}
+
+// ResolveEngine picks the engine: MEGH_ENGINE, else providers.local.engine,
+// else the first of podman and docker on PATH. A named engine that is not
+// installed is an error rather than a switch to the other one, because a box
+// lives in one engine's store and the other would not show it. Neither
+// installed is providers.ErrNotConfigured, so a machine without containers
+// (a cloud box, a phone) simply has no local backend.
+func ResolveEngine(c config.Provider) (Engine, error) {
+	e := Engine{Context: c.Context}
+	want, src := os.Getenv("MEGH_ENGINE"), "MEGH_ENGINE"
+	if want == "" {
+		want, src = c.Engine, "providers.local.engine"
+	}
+	if want == "" {
+		for _, n := range detectOrder {
+			if _, err := exec.LookPath(n); err == nil {
+				e.Name, e.Bin, e.Source = n, n, "auto-detected"
+				return e, nil
+			}
+		}
+		return e, fmt.Errorf("%w: no container engine on PATH (install podman, or docker; the local backend and megh gw need one)", providers.ErrNotConfigured)
+	}
+	e.Name, e.Bin, e.Source = filepath.Base(want), want, src
+	if e.Name != "podman" && e.Name != "docker" {
+		return e, fmt.Errorf("%s=%q: the engine is podman or docker, or a path to either", src, want)
+	}
+	if _, err := exec.LookPath(want); err != nil {
+		return e, fmt.Errorf("%w: %s is not on PATH (%s names it; install it, or change that)", providers.ErrNotConfigured, e.Name, src)
+	}
+	return e, nil
+}
+
+// Args prefixes the context flag, so every call reaches the same daemon or
+// VM whatever the shell's own default is.
+func (e Engine) Args(args ...string) []string {
+	if e.Context == "" {
+		return args
+	}
+	flag := "--context"
+	if e.Name == "podman" {
+		flag = "--connection"
+	}
+	return append([]string{flag, e.Context}, args...)
+}
+
+// Command is the engine CLI with args, context included.
+func (e Engine) Command(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, e.Bin, e.Args(args...)...)
+}
+
+// CommandLine is Command as one shell string, for ssh's ProxyCommand.
+func (e Engine) CommandLine(args ...string) string {
+	return strings.Join(append([]string{e.Bin}, e.Args(args...)...), " ")
+}
+
+// Other is the engine megh did not pick, for the other-engine notice.
+func (e Engine) Other() string {
+	if e.Name == "podman" {
+		return "docker"
+	}
+	return "podman"
+}
+
+// Unreachable wraps a failed `info` with how to start this engine: the CLI is
+// there, the thing behind it isn't.
+func (e Engine) Unreachable(msg string) error {
+	hint := "start Docker Desktop or colima"
+	if e.Name == "podman" {
+		hint = "on macOS or Windows run `podman machine start` (`podman machine init` the first time); on Linux check `podman info` works for this user"
+	}
+	if e.Context != "" {
+		hint += fmt.Sprintf(", and that %s exists (providers.local.context)", e.Context)
+	}
+	return fmt.Errorf("%s is installed but not reachable (%s): %s", e.Name, hint, msg)
+}

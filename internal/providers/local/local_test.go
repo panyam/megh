@@ -1,12 +1,12 @@
-package docker
+package local
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/panyam/megh/internal/config"
@@ -131,7 +131,7 @@ func TestRunArgsNeverSendsATailscaleKey(t *testing.T) {
 func TestMeshFollowsConfigAndNeverJoinsAtBoot(t *testing.T) {
 	cfgWith := func(mesh string) func() config.Config {
 		return func() config.Config {
-			return config.Config{Providers: map[string]config.Provider{"docker": {Mesh: mesh}}}
+			return config.Config{Providers: map[string]config.Provider{"local": {Mesh: mesh}}}
 		}
 	}
 	if got := New(cfgWith("")).Mesh(); got.On() {
@@ -161,7 +161,7 @@ func TestEveryDockerCallCarriesTheConfiguredContext(t *testing.T) {
 
 	cfgWith := func(ctx string) func() config.Config {
 		return func() config.Config {
-			return config.Config{Providers: map[string]config.Provider{"docker": {Context: ctx}}}
+			return config.Config{Providers: map[string]config.Provider{"local": {Context: ctx}}}
 		}
 	}
 	for _, tc := range []struct{ ctx, want string }{

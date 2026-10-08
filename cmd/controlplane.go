@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"text/tabwriter"
 
 	"github.com/panyam/megh/internal/config"
+	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/local"
 	"github.com/spf13/cobra"
 )
 
@@ -70,7 +72,7 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 		case onABox:
 			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set; this box cannot launch",
 				"put " + p.APIKeyEnv + " in a channel scoped to the boxes you mean " +
-					"(providers.docker.mounts:), never an env file listed in files:"})
+					"(providers.local.mounts:), never an env file listed in files:"})
 		default:
 			add(cpCheck{"provider key", cpFail, p.APIKeyEnv + " is not set",
 				"add " + p.APIKeyEnv + " to this machine's environment"})
@@ -148,13 +150,22 @@ func controlPlaneChecks(onABox bool) []cpCheck {
 			"scope the credential to tag:megh, or keep it off boxes entirely"})
 	}
 
-	// 6. The local backend is a control plane for itself and needs a docker CLI.
-	if _, ok := cfg.Providers["docker"]; ok {
-		if _, err := exec.LookPath("docker"); err == nil {
-			add(cpCheck{"docker backend", cpOK, "docker on PATH", ""})
+	// 6. The local backend (and megh gw) needs a container engine, and boxes
+	// in the engine megh did not pick are invisible to it.
+	if lc, ok := cfg.Providers["local"]; ok {
+		if e, err := local.ResolveEngine(lc); err == nil {
+			add(cpCheck{"local backend", cpOK, e.Name + " (" + e.Source + ")", ""})
+			if lp, err := providers.For("local"); err == nil {
+				if l, ok := lp.(*local.Provider); ok {
+					if other, n := l.Elsewhere(context.Background()); n > 0 {
+						add(cpCheck{"local backend", cpWarn, fmt.Sprintf("%d megh box(es) are in %s, not %s", n, other, e.Name),
+							"set providers.local.engine: " + other + " to manage them, or recreate them under " + e.Name})
+					}
+				}
+			}
 		} else {
-			add(cpCheck{"docker backend", cpWarn, "docker is not on PATH",
-				"install a docker CLI, or ignore if you only use cloud boxes"})
+			add(cpCheck{"local backend", cpWarn, err.Error(),
+				"install podman (or docker), or ignore if you only use cloud boxes"})
 		}
 	}
 	return out

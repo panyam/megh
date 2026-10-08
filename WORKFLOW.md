@@ -225,7 +225,7 @@ a warm `git status` mostly measures memory.
   the container's `eth0`, so the host port accepts the connection and has nothing
   to hand it to. `sshd` binding `0.0.0.0` is why 22 alone is publishable, and why
   `megh browse` tunnels on every backend. A tunnel reaches only the machine that
-  opened it, so a local box a phone can reach needs `providers.docker.mesh:
+  opened it, so a local box a phone can reach needs `providers.local.mesh:
   tailscale` plus `megh mesh join <box>`, and then `tailscale serve` for the port.
 - Never bind-mount a directory whose entries are absolute host symlinks. They
   dangle in a container, and the entrypoint REPLACES a dangling symlink rather
@@ -237,7 +237,7 @@ a warm `git status` mostly measures memory.
 
 ## Putting a running box on the mesh (no rebuild)
 
-A local box created before `providers.docker.mesh` existed, or created with it
+A local box created before `providers.local.mesh` existed, or created with it
 unset, joins without being recreated. The bring-up script rides in the CONTROL
 machine's binary and is piped over SSH, so the box's own megh can be any age; it
 needs only bash and the tailscale binaries, which every image has.
@@ -245,15 +245,15 @@ needs only bash and the tailscale binaries, which every image has.
 On the control machine:
 
 ```
-megh mesh ls --provider docker        # the box should read: mesh tailscale, state off
-megh mesh join <box> --provider docker
+megh mesh ls --provider local        # the box should read: mesh tailscale, state off
+megh mesh join <box> --provider local
 ```
 
 That starts `tailscaled` in userspace mode inside the running container and
 serves its surfaces. Nothing restarts: tmux sessions, ttyd and code-server are
 untouched. It is re-runnable, and `--authkey` re-keys a box whose key went stale.
 
-Prerequisites on the control machine: `providers.docker.mesh: tailscale` in the
+Prerequisites on the control machine: `providers.local.mesh: tailscale` in the
 megh.yaml it actually reads (`megh config` prints the source — three copies
 exist and nothing syncs them), and a Tailscale credential, which
 `megh doctor control-plane` checks.

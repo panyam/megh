@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/panyam/megh/internal/gateway"
 	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/local"
 	"github.com/panyam/megh/internal/tsapi"
 	"github.com/spf13/cobra"
 )
@@ -33,8 +35,8 @@ var gatewayPurge bool
 var gatewayCmd = &cobra.Command{
 	Use:     "gw",
 	Aliases: []string{"gateway"},
-	Short:   "Reach workers from this machine without joining the tailnet (a local docker gateway)",
-	Long: `A gateway is a docker container on this machine that joins the tailnet
+	Short:   "Reach workers from this machine without joining the tailnet (a local container gateway)",
+	Long: `A gateway is a container (podman or docker) on this machine that joins the tailnet
 under its own tag (tailscale.gateway_tag, default tag:megh-gw) while this
 machine stays off it. It publishes the workers' web surfaces to THIS machine's
 127.0.0.1 only, routed by name:
@@ -70,18 +72,19 @@ var gatewayUpCmd = &cobra.Command{
 		case "":
 			// The container runs `megh gw serve` and `megh gw nc` from the image,
 			// so an image older than both can't be a gateway.
-			if out, err := dockerOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
+			if out, err := engineOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
 				if strings.Contains(out, "unknown command") {
 					return fmt.Errorf("%s has no `megh gw nc`; pull a newer one, or build one with `make image-local-gw` and set tailscale.gateway_image", image)
 				}
-				return fmt.Errorf("can't run %s (a private GHCR image needs `docker login ghcr.io` with GH_MEGH_TOKEN first): %w", image, err)
+				e, _ := localEngine()
+				return fmt.Errorf("can't run %s (a private GHCR image needs `%s login ghcr.io` with GH_MEGH_TOKEN first): %w", image, e.Name, err)
 			}
-			if _, err := dockerOut(ctx, gatewayRunArgs(image, cfg.Tailnet)...); err != nil {
+			if _, err := engineOut(ctx, gatewayRunArgs(image, cfg.Tailnet)...); err != nil {
 				return err
 			}
 			fmt.Printf("started %s from %s\n", gatewayName, image)
 		default:
-			if _, err := dockerOut(ctx, "start", gatewayName); err != nil {
+			if _, err := engineOut(ctx, "start", gatewayName); err != nil {
 				return err
 			}
 			fmt.Printf("restarted %s (was %s)\n", gatewayName, state)
@@ -111,14 +114,14 @@ var gatewayDownCmd = &cobra.Command{
 		if gatewayState(ctx) == "" {
 			fmt.Println("no gateway container")
 		} else {
-			dockerOut(ctx, "exec", gatewayName, "tailscale", "logout") // best effort; the node is ephemeral anyway
-			if _, err := dockerOut(ctx, "rm", "-f", gatewayName); err != nil {
+			engineOut(ctx, "exec", gatewayName, "tailscale", "logout") // best effort; the node is ephemeral anyway
+			if _, err := engineOut(ctx, "rm", "-f", gatewayName); err != nil {
 				return err
 			}
 			fmt.Printf("removed %s\n", gatewayName)
 		}
 		if gatewayPurge {
-			dockerOut(ctx, "volume", "rm", gatewayVolume)
+			engineOut(ctx, "volume", "rm", gatewayVolume)
 			fmt.Printf("removed volume %s\n", gatewayVolume)
 		}
 		return nil
@@ -222,7 +225,10 @@ func gatewayJoin(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("could not mint a %s key (%v): add %s to the tailnet ACL tagOwners, owned by the OAuth client's tag (SETUP.md, \"A gateway\")", tag, err, tag)
 	}
-	cmd := dockerCmd(ctx, gatewayJoinArgs()...)
+	cmd, err := engineCmd(ctx, gatewayJoinArgs()...)
+	if err != nil {
+		return err
+	}
 	cmd.Stdin = strings.NewReader(key)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("tailscale up in the gateway: %v: %s", err, strings.TrimSpace(string(out)))
@@ -244,12 +250,12 @@ func gatewayTailscale(ctx context.Context, wait time.Duration) (gatewayTS, error
 	var st gatewayTS
 	deadline := time.Now().Add(wait)
 	for {
-		out, err := dockerOut(ctx, "exec", gatewayName, "tailscale", "status", "--json")
+		out, err := engineOut(ctx, "exec", gatewayName, "tailscale", "status", "--json")
 		if err == nil && json.Unmarshal([]byte(out), &st) == nil && st.BackendState != "" {
 			return st, nil
 		}
 		if time.Now().After(deadline) {
-			return st, fmt.Errorf("tailscaled in %s did not answer (docker logs %s)", gatewayName, gatewayName)
+			return st, fmt.Errorf("tailscaled in %s did not answer (`<engine> logs %s`)", gatewayName, gatewayName)
 		}
 		time.Sleep(time.Second)
 	}
@@ -258,7 +264,7 @@ func gatewayTailscale(ctx context.Context, wait time.Duration) (gatewayTS, error
 // gatewayState is the container's docker state ("running", "exited", ...), or
 // "" when there is none.
 func gatewayState(ctx context.Context) string {
-	out, err := dockerOut(ctx, "inspect", "-f", "{{.State.Status}}", gatewayName)
+	out, err := engineOut(ctx, "inspect", "-f", "{{.State.Status}}", gatewayName)
 	if err != nil {
 		return ""
 	}
@@ -295,19 +301,28 @@ func gatewayURLs(boxes []string) string {
 	return b.String()
 }
 
-// dockerCmd is docker with the configured context (providers.docker.context),
-// so the gateway lives in the same daemon as local boxes.
-func dockerCmd(ctx context.Context, args ...string) *exec.Cmd {
-	if c := cfg.Provider("docker").Context; c != "" {
-		args = append([]string{"--context", c}, args...)
+// localEngine is the engine local boxes run under (podman or docker,
+// providers.local.engine), so the gateway lives beside them.
+// Tests replace it.
+var localEngine = func() (local.Engine, error) { return local.ResolveEngine(cfg.Provider("local")) }
+
+// engineCmd is the engine CLI with its context or connection flag.
+func engineCmd(ctx context.Context, args ...string) (*exec.Cmd, error) {
+	e, err := localEngine()
+	if err != nil {
+		return nil, err
 	}
-	return exec.CommandContext(ctx, "docker", args...)
+	return e.Command(ctx, args...), nil
 }
 
-func dockerOut(ctx context.Context, args ...string) (string, error) {
-	out, err := dockerCmd(ctx, args...).CombinedOutput()
+func engineOut(ctx context.Context, args ...string) (string, error) {
+	c, err := engineCmd(ctx, args...)
 	if err != nil {
-		return string(out), fmt.Errorf("docker %s: %v: %s", args[0], err, strings.TrimSpace(string(out)))
+		return "", err
+	}
+	out, err := c.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%s %s: %v: %s", filepath.Base(c.Path), args[0], err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }
@@ -330,7 +345,10 @@ var gatewayShellCmd = &cobra.Command{
 		if gatewayState(context.Background()) != "running" {
 			return fmt.Errorf("the gateway isn't running (megh gw up)")
 		}
-		c := dockerCmd(context.Background(), gatewayShellArgs()...)
+		c, err := engineCmd(context.Background(), gatewayShellArgs()...)
+		if err != nil {
+			return err
+		}
 		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return c.Run()
 	},
@@ -340,14 +358,10 @@ var gatewayShellCmd = &cobra.Command{
 func gatewayShellArgs() []string { return []string{"exec", "-it", gatewayName, "sh"} }
 
 // gatewayProxyCommand is the ssh ProxyCommand that carries a connection
-// through the gateway: `megh gw nc` inside the container, in the same docker
-// context as `megh gw up` used.
-func gatewayProxyCommand(dockerContext string) string {
-	c := "docker"
-	if dockerContext != "" {
-		c += " --context " + dockerContext
-	}
-	return c + " exec -i " + gatewayName + " megh gw nc %h %p"
+// through the gateway: `megh gw nc` inside the container, through the same
+// engine and context or connection as `megh gw up` used.
+func gatewayProxyCommand(e local.Engine) string {
+	return e.CommandLine("exec", "-i", gatewayName, "megh", "gw", "nc", "%h", "%p")
 }
 
 func init() {

@@ -11,19 +11,22 @@ below.
 ## Before any of this: a box on your own machine
 
 If you only want to see what a box IS, the local backend gets you one in a couple
-of minutes with no account, no key, and no bill:
+of minutes with no account, no key, and no bill. It needs a container engine:
+podman (`brew install podman && podman machine init && podman machine start` on
+a Mac) or docker. megh uses podman when both are installed; `make runtime` and
+`megh config` show which, and `providers.local.engine` or `MEGH_ENGINE` picks.
 
 ```sh
-make image-local-full                  # builds for this machine's arch
-megh up   --provider docker local1
-megh ssh  --provider docker local1     # tmux 'main', claude and codex already installed
-megh down --provider docker local1
+make image-local-full                  # builds for this machine's arch, with that engine
+megh up   --provider local local1
+megh ssh  --provider local local1     # tmux 'main', claude and codex already installed
+megh down --provider local local1
 ```
 
 It runs the same image and the same entrypoint as a rented box, so everything you
 learn about persist, symlinks, `megh enable` and `megh browse` transfers. Set
-`providers.docker.image` to the tag the build prints, and declare what to
-bind-mount under `providers.docker.mounts`; `megh.yaml.example` has the shape.
+`providers.local.image` to the tag the build prints, and declare what to
+bind-mount under `providers.local.mounts`; `megh.yaml.example` has the shape.
 There are two local tags, one per flavor: `image-local-full` bakes Playwright, the
 headed display and code-server, `image-local-slim` leaves them out and installs
 code-server at boot.
@@ -535,17 +538,18 @@ formatted. If the first boot ever stops at this step, `/var/log/megh-boot.log`
 
 ## 10. A gateway: workers from a machine that is not on the tailnet
 
-`megh gw up` runs a docker container on this machine that joins the tailnet
-in its place, so the machine itself never runs Tailscale (DESIGN.md "Roles"). It
-needs docker, `tailnet:` in megh.yaml, the Tailscale client id and secret (to
+`megh gw up` runs a container on this machine that joins the tailnet in its
+place, so the machine itself never runs Tailscale (DESIGN.md "Roles"). It needs
+the local backend's container engine (podman or docker, chosen the same way as
+for local boxes), `tailnet:` in megh.yaml, the Tailscale client id and secret (to
 mint the gateway's key), and the gateway image.
 
 That image is its own small one (`env/gw/Dockerfile`): the official tailscale
 image plus the megh binary, nothing from the dev image. CI publishes it as
 `megh-gw` for amd64 and arm64 on every merge that touches megh's code, so a Mac
 pulls it rather than building anything. It is private like the dev images, so
-log in once with `echo $GH_MEGH_TOKEN | docker login ghcr.io -u <you>
---password-stdin`. To run one built from a local checkout instead, use `make
+log in once with `echo $GH_MEGH_TOKEN | podman login ghcr.io -u <you>
+--password-stdin` (or `docker login`, whichever engine megh uses). To run one built from a local checkout instead, use `make
 image-local-gw` and set `tailscale.gateway_image` to the tag it prints.
 
 Three ACL edits first, since the gateway joins under its own tag:
@@ -586,13 +590,13 @@ use the tailnet directly rather than a gateway.
 **SSH goes through it too, with nothing to configure.** While the gateway is
 running, `megh ssh dev` to any cloud box (and `tmux attach`, `browse`, `hydrate`,
 `enable`, `doctor`, `mesh`) goes by the box's tailnet name and adds
-`ProxyCommand docker exec -i megh-gw megh gw nc %h %p`, so ssh runs here, with
+`ProxyCommand <engine> exec -i megh-gw megh gw nc %h %p` (podman or docker), so ssh runs here, with
 this machine's profile and its scoped GitHub agent, and only the bytes cross the
 container. megh says so on stderr when it does. It takes this route even for a
 box with public SSH, because a box launched from meghplane trusts none of this
 machine's keys, and the tailnet route works whoever launched it. Because workers run Tailscale
 SSH, the worker authorizes the gateway node by the ssh rule above rather than by
-a box key, which means anyone who can `docker exec` on this machine can be root
+a box key, which means anyone who can `podman exec` (or `docker exec`) on this machine can be root
 on a worker. That's the same reach the published terminal ports already give.
 `megh gw shell` opens a shell in the container for `tailscale status` and
 friends.

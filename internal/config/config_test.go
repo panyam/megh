@@ -18,12 +18,12 @@ func loadFrom(t *testing.T, body string) (Config, error) {
 }
 
 func TestMeshIsPerProviderAndOptional(t *testing.T) {
-	c, err := loadFrom(t, "providers:\n  docker:\n    mesh: tailscale\n")
+	c, err := loadFrom(t, "providers:\n  local:\n    mesh: tailscale\n")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if got := c.Provider("docker").Mesh; got != "tailscale" {
-		t.Errorf("docker mesh = %q, want tailscale", got)
+	if got := c.Provider("local").Mesh; got != "tailscale" {
+		t.Errorf("local mesh = %q, want tailscale", got)
 	}
 	if got := c.Provider("runpod").Mesh; got != "" {
 		t.Errorf("an unset mesh must stay empty so the backend decides, got %q", got)
@@ -34,11 +34,11 @@ func TestMeshIsPerProviderAndOptional(t *testing.T) {
 // bool. Accepting it silently would leave a box off the mesh with the config
 // saying otherwise.
 func TestUnknownMeshVendorIsRejectedAtLoad(t *testing.T) {
-	_, err := loadFrom(t, "providers:\n  docker:\n    mesh: netbird\n")
+	_, err := loadFrom(t, "providers:\n  local:\n    mesh: netbird\n")
 	if err == nil {
 		t.Fatal("expected an error for an unsupported mesh vendor")
 	}
-	for _, want := range []string{"netbird", "docker", "tailscale"} {
+	for _, want := range []string{"netbird", "local", "tailscale"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name the bad value, the provider and what is supported; got: %v", err)
 		}
@@ -64,5 +64,35 @@ func TestDefaultImageNeedsAConfiguredNamespace(t *testing.T) {
 	}
 	if c.Registries[0].Username != "acme" {
 		t.Errorf("user should default to the namespace, got %q", c.Registries[0].Username)
+	}
+}
+
+// providers.docker is the old name of providers.local; it still loads, with a
+// note, and having both is refused rather than merged.
+func TestDockerKeyLoadsAsLocal(t *testing.T) {
+	c, err := loadFrom(t, "default_provider: docker\nproviders:\n  docker:\n    image: megh-local-slim:arm64\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Provider("local").Image != "megh-local-slim:arm64" || c.DefaultProvider != "local" {
+		t.Errorf("got %+v / %q", c.Providers, c.DefaultProvider)
+	}
+	if _, ok := c.Providers["docker"]; ok {
+		t.Error("the docker key survived beside local")
+	}
+	if len(c.Deprecations) == 0 || !strings.Contains(strings.Join(c.Deprecations, " "), "providers.local") {
+		t.Errorf("no deprecation note: %v", c.Deprecations)
+	}
+	if _, err := loadFrom(t, "providers:\n  docker: {image: a}\n  local: {image: b}\n"); err == nil {
+		t.Error("both providers.docker and providers.local were accepted")
+	}
+}
+
+func TestUnknownEngineIsRejectedAtLoad(t *testing.T) {
+	if _, err := loadFrom(t, "providers:\n  local: {engine: nerdctl}\n"); err == nil || !strings.Contains(err.Error(), "providers.local.engine") {
+		t.Errorf("got %v", err)
+	}
+	if _, err := loadFrom(t, "providers:\n  local: {engine: podman}\n"); err != nil {
+		t.Errorf("podman refused: %v", err)
 	}
 }

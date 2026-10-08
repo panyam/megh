@@ -60,7 +60,7 @@ func TestGatewayImageIsTheGatewayImageNotTheDevImage(t *testing.T) {
 	saved := cfg
 	t.Cleanup(func() { cfg = saved })
 	cfg.Registries = []config.Registry{{Host: "ghcr.io", Namespace: "acme"}}
-	cfg.Providers = map[string]config.Provider{"docker": {Image: "megh-local-slim:arm64"}}
+	cfg.Providers = map[string]config.Provider{"local": {Image: "megh-local-slim:arm64"}}
 	cfg.Tailscale.GatewayImage = ""
 	if got := gatewayImage(); got != "ghcr.io/acme/megh-gw:latest" {
 		t.Errorf("default: got %q", got)

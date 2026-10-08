@@ -55,7 +55,7 @@ var storageCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a scratch volume in a data center",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		provider := resolve(cmd, "provider", storageProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		provider := resolveProviderName(cmd, storageProvider)
 		if _, err := resolveProvider(cmd, storageProvider); err != nil {
 			return err
 		}
@@ -78,7 +78,7 @@ var storageRmCmd = &cobra.Command{
 	Short:   "Delete a scratch volume by id (must be detached from all boxes)",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		provider := resolve(cmd, "provider", storageProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
+		provider := resolveProviderName(cmd, storageProvider)
 		if err := newService().DeleteVolume(context.Background(), provider, args[0]); err != nil {
 			return err
 		}

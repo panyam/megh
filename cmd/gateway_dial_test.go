@@ -5,14 +5,16 @@ import (
 	"testing"
 
 	"github.com/panyam/megh/internal/providers"
+	"github.com/panyam/megh/internal/providers/local"
 )
 
 // fakeRoute pins what the dial path sees: whether a name resolves to a
 // tailnet address here, and whether a gateway container is running.
 func fakeRoute(t *testing.T, onTailnet, gwRunning bool) {
 	t.Helper()
-	savedLookup, savedUp, savedTailnet := lookupHost, gatewayUp, cfg.Tailnet
-	t.Cleanup(func() { lookupHost, gatewayUp, cfg.Tailnet = savedLookup, savedUp, savedTailnet })
+	savedLookup, savedUp, savedTailnet, savedEngine := lookupHost, gatewayUp, cfg.Tailnet, localEngine
+	t.Cleanup(func() { lookupHost, gatewayUp, cfg.Tailnet, localEngine = savedLookup, savedUp, savedTailnet, savedEngine })
+	localEngine = func() (local.Engine, error) { return local.Engine{Name: "docker", Bin: "docker"}, nil }
 	cfg.Tailnet = "tail123.ts.net"
 	lookupHost = func(string) ([]string, error) {
 		if onTailnet {
@@ -117,7 +119,18 @@ func TestTailnetFallbackUsesARunningGateway(t *testing.T) {
 
 func TestGatewayProxyCommandUsesThePinnedDockerContext(t *testing.T) {
 	fakeRoute(t, false, true)
-	if got := gatewayProxyCommand("colima"); got != "docker --context colima exec -i megh-gw megh gw nc %h %p" {
+	if got := gatewayProxyCommand(local.Engine{Name: "docker", Bin: "docker", Context: "colima"}); got != "docker --context colima exec -i megh-gw megh gw nc %h %p" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// Under podman the same ProxyCommand runs podman, and a pinned machine is a
+// --connection rather than a --context.
+func TestGatewayProxyCommandUnderPodman(t *testing.T) {
+	if got := gatewayProxyCommand(local.Engine{Name: "podman", Bin: "podman", Context: "podman-machine-default"}); got != "podman --connection podman-machine-default exec -i megh-gw megh gw nc %h %p" {
+		t.Errorf("got %q", got)
+	}
+	if got := gatewayProxyCommand(local.Engine{Name: "podman", Bin: "/opt/homebrew/bin/podman"}); got != "/opt/homebrew/bin/podman exec -i megh-gw megh gw nc %h %p" {
+		t.Errorf("path: got %q", got)
 	}
 }

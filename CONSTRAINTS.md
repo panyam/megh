@@ -108,9 +108,9 @@ megh infers, and no allowlist below is loosened:
   `cmd/enable.go`), never the ambient environment.
 - `files:` copies only what `megh.yaml` names.
 - `box_envs:` is an explicit opt-in list, never a wildcard.
-- **`providers.docker.mounts:` is the local backend's allowlist.** A bind mount is
+- **`providers.local.mounts:` is the local backend's allowlist.** A bind mount is
   a fourth channel to a box, and a wider one than the other three: it exposes a
-  live host path rather than a copied value. Every `-v` the docker backend passes
+  live host path rather than a copied value. Every `-v` the local backend passes
   comes from that map or is the work mount itself. Nothing is inferred from the
   ambient environment, the working directory, or what happens to exist next to a
   mounted path.
@@ -156,7 +156,7 @@ motivated the elevation, and it is silent, since nothing at launch says a pod
 just received it.
 
 Elevate through a channel scoped to the boxes meant to be elevated. For local
-boxes that is `providers.docker.mounts:`, which the cloud backends never read.
+boxes that is `providers.local.mounts:`, which the cloud backends never read.
 Keep provider credentials out of every file `files:` copies.
 
 **Verify:** `go test ./internal/providers/docker/ -run 'TestRunArgsMountsOnlyWhatConfigAllows|TestRunArgsNeverSendsATailscaleKey'`
@@ -252,14 +252,14 @@ variable means adding it to the list; the prefix rule makes leaking it the
 default, not the accident.
 
 **There is ONE deny check**, `config.IsControlPlaneSecret`, used by both
-`meghEnv` and the docker backend's box env. It was briefly the union of two
+`meghEnv` and the local backend's box env. It was briefly the union of two
 lists, `controlPlaneSecrets` plus a `boxDeniedEnv` holding `MEGH_CONTROL_PLANE`;
 that variable is gone (see C3) and the union collapsed back to
 this constraint's tailnet credentials alone. If a future variable needs denying
 for a reason other than being a credential, split the lists again rather than
 widening this one — THIS constraint's Verify greps for the tailnet names and
 should keep meaning exactly what it says. The list started as a private map in
-`cmd/enable.go`; when the docker backend needed the same rule, copying it would
+`cmd/enable.go`; when the local backend needed the same rule, copying it would
 have created two lists that could drift, and spelling the names inside
 `internal/providers/` would have tripped this constraint's own grep. It lives in
 `internal/config`, which is one of the packages named below and already knows
