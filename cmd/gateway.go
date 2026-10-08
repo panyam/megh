@@ -31,8 +31,9 @@ const (
 var gatewayPurge bool
 
 var gatewayCmd = &cobra.Command{
-	Use:   "gateway",
-	Short: "Reach workers from this machine without joining the tailnet (a local docker gateway)",
+	Use:     "gw",
+	Aliases: []string{"gateway"},
+	Short:   "Reach workers from this machine without joining the tailnet (a local docker gateway)",
 	Long: `A gateway is a docker container on this machine that joins the tailnet
 under its own tag (tailscale.gateway_tag, default tag:megh-gw) while this
 machine stays off it. It publishes the workers' web surfaces to THIS machine's
@@ -43,8 +44,14 @@ machine stays off it. It publishes the workers' web surfaces to THIS machine's
   http://<box>.localhost:8080/   code-server
   http://<box>.localhost:6080/   noVNC
 
+megh ssh, tmux, browse, hydrate and the rest use it on their own: while it runs,
+ssh to a cloud box goes by its tailnet name through the container (a
+ProxyCommand), with this machine's ssh client and GitHub agent. Workers run
+Tailscale SSH, which authorizes the gateway node, so no box key is needed.
+
 It holds no provider or GitHub keys. The tailnet ACL needs tag:megh-gw in
-tagOwners and a grant to tag:megh on those ports (SETUP.md, "A gateway").`,
+tagOwners, a grant to tag:megh on those ports, and an ssh rule (SETUP.md
+section 10).`,
 }
 
 var gatewayUpCmd = &cobra.Command{
@@ -61,10 +68,10 @@ var gatewayUpCmd = &cobra.Command{
 		case "running":
 			fmt.Println("gateway container is running")
 		case "":
-			// The container runs `megh gateway serve` from the image, so an image
-			// built before this command existed can't be a gateway.
-			if _, err := dockerOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gateway", "serve", "--help"); err != nil {
-				return fmt.Errorf("%s has no `megh gateway serve`; pull or build a newer image (providers.docker.image, or `make image-local-slim`)", image)
+			// The container runs `megh gw serve` and `megh gw nc` from the image,
+			// so an image older than both can't be a gateway.
+			if _, err := dockerOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
+				return fmt.Errorf("%s has no `megh gw nc`; pull or build a newer image (providers.docker.image, or `make image-local-slim`)", image)
 			}
 			if _, err := dockerOut(ctx, gatewayRunArgs(image, cfg.Tailnet)...); err != nil {
 				return err
@@ -123,7 +130,7 @@ var gatewayStatusCmd = &cobra.Command{
 		ctx := context.Background()
 		state := gatewayState(ctx)
 		if state == "" {
-			fmt.Println("no gateway container (megh gateway up)")
+			fmt.Println("no gateway container (megh gw up)")
 			return nil
 		}
 		fmt.Printf("container: %s\n", state)
@@ -137,7 +144,7 @@ var gatewayStatusCmd = &cobra.Command{
 		case st.BackendState == "Running":
 			fmt.Printf("tailnet:   on as %s\n", strings.TrimSuffix(st.Self.DNSName, "."))
 		default:
-			fmt.Printf("tailnet:   %s (run `megh gateway up` to rejoin; the node is ephemeral and goes once offline a while)\n", st.BackendState)
+			fmt.Printf("tailnet:   %s (run `megh gw up` to rejoin; the node is ephemeral and goes once offline a while)\n", st.BackendState)
 		}
 		fmt.Print(gatewayURLs(knownBoxes(ctx)))
 		return nil
@@ -189,7 +196,7 @@ func gatewayRunArgs(image, tailnet string) []string {
 	script := "mkdir -p /var/run/tailscale /var/lib/tailscale; " +
 		"tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state " +
 		"--socket=/var/run/tailscale/tailscaled.sock --socks5-server=" + gatewaySOCKS + " >/var/log/tailscaled.log 2>&1 & " +
-		"exec megh gateway serve"
+		"exec megh gw serve"
 	return append(args, "--entrypoint", "sh", image, "-c", script)
 }
 
@@ -301,10 +308,45 @@ func dockerOut(ctx context.Context, args ...string) (string, error) {
 	return string(out), nil
 }
 
+var gatewayNCCmd = &cobra.Command{
+	Use:    "nc <host> <port>",
+	Short:  "Pipe stdin/stdout to a worker over the gateway's tailnet (ssh's ProxyCommand; runs inside the container)",
+	Hidden: true,
+	Args:   cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return gateway.Pipe(context.Background(), gateway.SOCKS5Dialer(gatewaySOCKS), net.JoinHostPort(args[0], args[1]), os.Stdin, os.Stdout)
+	},
+}
+
+var gatewayShellCmd = &cobra.Command{
+	Use:   "shell",
+	Short: "A shell inside the gateway container, for looking at tailscale (status, logs)",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if gatewayState(context.Background()) != "running" {
+			return fmt.Errorf("the gateway isn't running (megh gw up)")
+		}
+		c := dockerCmd(context.Background(), "exec", "-it", gatewayName, "sh", "-c", "exec zsh 2>/dev/null || exec bash")
+		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+		return c.Run()
+	},
+}
+
+// gatewayProxyCommand is the ssh ProxyCommand that carries a connection
+// through the gateway: `megh gw nc` inside the container, in the same docker
+// context as `megh gw up` used.
+func gatewayProxyCommand(dockerContext string) string {
+	c := "docker"
+	if dockerContext != "" {
+		c += " --context " + dockerContext
+	}
+	return c + " exec -i " + gatewayName + " megh gw nc %h %p"
+}
+
 func init() {
 	gatewayDownCmd.Flags().BoolVar(&gatewayPurge, "purge", false, "also remove the gateway's tailnet state volume")
 	gatewayServeCmd.Flags().StringVar(&gatewayServeTailnet, "tailnet", "", "MagicDNS suffix (default $MEGH_GATEWAY_TAILNET)")
 	gatewayServeCmd.Flags().StringVar(&gatewayServeSOCKS, "socks", "", "tailscaled SOCKS5 address (default "+gatewaySOCKS+")")
-	gatewayCmd.AddCommand(gatewayUpCmd, gatewayDownCmd, gatewayStatusCmd, gatewayServeCmd)
+	gatewayCmd.AddCommand(gatewayUpCmd, gatewayDownCmd, gatewayStatusCmd, gatewayShellCmd, gatewayServeCmd, gatewayNCCmd)
 	rootCmd.AddCommand(gatewayCmd)
 }

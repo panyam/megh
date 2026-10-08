@@ -72,7 +72,10 @@ func (f *fakeSOCKS) serve(c net.Conn, backend string) {
 	}
 	defer up.Close()
 	c.Write([]byte{5, 0, 0, 1, 127, 0, 0, 1, 0, 0})
-	go io.Copy(up, r)
+	go func() {
+		io.Copy(up, r)
+		up.(*net.TCPConn).CloseWrite() // pass the client's half-close on, as tailscaled does
+	}()
 	io.Copy(c, up)
 }
 
@@ -240,5 +243,33 @@ func TestProxySpeaksTLSToAWorkerServingHTTPS(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 || string(body) != "tls page for dev.tail123.ts.net:7682" {
 		t.Fatalf("got %d %q", resp.StatusCode, body)
+	}
+}
+
+// Pipe is ssh's ProxyCommand: stdin to the worker, the worker to stdout, and
+// the end of stdin passed on as a half-close so the far side sees EOF.
+func TestPipeCarriesBothWaysThroughSOCKS(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		got, _ := io.ReadAll(c) // returns only once the client half-closes
+		io.WriteString(c, "got:"+string(got))
+	}()
+	socks := newFakeSOCKS(t, ln.Addr().String())
+	var out strings.Builder
+	err = Pipe(context.Background(), SOCKS5Dialer(socks.ln.Addr().String()), "dev.tail123.ts.net:22", strings.NewReader("SSH-2.0-test"), &out)
+	if err != nil || out.String() != "got:SSH-2.0-test" {
+		t.Fatalf("got %q, %v", out.String(), err)
+	}
+	if a := fmt.Sprint(socks.asked()); a != "[dev.tail123.ts.net:22]" {
+		t.Errorf("dialled %v", a)
 	}
 }

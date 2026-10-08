@@ -214,7 +214,7 @@ owes a positive assertion too, naming the loopback address it binds:
 `TestPlaywrightViewerBindsLoopback` is the shape, for the `pw-ui` script inside
 playwright.sh.
 
-**One exception: the gateway container** (`megh gateway`, DESIGN.md "Roles").
+**One exception: the gateway container** (`megh gw`, DESIGN.md "Roles").
 Its proxy binds the container's `0.0.0.0`, because a docker publish forwards to
 the container's `eth0` and a loopback bind inside would accept nothing (the same
 measurement that makes 22 the only publishable port on a local box). What keeps

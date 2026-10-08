@@ -235,6 +235,9 @@ func connectToBox(ctx context.Context, cmd *cobra.Command, providerFlag string, 
 			"Trying its tailnet name — this needs THIS machine on the tailnet; otherwise wait and retry `megh ssh`.\n",
 			pod.DisplayName())
 	}
+	if err := d.preflight(pod); err != nil {
+		return err
+	}
 
 	// Set up per-identity GitHub Host aliases on the box, and forward the
 	// profile's GH keys so git works in the shell.

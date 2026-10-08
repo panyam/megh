@@ -38,6 +38,9 @@ func TestOnlyAnExplicitProviderPinsTheLookup(t *testing.T) {
 // The tailnet fallback only stands in for a box whose name resolves here;
 // otherwise it says what to do rather than handing ssh a dead name.
 func TestTailnetFallbackRefusesANameThatDoesNotResolve(t *testing.T) {
+	saved := gatewayUp
+	gatewayUp = func() bool { return false } // a running gateway on this machine would route it
+	defer func() { gatewayUp = saved }()
 	_, _, err := tailnetOnlyBox("no-such-box-zz9")
 	if err == nil || !strings.Contains(err.Error(), "--provider") || !strings.Contains(err.Error(), "does not resolve") {
 		t.Fatalf("got %v", err)
