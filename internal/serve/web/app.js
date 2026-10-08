@@ -164,7 +164,7 @@ function render(boxes) {
     const head = el("div", "", "row");
     head.append(el("strong", b.name), el("span", b.status, "status"));
     if (b.provider) head.append(el("span", b.provider, "muted"));
-    if (b.dc) head.append(el("span", b.dc, "muted"));
+    if (b.dc) head.append(el("span", where(b.dc, b.place), "muted"));
     if (b.costPerHr) head.append(el("span", "$" + b.costPerHr.toFixed(3) + "/hr", "muted"));
     const down = el("button", "Terminate", "danger");
     down.type = "button";
@@ -204,6 +204,17 @@ let regionList = [];
 // its price list (Hetzner, Vultr), so there is nothing to probe.
 let catalog = false;
 
+// regionPlaces is the selected provider's names for its location codes
+// ("ord" -> "Chicago, US"), from GET /api/regions.
+let regionPlaces = {};
+
+// where labels a location code for a person: "Chicago, US (ord)", or the bare
+// code when the provider gave no name for it.
+function where(code, place) {
+  if (!code) return "";
+  return place ? place + " (" + code + ")" : code;
+}
+
 function money(perHr) { return "$" + perHr.toFixed(3) + "/hr"; }
 
 async function loadAdmin() {
@@ -226,7 +237,7 @@ async function loadAdmin() {
     ul.replaceChildren();
     for (const v of d.volumes || []) {
       const li = el("li", "", "row");
-      li.append(el("strong", v.name), el("span", v.provider, "muted"), el("span", v.dc, "muted"), el("span", v.sizeGB + " GB", "muted"));
+      li.append(el("strong", v.name), el("span", v.provider, "muted"), el("span", where(v.dc, v.place), "muted"), el("span", v.sizeGB + " GB", "muted"));
       if (v.id === d.default) li.append(el("span", "default", "status"));
       const del = el("button", "Delete", "danger");
       del.type = "button";
@@ -243,6 +254,7 @@ async function loadAdmin() {
     const rr = await call("GET", "/api/regions?" + q);
     const r = rr.data || {};
     regionList = r.dcs || [];
+    regionPlaces = r.places || {};
     catalog = Array.isArray(r.offers);
     const dc = $("voldc");
     const keep = dc.value;
@@ -251,7 +263,8 @@ async function loadAdmin() {
     for (const offer of r.offers || []) offerByDC[offer.dc] = offer;
     for (const name of regionList) {
       const offer = offerByDC[name];
-      const o = el("option", offer ? name + " · " + offer.type + " · " + money(offer.perHr) : name);
+      const label = where(name, regionPlaces[name]);
+      const o = el("option", offer ? label + " · " + offer.type + " · " + money(offer.perHr) : label);
       o.value = name;
       dc.append(o);
     }
@@ -302,7 +315,7 @@ function showRegions(offers) {
   $("offer-help").hidden = !catalog;
   const ul = $("probes");
   ul.replaceChildren();
-  for (const offer of offers || []) ul.append(el("li", offer.dc + ": " + offer.type + ", " + money(offer.perHr)));
+  for (const offer of offers || []) ul.append(el("li", where(offer.dc, regionPlaces[offer.dc]) + ": " + offer.type + ", " + money(offer.perHr)));
   if (catalog && !(offers || []).length) ul.append(el("li", "no location sells this size", "muted"));
 }
 
@@ -337,11 +350,12 @@ async function sweep(stopAtFirst) {
   $("probes").replaceChildren();
   const vcpu = Number($("size").value) || 0;
   for (const dc of regionList) {
-    const row = probeRow(dc + " … probing", "muted");
+    const label = where(dc, regionPlaces[dc]);
+    const row = probeRow(label + " … probing", "muted");
     try {
       const r = await call("POST", "/api/regions/probe", { provider: $("volprov").value, dc, vcpu });
       const p = r.data;
-      row.textContent = p.dc + ": " + p.verdict;
+      row.textContent = label + ": " + p.verdict;
       row.className = p.rentable ? "" : "muted";
       if (p.orphanId) {
         row.className = "error";
@@ -352,7 +366,7 @@ async function sweep(stopAtFirst) {
       }
       if (p.rentable && stopAtFirst) return p.dc;
     } catch (e) {
-      row.textContent = dc + ": " + e.message;
+      row.textContent = label + ": " + e.message;
       row.className = "error";
     }
   }
@@ -376,7 +390,7 @@ async function place() {
     if (!dc) { showLog("no probed data center had capacity; try again later or include all regions", true); return; }
     const v = await createVolume(name, size, dc);
     $("where").value = v.id;
-    showLog("created " + v.name + " in " + v.dc + "; it is selected under Launch", false);
+    showLog("created " + v.name + " in " + where(v.dc, v.place || regionPlaces[v.dc]) + "; it is selected under Launch", false);
   } catch (e) {
     showLog(e.message, true);
   } finally {
@@ -397,7 +411,7 @@ async function loadVolumes() {
     first.value = "";
     sel.append(first);
     for (const v of d.volumes || []) {
-      const o = el("option", v.name + " · " + v.provider + " " + v.dc + " · " + v.sizeGB + " GB" + (v.id === d.default ? " (default)" : ""));
+      const o = el("option", v.name + " · " + v.provider + " " + where(v.dc, v.place) + " · " + v.sizeGB + " GB" + (v.id === d.default ? " (default)" : ""));
       o.value = v.id;
       sel.append(o);
     }
@@ -498,7 +512,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const v = await createVolume(name, size, dc);
       $("volname").value = "";
-      showLog("created " + v.name + " in " + v.dc, false);
+      showLog("created " + v.name + " in " + where(v.dc, v.place || regionPlaces[v.dc]), false);
     } catch (e) {
       showLog(e.message, true);
     }
