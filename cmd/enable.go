@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/features"
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -222,17 +221,8 @@ carries, which are as old as its image. To take newer ones without rebuilding:
 			return c.Run()
 		}
 
-		prov, err := resolveProvider(cmd, enableProvider)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		var pod *providers.Box
-		if len(args) == 2 {
-			pod, err = providers.Find(ctx, prov, args[1])
-		} else {
-			pod, err = providers.Sole(ctx, prov)
-		}
+		_, pod, err := locateBox(ctx, cmd, enableProvider, args[1:])
 		if err != nil {
 			return err
 		}
@@ -247,7 +237,7 @@ carries, which are as old as its image. To take newer ones without rebuilding:
 }
 
 func init() {
-	enableCmd.Flags().StringVar(&enableProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	enableCmd.Flags().StringVar(&enableProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	enableCmd.Flags().BoolVar(&enableLocal, "local", false, "run here, even off a box (the default on a box)")
 	enableCmd.Flags().BoolVar(&enablePrint, "print", false, "print the feature's script instead of running it (megh enable --print redis | bash)")
 	rootCmd.AddCommand(enableCmd)

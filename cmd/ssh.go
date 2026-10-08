@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,13 +13,13 @@ import (
 )
 
 var (
-	sshProvider string
-	sshNoTmux   bool
-	sshSession  string
-	sshCC       bool
-	sshNoCC          bool
-	sshNoITerm       bool
-	sshITermProfile  string
+	sshProvider     string
+	sshNoTmux       bool
+	sshSession      string
+	sshCC           bool
+	sshNoCC         bool
+	sshNoITerm      bool
+	sshITermProfile string
 )
 
 // defaultTmuxSession is the session `megh ssh` attaches, and it matches the one
@@ -173,10 +174,6 @@ the box's Tailscale MagicDNS name (requires this machine on the tailnet). With n
 argument it connects to the only box.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, sshProvider)
-		if err != nil {
-			return err
-		}
 		controlMode, err := resolveControlMode(cmd)
 		if err != nil {
 			return err
@@ -187,7 +184,7 @@ argument it connects to the only box.`,
 		if sshNoITerm {
 			os.Setenv("MEGH_ITERM", "0")
 		}
-		return connectToBox(context.Background(), prov, args, connectOpts{
+		return connectToBox(context.Background(), cmd, sshProvider, args, connectOpts{
 			session:      resolveTmuxSession(sshSession),
 			controlMode:  controlMode,
 			noTmux:       sshNoTmux,
@@ -209,18 +206,31 @@ type connectOpts struct {
 
 // connectToBox resolves the box, sets up git identity forwarding, pushes the
 // megh.yaml `files:`, and execs ssh.
-func connectToBox(ctx context.Context, prov providers.Provider, args []string, o connectOpts) error {
+func connectToBox(ctx context.Context, cmd *cobra.Command, providerFlag string, args []string, o connectOpts) error {
 	if iterm.TryDelegate(os.Args, itermSettings(o.itermProfile)) {
 		return nil
 	}
-	pod, err := providers.FindOrSole(ctx, prov, args)
+	prov, pod, err := locateBox(ctx, cmd, providerFlag, args)
+	var tailnetHost string
+	var nf *providers.NotFoundError
+	if errors.As(err, &nf) && len(args) == 1 && !providerPinned(cmd) {
+		// No backend this machine can ask knows the box, often because it holds
+		// no key for the one the box is on. A box on the tailnet is still
+		// reachable by name, and logging in needs nothing from its provider.
+		pod, tailnetHost, err = tailnetOnlyBox(args[0])
+	}
 	if err != nil {
 		return err
 	}
 
-	pod = awaitSSHReady(ctx, prov, pod)
+	if prov != nil {
+		pod = awaitSSHReady(ctx, prov, pod)
+	}
 	d := dialFor(pod)
-	if d.tailnet() {
+	if tailnetHost != "" {
+		d.host = tailnetHost
+	}
+	if d.tailnet() && tailnetHost == "" {
 		fmt.Fprintf(os.Stderr, "megh: %q has no public SSH endpoint (still initializing, or tailnet-only). "+
 			"Trying its tailnet name — this needs THIS machine on the tailnet; otherwise wait and retry `megh ssh`.\n",
 			pod.DisplayName())
@@ -270,7 +280,7 @@ func connectToBox(ctx context.Context, prov providers.Provider, args []string, o
 }
 
 func init() {
-	sshCmd.Flags().StringVar(&sshProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	sshCmd.Flags().StringVar(&sshProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	sshCmd.Flags().BoolVar(&sshNoTmux, "no-tmux", false, "plain shell instead of attaching tmux")
 	sshCmd.Flags().StringVar(&sshSession, "session", "", "tmux session to attach (default: $MEGH_TMUX, else main)")
 	sshCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")

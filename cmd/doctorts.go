@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/panyam/megh/internal/providers"
 	"github.com/panyam/megh/internal/tsops"
 	"github.com/spf13/cobra"
 )
@@ -101,17 +100,8 @@ targets the only box; --local runs on the box itself.`,
 			return tsBringUpLocal(helper, key)
 		}
 
-		prov, err := resolveProvider(cmd, tsProvider)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		var pod *providers.Box
-		if len(args) == 2 {
-			pod, err = providers.Find(ctx, prov, args[1])
-		} else {
-			pod, err = providers.Sole(ctx, prov)
-		}
+		_, pod, err := locateBox(ctx, cmd, tsProvider, args[1:])
 		if err != nil {
 			return err
 		}

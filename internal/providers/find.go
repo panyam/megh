@@ -50,10 +50,17 @@ func Find(ctx context.Context, p Provider, idOrName string) (*Box, error) {
 
 // NotFoundError is Find's error when no managed box matches. It is a type so
 // a caller can tell "no such box" (a 404 to the web control plane) from the
-// provider failing to answer at all.
-type NotFoundError struct{ Name string }
+// provider failing to answer at all. Searched names the backends Locate asked;
+// Find leaves it empty, as does a Locate that found no backend with a credential.
+type NotFoundError struct {
+	Name     string
+	Searched []string
+}
 
 func (e *NotFoundError) Error() string {
+	if len(e.Searched) > 0 {
+		return fmt.Sprintf("no box matching %q on %s (try `megh list`)", e.Name, strings.Join(e.Searched, ", "))
+	}
 	return fmt.Sprintf("no box matching %q (try `megh list`)", e.Name)
 }
 

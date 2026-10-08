@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -56,12 +55,8 @@ whether anything is attached, and what every pane is running and where.
 Nothing is created or changed. With no argument it uses the only box.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, tmuxProvider)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		box, err := providers.FindOrSole(ctx, prov, args)
+		prov, box, err := locateBox(ctx, cmd, tmuxProvider, args)
 		if err != nil {
 			return err
 		}
@@ -237,10 +232,6 @@ shows as tabs in control mode) and each window holds panes; once attached,
 switch windows with ctrl-b <number>.`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, tmuxProvider)
-		if err != nil {
-			return err
-		}
 		controlMode, err := resolveControlMode(cmd)
 		if err != nil {
 			return err
@@ -248,7 +239,7 @@ switch windows with ctrl-b <number>.`,
 		if sshNoITerm {
 			os.Setenv("MEGH_ITERM", "0")
 		}
-		return connectToBox(context.Background(), prov, args[1:], connectOpts{
+		return connectToBox(context.Background(), cmd, tmuxProvider, args[1:], connectOpts{
 			session:      args[0],
 			controlMode:  controlMode,
 			itermProfile: sshITermProfile,
@@ -257,8 +248,8 @@ switch windows with ctrl-b <number>.`,
 }
 
 func init() {
-	tmuxLsCmd.Flags().StringVar(&tmuxProvider, "provider", "", "provider (default: config default_provider, else runpod)")
-	tmuxAttachSubCmd.Flags().StringVar(&tmuxProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	tmuxLsCmd.Flags().StringVar(&tmuxProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
+	tmuxAttachSubCmd.Flags().StringVar(&tmuxProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	tmuxAttachSubCmd.Flags().BoolVar(&sshCC, "cc", false, "attach in tmux control mode (iTerm2 renders tmux windows as native tabs)")
 	tmuxAttachSubCmd.Flags().BoolVar(&sshNoCC, "no-cc", false, "force a normal attach, overriding $MEGH_SSH_CC")
 	tmuxAttachSubCmd.Flags().BoolVar(&sshNoITerm, "no-iterm", false, "do not reopen in the iTerm2 profile")

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
@@ -211,6 +212,69 @@ func sshStayOpenAfterDisconnect(err error) {
 // two it is a trap: `default_provider: docker` would launch a local box that
 // `megh ssh <name>` then could not find, reporting "no box matching" as though
 // the box did not exist rather than as though it had looked in the wrong place.
+// locateBox finds the box a command acts on, and the backend that holds it.
+// An explicit --provider or MEGH_PROVIDER pins the lookup to that backend.
+// Otherwise every backend with a credential is asked, because default_provider
+// says where NEW boxes go, not where existing ones live: a box on another
+// backend should not vanish because the default changed.
+func locateBox(ctx context.Context, cmd *cobra.Command, flagVal string, args []string) (providers.Provider, *providers.Box, error) {
+	if providerPinned(cmd) {
+		prov, err := resolveProvider(cmd, flagVal)
+		if err != nil {
+			return nil, nil, err
+		}
+		box, err := providers.FindOrSole(ctx, prov, args)
+		return prov, box, err
+	}
+	return providers.Locate(ctx, providers.All(), args)
+}
+
+// tailnetOnlyBox stands in for a box no backend could be asked about, so the
+// connection goes to its MagicDNS name, which needs no provider key at all. It
+// returns the host to dial: the full name (<box>.<tailnet>) when megh.yaml
+// names the tailnet, because a bare name can resolve to something else (a
+// local container with the same hostname). It refuses unless the name resolves
+// to a tailnet address, since anything else is not the box.
+func tailnetOnlyBox(name string) (*providers.Box, string, error) {
+	short := providers.ShortName(name)
+	host := short
+	if cfg.Tailnet != "" {
+		host = short + "." + cfg.Tailnet
+	}
+	addrs, err := net.LookupHost(host)
+	onTailnet := false
+	for _, a := range addrs {
+		onTailnet = onTailnet || isTailnetAddr(a)
+	}
+	if err != nil || !onTailnet {
+		return nil, "", fmt.Errorf("no backend this machine can ask knows %q, and %q does not resolve to a tailnet address (pass --provider, or check this machine is on the tailnet: megh doctor control-plane)", short, host)
+	}
+	fmt.Fprintf(os.Stderr, "megh: no backend this machine can ask knows %q; connecting to %s over the tailnet\n", short, host)
+	return &providers.Box{Name: providers.PrefixName(short), Status: "RUNNING"}, host, nil
+}
+
+// tailnetRanges are the address blocks Tailscale assigns nodes: the CGNAT
+// range for IPv4 and its ULA prefix for IPv6.
+var tailnetRanges = []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("fd7a:115c:a1e0::/48")}
+
+func isTailnetAddr(s string) bool {
+	a, err := netip.ParseAddr(s)
+	if err != nil {
+		return false
+	}
+	for _, p := range tailnetRanges {
+		if p.Contains(a.Unmap()) {
+			return true
+		}
+	}
+	return false
+}
+
+// providerPinned reports whether the user named a backend for this command.
+func providerPinned(cmd *cobra.Command) bool {
+	return cmd.Flags().Changed("provider") || os.Getenv("MEGH_PROVIDER") != ""
+}
+
 func resolveProvider(cmd *cobra.Command, flagVal string) (providers.Provider, error) {
 	return providers.For(resolve(cmd, "provider", flagVal, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod"))
 }

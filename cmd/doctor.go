@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -89,12 +88,8 @@ docker-build viability is still planned.)`,
 			c.Stdout, c.Stderr = os.Stdout, os.Stderr
 			return c.Run()
 		}
-		prov, err := resolveProvider(cmd, doctorProvider)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		pod, err := providers.FindOrSole(ctx, prov, args)
+		prov, pod, err := locateBox(ctx, cmd, doctorProvider, args)
 		if err != nil {
 			return err
 		}
@@ -111,7 +106,7 @@ docker-build viability is still planned.)`,
 
 func init() {
 	doctorCmd.AddCommand(doctorControlPlaneCmd)
-	doctorCmd.Flags().StringVar(&doctorProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	doctorCmd.Flags().StringVar(&doctorProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	doctorCmd.Flags().BoolVar(&doctorLocal, "local", false, "run on the box itself instead of ssh-ing to one")
 	rootCmd.AddCommand(doctorCmd)
 }

@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -31,18 +33,46 @@ var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List megh dev boxes (use --all for every pod on the account)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		provider := resolve(cmd, "provider", listProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")
-		pods, err := newService().List(context.Background(), provider, listAll)
-		if err != nil {
-			return err
+		ctx := context.Background()
+		svc := newService()
+		// Pinned (--provider / MEGH_PROVIDER): that backend only. Otherwise every
+		// backend with a credential, like `storage list`, so a box on a
+		// non-default backend is never invisible.
+		backends := []string{resolve(cmd, "provider", listProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod")}
+		if !providerPinned(cmd) {
+			backends = backends[:0]
+			for _, p := range providers.All() {
+				backends = append(backends, p.Name())
+			}
 		}
-		if len(pods) == 0 {
+		type row struct {
+			provider string
+			box      providers.Box
+		}
+		var rows []row
+		for _, name := range backends {
+			pods, err := svc.List(ctx, name, listAll)
+			if err != nil {
+				if !providerPinned(cmd) {
+					if !errors.Is(err, providers.ErrNotConfigured) {
+						fmt.Fprintf(os.Stderr, "megh: list: skipping %s: %v\n", name, err)
+					}
+					continue
+				}
+				return err
+			}
+			for _, p := range pods {
+				rows = append(rows, row{name, p})
+			}
+		}
+		if len(rows) == 0 {
 			fmt.Println("no boxes")
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tID\tSTATUS\tIMAGE\tDC\t$/HR\tSSH")
-		for _, p := range pods {
+		fmt.Fprintln(w, "NAME\tPROVIDER\tID\tSTATUS\tIMAGE\tDC\t$/HR\tSSH")
+		for _, r := range rows {
+			p := r.box
 			ssh := "initializing"
 			if p.SSHReady() {
 				ssh = fmt.Sprintf("%s:%d", p.PublicIP, p.SSHPort)
@@ -53,15 +83,15 @@ var listCmd = &cobra.Command{
 			if listAll {
 				name = p.Name
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
-				name, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
+				name, r.provider, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
 		}
 		return w.Flush()
 	},
 }
 
 func init() {
-	listCmd.Flags().StringVar(&listProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	listCmd.Flags().StringVar(&listProvider, "provider", "", "list only this provider's boxes (default: every provider with a credential)")
 	listCmd.Flags().BoolVar(&listAll, "all", false, "show every pod on the account, not just megh-managed")
 	rootCmd.AddCommand(listCmd)
 }
