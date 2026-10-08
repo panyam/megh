@@ -27,6 +27,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -236,6 +237,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/volumes", s.api(s.createVolume))
 	mux.HandleFunc("POST /api/volumes/delete", s.api(s.deleteVolume))
 	mux.HandleFunc("GET /api/regions", s.api(s.regions))
+	mux.HandleFunc("GET /api/offers", s.api(s.offers))
 	mux.HandleFunc("POST /api/regions/probe", s.api(s.probe))
 	mux.HandleFunc("POST /api/up", s.api(s.up))
 	mux.HandleFunc("POST /api/down", s.api(s.down))
@@ -482,19 +484,42 @@ func (s *Server) volumes(r *http.Request, svc *lifecycle.Service) (any, error) {
 	}, nil
 }
 
-// boxSize is a whole shape the page can ask for. RunPod caps the container
-// disk by instance size when a volume is attached (about 20 GB at 2 vCPU, 40 at
-// 4, 50 at 8), so RAM and disk are tied to the vCPU count rather than chosen
-// separately and rejected at launch.
-type boxSize struct{ ram, disk int }
+// The minimums the launch form offers. Zero means no minimum (CPU "Any").
+// These are floors handed to the catalog, not machines: what can actually be
+// rented is whatever a backend's Offers returns at or above them.
+var (
+	minVCPUs = []int{0, 2, 4, 6, 8}
+	minRAMs  = []int{0, 4, 8, 16, 32}
+)
 
-var boxSizes = map[int]boxSize{2: {8, 20}, 4: {16, 40}, 8: {32, 50}}
+const minDiskGB, maxDiskGB = 10, 1000
+
+// minimums checks the floors a request asks for against what the form offers.
+func minimums(vcpu, ram, disk int) (providers.Want, error) {
+	if !slices.Contains(minVCPUs, vcpu) {
+		return providers.Want{}, &apiError{http.StatusBadRequest, fmt.Sprintf("%d is not an offered minimum vCPU %v", vcpu, minVCPUs)}
+	}
+	if !slices.Contains(minRAMs, ram) {
+		return providers.Want{}, &apiError{http.StatusBadRequest, fmt.Sprintf("%d GB is not an offered minimum RAM %v", ram, minRAMs)}
+	}
+	if disk != 0 && (disk < minDiskGB || disk > maxDiskGB) {
+		return providers.Want{}, &apiError{http.StatusBadRequest, fmt.Sprintf("minimum disk %d GB is outside %d-%d", disk, minDiskGB, maxDiskGB)}
+	}
+	return providers.Want{VCPU: vcpu, RAMGiB: ram, DiskGiB: disk}, nil
+}
+
+// machineType is a catalog type name as an Offer gives it: a Vultr plan, a
+// Hetzner server type, a RunPod instance.
+var machineType = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,63}$`)
 
 func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
 		Name   string `json:"name"`
 		Flavor string `json:"flavor"`
-		VCPU   int    `json:"vcpu"`   // 0 = megh.yaml's default size
+		VCPU   int    `json:"vcpu"`   // minimums; 0 = megh.yaml's default
+		RAM    int    `json:"ram"`    // GB
+		Disk   int    `json:"disk"`   // GB
+		Type   string `json:"type"`   // the machine picked from /api/offers; "" = cheapest meeting the minimums
 		Volume string `json:"volume"` // "" = megh.yaml's default volume and data center
 	}
 	if err := decode(r, &req); err != nil {
@@ -507,13 +532,14 @@ func (s *Server) up(r *http.Request, svc *lifecycle.Service) (any, error) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("unknown flavor %q", req.Flavor)}
 	}
 	up := lifecycle.UpRequest{Name: req.Name, Flavor: req.Flavor, Provider: s.defaultProvider(svc), PullToken: requestKeys(r).Registry}
-	if req.VCPU != 0 {
-		size, ok := boxSizes[req.VCPU]
-		if !ok {
-			return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", req.VCPU)}
-		}
-		up.VCPU, up.RAMGiB, up.DiskGiB = req.VCPU, size.ram, size.disk
+	want, err := minimums(req.VCPU, req.RAM, req.Disk)
+	if err != nil {
+		return nil, err
 	}
+	if req.Type != "" && !machineType.MatchString(req.Type) {
+		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a machine type", req.Type)}
+	}
+	up.VCPU, up.RAMGiB, up.DiskGiB, up.Type = want.VCPU, want.RAMGiB, want.DiskGiB, req.Type
 	if req.Volume != "" {
 		// Only a volume that exists, and the box goes to its provider and data
 		// center: a box can only attach a volume there.

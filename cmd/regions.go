@@ -78,15 +78,16 @@ there is nothing to probe.`,
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 
-		if l, ok := prov.(providers.Locator); ok {
+		if l, ok := prov.(providers.Locator); ok && prov.Name() != "runpod" {
 			p := cfg.Provider(prov.Name())
 			vcpu := resolveInt(cmd, "vcpu", regionsVCPU, p.VCPU, 2)
 			ram := resolveInt(cmd, "ram", regionsRAM, p.RAM, 8)
 			disk := resolveInt(cmd, "disk", regionsDisk, p.Disk, 20)
-			offers, err := l.Offers(ctx, vcpu, ram, disk)
+			all, err := l.Offers(ctx, providers.Want{VCPU: vcpu, RAMGiB: ram, DiskGiB: disk})
 			if err != nil {
 				return err
 			}
+			offers := providers.CheapestPerDC(all)
 			fmt.Fprintf(os.Stderr, "%s locations selling at least %d vCPU / %d GB RAM / %d GB disk, cheapest first:\n", prov.Name(), vcpu, ram, disk)
 			fmt.Fprintln(w, "DC\tPLACE\tTYPE\t$/HR\tVOLUMES")
 			for _, o := range offers {
@@ -101,6 +102,54 @@ there is nothing to probe.`,
 		fmt.Fprintln(w, "DC\tPLACE\tVOLUMES")
 		for _, dc := range candidateDCs(ctx) {
 			fmt.Fprintf(w, "%s\t%s\t%s\n", dc, orDash(names.place(prov.Name(), dc)), volumesIn(dc))
+		}
+		return w.Flush()
+	},
+}
+
+var regionsOffersCmd = &cobra.Command{
+	Use:   "offers",
+	Short: "Every machine a provider sells at or above --vcpu/--ram/--disk, with its price",
+	Long: `List every machine type that meets the minimums, cheapest first, with its
+vCPU, RAM, disk, hourly price and place. Launch one with 'megh up --type <TYPE>'.
+
+Vultr and Hetzner list every location (or --dc). RunPod prices per data center,
+so it needs --dc (or a default_dc); its STOCK column is RunPod's own hint and not
+a promise: only renting proves capacity.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		prov, err := resolveProvider(cmd, regionsProvider)
+		if err != nil {
+			return err
+		}
+		l, ok := prov.(providers.Locator)
+		if !ok {
+			return fmt.Errorf("%s has no catalog to list", prov.Name())
+		}
+		ctx := context.Background()
+		p := cfg.Provider(prov.Name())
+		want := providers.Want{
+			VCPU:    resolveInt(cmd, "vcpu", regionsVCPU, 0, 0),
+			RAMGiB:  resolveInt(cmd, "ram", regionsRAM, 0, 0),
+			DiskGiB: resolveInt(cmd, "disk", regionsDisk, 0, 0),
+			DC:      regionsDCs,
+		}
+		if want.DC == "" && prov.Name() == "runpod" {
+			want.DC = p.DefaultDC
+		}
+		offers, err := l.Offers(ctx, want)
+		if err != nil {
+			return err
+		}
+		if len(offers) == 0 {
+			fmt.Println("nothing sold at or above those minimums")
+			return nil
+		}
+		names := newPlaceNamer(ctx, registeredPlacer)
+		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+		fmt.Fprintln(w, "TYPE\tVCPU\tRAM\tDISK\t$/HR\tDC\tPLACE\tSTOCK")
+		for _, o := range offers {
+			fmt.Fprintf(w, "%s\t%d\t%dGB\t%dGB\t%.3f\t%s\t%s\t%s\n", o.Type, o.VCPU, o.RAMGiB, o.DiskGiB, o.PerHr, o.DC,
+				orDash(names.place(prov.Name(), o.DC)), orDash(o.Stock))
 		}
 		return w.Flush()
 	},
@@ -310,6 +359,12 @@ func init() {
 		f.StringVar(&regionsImage, "image", "", "container image for the probe pod (default: the megh default image)")
 		f.BoolVarP(&regionsYes, "yes", "y", false, "skip the confirmation prompt")
 	}
+	of := regionsOffersCmd.Flags()
+	of.StringVar(&regionsProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	of.StringVar(&regionsDCs, "dc", "", "only this location (required for RunPod unless default_dc is set)")
+	of.IntVar(&regionsVCPU, "vcpu", 0, "minimum vCPU (default: no minimum)")
+	of.IntVar(&regionsRAM, "ram", 0, "minimum RAM in GiB (default: no minimum)")
+	of.IntVar(&regionsDisk, "disk", 0, "minimum disk in GiB (default: no minimum)")
 	lf := regionsListCmd.Flags()
 	lf.IntVar(&regionsVCPU, "vcpu", 0, "Vultr/Hetzner: minimum vCPU to list offers for (default: config, else 2)")
 	lf.IntVar(&regionsRAM, "ram", 0, "Vultr/Hetzner: minimum RAM in GiB (default: config, else 8)")
@@ -318,7 +373,7 @@ func init() {
 	regionsPlaceCmd.Flags().StringVar(&regionsVolName, "name", "", "name for the volume to create")
 	regionsPlaceCmd.Flags().IntVar(&regionsVolSize, "size", 0, "size of the volume to create, in GB")
 
-	regionsCmd.AddCommand(regionsListCmd, regionsProbeCmd, regionsPlaceCmd)
+	regionsCmd.AddCommand(regionsListCmd, regionsOffersCmd, regionsProbeCmd, regionsPlaceCmd)
 	rootCmd.AddCommand(regionsCmd)
 }
 

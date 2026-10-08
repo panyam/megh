@@ -38,6 +38,9 @@ type UpRequest struct {
 	// providers.Options.PullToken). The CLI reads it from registries[0]'s
 	// token_env; a server takes it from the request. Empty means no login.
 	PullToken string
+	// Type is the exact machine to create, as a providers.Offer names it; empty
+	// means the cheapest meeting VCPU/RAMGiB/DiskGiB.
+	Type string
 }
 
 // Up launches a box, or starts it again when a backend that can restart
@@ -72,6 +75,7 @@ func (s *Service) Up(ctx context.Context, r UpRequest) (providers.Result, error)
 	}
 	o.ExtraEnv = s.boxEnv(r.BoxEnv)
 	o.PullToken = r.PullToken
+	o.Type = r.Type
 
 	// Names double as the Tailscale hostname, so refuse a duplicate before
 	// launching rather than let two boxes fight over one tailnet name.

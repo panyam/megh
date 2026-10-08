@@ -71,6 +71,10 @@ megh regions list|probe|place     # find a DC that will actually rent (probe = r
                                   # list shows each code's PLACE ("ord" -> Chicago, US) from the provider's own
                                   # API (providers.Placer, one call per provider, cached); --provider vultr|hetzner
                                   # lists offers for --vcpu/--ram/--disk instead. probe/place stay RunPod-only
+megh regions offers [--provider p] [--dc d] [--vcpu N --ram G --disk G]
+                                  # EVERY machine at or above the minimums (type/vCPU/RAM/disk/$/hr/place/stock);
+                                  # RunPod needs a DC (prices per DC, one batched GraphQL call; stock is a hint).
+                                  # launch one: megh up <name> --type <TYPE>; no --type = cheapest that fits
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
                                   # ON a box it runs locally; with no SSH agent (Tailscale console,
                                   # webterm) it clones over https via gh's login (SETUP.md §7.2)
