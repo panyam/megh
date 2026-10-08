@@ -13,6 +13,12 @@ import (
 // gh is logged in and can download the release; curlOK whether plain curl can.
 // The fakes record what they were asked for in calls.log.
 func runInstall(t *testing.T, ghOK, curlOK bool) (out string, err error, home string) {
+	return runInstallEnv(t, ghOK, curlOK, "MEGH_TARGET=linux-amd64")
+}
+
+// runInstallEnv is runInstall with extra environment; without MEGH_TARGET in it
+// the script detects the target itself, the way a real install does.
+func runInstallEnv(t *testing.T, ghOK, curlOK bool, extra ...string) (out string, err error, home string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("posix sh")
@@ -54,8 +60,8 @@ while [ $# -gt 0 ]; do case "$1" in -o) shift; printf 'bin' > "$1" ;; esac; shif
 		"PATH=" + bin + ":/usr/bin:/bin",
 		"HOME=" + home,
 		"MEGH_INSTALL_DIR=" + filepath.Join(dir, "out"),
-		"MEGH_TARGET=linux-amd64",
 	}
+	cmd.Env = append(cmd.Env, extra...)
 	b, err := cmd.CombinedOutput()
 	calls, _ := os.ReadFile(log)
 	return string(b) + "\n--- calls\n" + string(calls), err, home
@@ -90,5 +96,18 @@ func TestInstallSaysToLogInWhenNothingCanFetch(t *testing.T) {
 	out, err, _ := runInstall(t, false, false)
 	if err == nil || !strings.Contains(out, "gh auth login") {
 		t.Errorf("a private repo with no gh must fail naming the fix: %v\n%s", err, out)
+	}
+}
+
+// A plain Linux box has no PREFIX (only Termux sets it), and the script runs
+// under set -u, so the Termux check must not expand an unset PREFIX. The other
+// tests force MEGH_TARGET and skip detection, which is how this got through.
+func TestInstallDetectsLinuxWithNoPrefixSet(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("detection runs against this machine's uname")
+	}
+	out, err, _ := runInstallEnv(t, true, false)
+	if err != nil || strings.Contains(out, "parameter not set") || !strings.Contains(out, "target:  linux-") {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }

@@ -45,7 +45,10 @@ else
   case "$os" in
     Darwin) target="darwin-$arch" ;;
     Linux)
-      if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" != "${PREFIX#*com.termux}" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
+      # ${PREFIX:-} throughout: under set -u a bare $PREFIX aborts on every
+      # Linux machine that is not Termux, since only Termux sets it.
+      case "${PREFIX:-}" in *com.termux*) termux_prefix=1 ;; *) termux_prefix= ;; esac
+      if [ -n "${TERMUX_VERSION:-}" ] || [ -n "$termux_prefix" ] || [ "$(uname -o 2>/dev/null || true)" = "Android" ]; then
         target="android-$arch"
       else
         target="linux-$arch"
