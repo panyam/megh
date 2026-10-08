@@ -124,6 +124,13 @@ endef
 image-local-full: ## build the FULL local image: Playwright, headed display and code-server baked
 	$(call build_local_image,$(LOCAL_IMAGE_FULL),0)
 
+.PHONY: image-local-gw
+image-local-gw: ## build the GATEWAY image (tailscale + megh) for this machine's arch
+	@trap 'rm -f env/gw/megh-$(LOCAL_ARCH)' EXIT; \
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(LOCAL_ARCH) go build -o env/gw/megh-$(LOCAL_ARCH) . && \
+	docker build -t megh-local-gw:$(LOCAL_ARCH) env/gw
+	@echo "built megh-local-gw:$(LOCAL_ARCH); set tailscale.gateway_image to it in megh.yaml"
+
 .PHONY: image-local-slim
 image-local-slim: ## build the SLIM local image: no frontend stack, code-server installs at boot
 	$(call build_local_image,$(LOCAL_IMAGE_SLIM),1)

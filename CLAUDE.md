@@ -92,7 +92,8 @@ megh tmux ls [name]               # a box's tmux sessions -> windows -> panes; R
 megh tmux attach <session> [box]  # = megh ssh --session <session>; a new name creates it
 megh portal                       # publish a bookmarkable box+URL index (PORTAL.md) to a private repo; up/down auto-refresh
 megh serve [--addr 127.0.0.1:8080] # the web control plane, locally; loopback only. Hosted copy: cmd/meghplane (SETUP.md §7)
-megh gw up|down|status|shell      # a local docker container on the tailnet in this machine's place (alias: gateway);
+megh gw up|down|status|shell      # a local docker container on the tailnet in this machine's place (alias: gateway),
+                                  # from the megh-gw image (env/gw: tailscale + megh, amd64+arm64, CI-built);
                                   # http://<box>.localhost:7682/ etc. reach workers (SETUP.md §10), and ssh/tmux/
                                   # browse/hydrate to a CLOUD box go through it whenever it runs (even public-SSH boxes:
                                   # Tailscale SSH authorizes the gateway node, so no box key is needed)

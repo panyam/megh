@@ -158,7 +158,8 @@ what makes the split worth naming (#130).
   and terminate boxes (C3). A laptop, a phone in Termux, meghplane, or a worker
   that was deliberately elevated.
 - **Gateway**: a tailnet identity and nothing else. `megh gw up` runs one as
-  a local docker container so a machine that is NOT on the tailnet (a work
+  a local docker container, from its own image (tailscale plus the megh binary,
+  `env/gw`), so a machine that is NOT on the tailnet (a work
   laptop, say) can still open its workers' web surfaces. The container joins
   under its own tag (`tag:megh-gw`), so the ACL can give it exactly the surface
   ports on `tag:megh` and no more, and it publishes each port to the host's

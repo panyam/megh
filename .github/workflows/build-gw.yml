@@ -1,0 +1,66 @@
+name: build-gw
+
+# Builds the gateway image (env/gw: tailscale + the megh binary) for amd64 and
+# arm64 and pushes it to GHCR as megh-gw. It carries megh itself, so any change
+# to megh's Go code rebuilds it: `megh gw serve` and `megh gw nc` in the
+# container then match the CLI on main. Unlike the dev images it is tiny, so
+# arm64 costs seconds, and a Mac pulls it rather than building a dev image.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "env/gw/**"
+      - ".github/workflows/build-gw.yml"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stage megh for both arches
+        run: |
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -o env/gw/megh-$arch .
+          done
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Refuse to publish an image `megh gw up` would refuse: it checks for
+      # `megh gw nc` before starting the container.
+      - name: Smoke test (amd64)
+        run: |
+          docker buildx build --load --platform linux/amd64 -t megh-gw:test env/gw
+          docker run --rm --entrypoint megh megh-gw:test gw nc --help >/dev/null
+          docker run --rm --entrypoint sh megh-gw:test -c 'command -v tailscaled && command -v tailscale'
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: env/gw
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-gw:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/megh-gw:${{ github.sha }}
