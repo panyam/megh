@@ -42,22 +42,24 @@ var regionsCmd = &cobra.Command{
 var regionsListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List candidate data centers (US only unless --all)",
-	Long: `List the data centers RunPod will accept for a CPU pod, read from the pods
-schema in its published OpenAPI document.
+	Short:   "List where boxes can go, with place names (RunPod data centers, or Vultr/Hetzner offers)",
+	Long: `List where a box can be placed, with each location's place name.
 
-This is where a pod may be PLACED, not where one is rentable right now. Only
-'megh regions probe' answers that, and only by trying.`,
+RunPod: the data centers it accepts for a CPU pod (US only unless --all), read
+from its published OpenAPI document. That is where a pod may be PLACED, not where
+one is rentable right now; only 'megh regions probe' answers that, by trying.
+
+Vultr and Hetzner (--provider): every location that sells a machine of the
+requested size (--vcpu/--ram/--disk, default from megh.yaml), with the type a
+launch would pick there and its price, cheapest first. They publish this, so
+there is nothing to probe.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		prov, err := resolveProvider(cmd, regionsProvider)
 		if err != nil {
 			return err
 		}
-		if err := requireRunPod(prov); err != nil {
-			return err
-		}
 		ctx := context.Background()
-		dcs := candidateDCs(ctx)
+		names := newPlaceNamer(ctx, registeredPlacer)
 
 		// Mark the regions where scratch already exists: a volume there means no
 		// new volume to create, which usually decides the placement on its own.
@@ -67,14 +69,38 @@ This is where a pod may be PLACED, not where one is rentable right now. Only
 				held[v.DataCenter] = append(held[v.DataCenter], v)
 			}
 		}
-		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "DC\tVOLUMES")
-		for _, dc := range dcs {
-			var names []string
+		volumesIn := func(dc string) string {
+			var out []string
 			for _, v := range held[dc] {
-				names = append(names, fmt.Sprintf("%s (%s, %dGB)", v.ID, v.Name, v.Size))
+				out = append(out, fmt.Sprintf("%s (%s, %dGB)", v.ID, v.Name, v.Size))
 			}
-			fmt.Fprintf(w, "%s\t%s\n", dc, strings.Join(names, ", "))
+			return strings.Join(out, ", ")
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+
+		if l, ok := prov.(providers.Locator); ok {
+			p := cfg.Provider(prov.Name())
+			vcpu := resolveInt(cmd, "vcpu", regionsVCPU, p.VCPU, 2)
+			ram := resolveInt(cmd, "ram", regionsRAM, p.RAM, 8)
+			disk := resolveInt(cmd, "disk", regionsDisk, p.Disk, 20)
+			offers, err := l.Offers(ctx, vcpu, ram, disk)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "%s locations selling at least %d vCPU / %d GB RAM / %d GB disk, cheapest first:\n", prov.Name(), vcpu, ram, disk)
+			fmt.Fprintln(w, "DC\tPLACE\tTYPE\t$/HR\tVOLUMES")
+			for _, o := range offers {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%.3f\t%s\n", o.DC, orDash(names.place(prov.Name(), o.DC)), o.Type, o.PerHr, volumesIn(o.DC))
+			}
+			return w.Flush()
+		}
+
+		if err := requireRunPod(prov); err != nil {
+			return err
+		}
+		fmt.Fprintln(w, "DC\tPLACE\tVOLUMES")
+		for _, dc := range candidateDCs(ctx) {
+			fmt.Fprintf(w, "%s\t%s\t%s\n", dc, orDash(names.place(prov.Name(), dc)), volumesIn(dc))
 		}
 		return w.Flush()
 	},
@@ -284,6 +310,10 @@ func init() {
 		f.StringVar(&regionsImage, "image", "", "container image for the probe pod (default: the megh default image)")
 		f.BoolVarP(&regionsYes, "yes", "y", false, "skip the confirmation prompt")
 	}
+	lf := regionsListCmd.Flags()
+	lf.IntVar(&regionsVCPU, "vcpu", 0, "Vultr/Hetzner: minimum vCPU to list offers for (default: config, else 2)")
+	lf.IntVar(&regionsRAM, "ram", 0, "Vultr/Hetzner: minimum RAM in GiB (default: config, else 8)")
+	lf.IntVar(&regionsDisk, "disk", 0, "Vultr/Hetzner: minimum disk in GiB (default: config, else 20)")
 	regionsProbeCmd.Flags().BoolVar(&regionsFirst, "first", false, "stop at the first region that rents")
 	regionsPlaceCmd.Flags().StringVar(&regionsVolName, "name", "", "name for the volume to create")
 	regionsPlaceCmd.Flags().IntVar(&regionsVolSize, "size", 0, "size of the volume to create, in GB")

@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/panyam/megh/internal/config"
 	"github.com/panyam/megh/internal/providers"
@@ -33,6 +34,9 @@ type Provider struct {
 	cfg   func() config.Config
 	base  string // API base, overridable for tests
 	token string // "" = read the environment
+
+	placesMu sync.Mutex
+	places   map[string]string
 }
 
 // New returns the Hetzner backend for the registration list in cmd/root.go.
@@ -49,7 +53,34 @@ func NewWithToken(cfg func() config.Config, token string) *Provider {
 var (
 	_ providers.Provider = (*Provider)(nil)
 	_ providers.Locator  = (*Provider)(nil)
+	_ providers.Placer   = (*Provider)(nil)
 )
+
+// Places names every Hetzner location ("ash" -> "Ashburn, VA, US") from
+// /locations, asked once per process.
+func (p *Provider) Places(ctx context.Context) (map[string]string, error) {
+	p.placesMu.Lock()
+	defer p.placesMu.Unlock()
+	if p.places != nil {
+		return p.places, nil
+	}
+	var out struct {
+		Locations []struct {
+			Name    string `json:"name"`
+			City    string `json:"city"`
+			Country string `json:"country"`
+		} `json:"locations"`
+	}
+	if err := p.client().do(ctx, "GET", "/locations", nil, &out); err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(out.Locations))
+	for _, l := range out.Locations {
+		m[l.Name] = l.City + ", " + l.Country
+	}
+	p.places = m
+	return m, nil
+}
 
 func (p *Provider) client() *client {
 	env := cmp.Or(p.cfg().Provider("hetzner").APIKeyEnv, "HCLOUD_TOKEN")

@@ -69,8 +69,9 @@ var listCmd = &cobra.Command{
 			fmt.Println("no boxes")
 			return nil
 		}
+		names := newPlaceNamer(ctx, registeredPlacer)
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tPROVIDER\tID\tSTATUS\tIMAGE\tDC\t$/HR\tSSH")
+		fmt.Fprintln(w, "NAME\tPROVIDER\tID\tSTATUS\tIMAGE\tDC\tPLACE\t$/HR\tSSH")
 		for _, r := range rows {
 			p := r.box
 			ssh := "initializing"
@@ -83,8 +84,8 @@ var listCmd = &cobra.Command{
 			if listAll {
 				name = p.Name
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
-				name, r.provider, p.ID, p.Status, shortImage(p.Image), p.DataCenter, p.CostPerHr, ssh)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.3f\t%s\n",
+				name, r.provider, p.ID, p.Status, shortImage(p.Image), p.DataCenter, orDash(names.place(r.provider, p.DataCenter)), p.CostPerHr, ssh)
 		}
 		return w.Flush()
 	},

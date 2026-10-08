@@ -34,10 +34,11 @@ var storageListCmd = &cobra.Command{
 			fmt.Println("no volumes")
 			return nil
 		}
+		names := newPlaceNamer(ctx, registeredPlacer)
 		w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintln(w, "PROVIDER\tID\tNAME\tDC\tSIZE")
+		fmt.Fprintln(w, "PROVIDER\tID\tNAME\tDC\tPLACE\tSIZE")
 		for _, v := range vols {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%dGB\n", v.Provider, v.ID, v.Name, v.DataCenter, v.Size)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%dGB\n", v.Provider, v.ID, v.Name, v.DataCenter, orDash(names.place(v.Provider, v.DataCenter)), v.Size)
 		}
 		return w.Flush()
 	},
