@@ -256,3 +256,46 @@ func TestAKnownProviderWithNoKeyNamesItsVariable(t *testing.T) {
 		t.Errorf("unknown provider: code=%d body=%s", w.Code, w.Body.String())
 	}
 }
+
+// placer is the fake catalog backend that can also name its locations.
+type placer struct {
+	locator
+	places map[string]string
+	err    error
+}
+
+func (p *placer) Places(context.Context) (map[string]string, error) { return p.places, p.err }
+
+func newPlacer() *placer {
+	p := &placer{locator: *newLocator(), places: map[string]string{"ord": "Chicago, US", "ewr": "New Jersey, US"}}
+	p.boxes = []providers.Box{{ID: "i-1", Name: "megh-vm", Status: "RUNNING", DataCenter: "ord"}}
+	return p
+}
+
+// Codes alone ("ord") say nothing to a person; every place the page shows one
+// gets the backend's own name for it.
+func TestRegionsVolumesAndBoxesCarryPlaceNames(t *testing.T) {
+	v := newPlacer()
+	v.vols = []providers.Volume{{Provider: "vultr", ID: "b1", Name: "megh-vw", DataCenter: "ord", Size: 50}}
+	h := twoBackends(&fake{}, v).Handler()
+	if body := do(t, h, "GET", "/api/regions?provider=vultr&vcpu=2", "", withKey).Body.String(); !strings.Contains(body, `"places":{"ewr":"New Jersey, US","ord":"Chicago, US"}`) {
+		t.Errorf("regions: %s", body)
+	}
+	if body := do(t, h, "GET", "/api/volumes", "", withKey).Body.String(); !strings.Contains(body, `"dc":"ord","place":"Chicago, US"`) {
+		t.Errorf("volumes: %s", body)
+	}
+	if body := do(t, h, "GET", "/api/boxes", "", withKey).Body.String(); !strings.Contains(body, `"place":"Chicago, US"`) {
+		t.Errorf("boxes: %s", body)
+	}
+}
+
+// A backend that cannot name its locations (no Placer, or the call failing)
+// still lists everything, with bare codes.
+func TestAFailingPlaceLookupLeavesBareCodes(t *testing.T) {
+	v := newPlacer()
+	v.err = errors.New("vultr: HTTP 503")
+	w := do(t, twoBackends(&fake{}, v).Handler(), "GET", "/api/regions?provider=vultr&vcpu=2", "", withKey)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"dcs":["ord","ewr"]`) || strings.Contains(w.Body.String(), "Chicago") {
+		t.Errorf("code=%d body=%s", w.Code, w.Body.String())
+	}
+}

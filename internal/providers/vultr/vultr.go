@@ -18,6 +18,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/panyam/megh/internal/config"
@@ -46,6 +47,9 @@ type Provider struct {
 	// volume while the new instance is still being created.
 	attachTries int
 	attachWait  time.Duration
+
+	placesMu sync.Mutex
+	places   map[string]string
 }
 
 // New returns the Vultr backend for the registration list in cmd/root.go.
@@ -66,7 +70,34 @@ func NewWithKey(cfg func() config.Config, key string) *Provider {
 var (
 	_ providers.Provider = (*Provider)(nil)
 	_ providers.Locator  = (*Provider)(nil)
+	_ providers.Placer   = (*Provider)(nil)
 )
+
+// Places names every Vultr region ("ord" -> "Chicago, US") from /regions,
+// asked once per process.
+func (p *Provider) Places(ctx context.Context) (map[string]string, error) {
+	p.placesMu.Lock()
+	defer p.placesMu.Unlock()
+	if p.places != nil {
+		return p.places, nil
+	}
+	var out struct {
+		Regions []struct {
+			ID      string `json:"id"`
+			City    string `json:"city"`
+			Country string `json:"country"`
+		} `json:"regions"`
+	}
+	if err := p.do(ctx, "GET", "/regions?per_page=500", nil, &out); err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(out.Regions))
+	for _, r := range out.Regions {
+		m[r.ID] = r.City + ", " + r.Country
+	}
+	p.places = m
+	return m, nil
+}
 
 // Name is "vultr".
 func (*Provider) Name() string { return "vultr" }

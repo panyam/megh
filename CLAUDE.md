@@ -68,6 +68,9 @@ megh mesh status|logs|restart     # a box's mesh daemon: what it reports, why it
 megh mesh gc [name...]            # delete tailnet nodes whose box is gone (control plane; needs MEGH_TAILSCALE_API_KEY)
 megh storage list|create|rm       # network volumes, one global cross-provider view
 megh regions list|probe|place     # find a DC that will actually rent (probe = real rent + immediate terminate)
+                                  # list shows each code's PLACE ("ord" -> Chicago, US) from the provider's own
+                                  # API (providers.Placer, one call per provider, cached); --provider vultr|hetzner
+                                  # lists offers for --vcpu/--ram/--disk instead. probe/place stay RunPod-only
 megh hydrate [--check]            # clone repos onto a box's volume (or report drift)
                                   # ON a box it runs locally; with no SSH agent (Tailscale console,
                                   # webterm) it clones over https via gh's login (SETUP.md §7.2)
