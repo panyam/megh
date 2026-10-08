@@ -42,7 +42,11 @@ megh up <name> [--volume <id> --dc <dc>] # launch; name is required + unique (= 
                                   # runs anywhere the provider key is: holding it IS being the
                                   # control plane (C3), so there is nothing to declare
                                   # --provider docker runs it as a LOCAL container (see below)
-megh list [--all]                 # megh boxes (name/status/dc/$hr/ssh); --all = every pod
+megh list [--all]                 # megh boxes on EVERY provider with a credential (PROVIDER column); --all = every pod
+                                  # box commands (ssh/browse/doctor/down/...) also search every provider: only
+                                  # --provider or MEGH_PROVIDER pins one; default_provider is where NEW boxes go
+                                  # ssh/tmux attach with no backend that knows the box fall back to its tailnet
+                                  # name (<box>.<tailnet>, tailnet addresses only), so logging in needs no provider key
 megh ssh [name]                   # attaches tmux 'main' (same session webterm serves); --session/$MEGH_TMUX, --no-tmux
                                   # re-run it to REATTACH after ctrl-b d; --cc/$MEGH_SSH_CC for control mode
 megh browse [box] [port...]       # tunnel box ports to localhost, print URLs

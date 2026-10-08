@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/panyam/megh/internal/config"
-	"github.com/panyam/megh/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -54,12 +53,8 @@ undeclared (with origin url to copy into megh.yaml).`,
 			return c.Run()
 		}
 
-		prov, err := resolveProvider(cmd, hydrateProvider)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		pod, err := providers.FindOrSole(ctx, prov, args)
+		prov, pod, err := locateBox(ctx, cmd, hydrateProvider, args)
 		if err != nil {
 			return err
 		}
@@ -190,7 +185,7 @@ func checkScript(c config.Config) string {
 }
 
 func init() {
-	hydrateCmd.Flags().StringVar(&hydrateProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	hydrateCmd.Flags().StringVar(&hydrateProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	hydrateCmd.Flags().BoolVar(&hydrateCheck, "check", false, "report drift instead of applying")
 	hydrateCmd.Flags().BoolVar(&hydrateLocal, "local", false, "run on the box itself (clone repos locally, no jump box)")
 	rootCmd.AddCommand(hydrateCmd)

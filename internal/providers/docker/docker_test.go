@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/panyam/megh/internal/config"
@@ -324,5 +326,16 @@ func TestParseInspectHandlesAStoppedBox(t *testing.T) {
 	}
 	if b.Status != "EXITED" {
 		t.Errorf("status = %q", b.Status)
+	}
+}
+
+// A machine with no docker CLI (a cloud box, a phone) has no local backend,
+// which is "not configured", not a failure: every cross-backend lookup would
+// otherwise carry a docker error.
+func TestNoDockerCLIIsNotConfigured(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	p := New(func() config.Config { return config.Default() })
+	if _, err := p.List(context.Background()); !errors.Is(err, providers.ErrNotConfigured) {
+		t.Errorf("got %v", err)
 	}
 }
