@@ -40,6 +40,8 @@ func newFake(t *testing.T) *fakeAPI {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/volumes/77":
 			io.WriteString(w, `{"volume":{"id":77,"name":"megh-work","size":50,"location":{"name":"ash"}}}`)
+		case r.Method == "GET" && r.URL.Path == "/locations":
+			io.WriteString(w, `{"locations":[{"name":"ash","city":"Ashburn, VA","country":"US"},{"name":"fsn1","city":"Falkenstein","country":"DE"}]}`)
 		case r.Method == "GET" && r.URL.Path == "/server_types":
 			io.WriteString(w, serverTypes)
 		case r.Method == "POST" && (r.URL.Path == "/servers" || r.URL.Path == "/volumes"):
@@ -289,5 +291,13 @@ func TestUpLogsInWithTheCallersPullTokenOnly(t *testing.T) {
 	}
 	if ud := userData(""); strings.Contains(ud, "docker login") || strings.Contains(ud, "ghp_pull") {
 		t.Errorf("logged in with the environment's token:\n%s", ud)
+	}
+}
+
+func TestPlacesNamesEachLocation(t *testing.T) {
+	p := testProvider(t, newFake(t), registryConfig())
+	got, err := p.Places(context.Background())
+	if err != nil || got["ash"] != "Ashburn, VA, US" || got["fsn1"] != "Falkenstein, DE" {
+		t.Fatalf("got %v %v", got, err)
 	}
 }

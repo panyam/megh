@@ -157,7 +157,7 @@ func (s *Server) regions(r *http.Request, svc *lifecycle.Service) (any, error) {
 		for _, of := range offers {
 			dcs = append(dcs, of.DC)
 		}
-		return map[string]any{"provider": prov.Name(), "dcs": dcs, "offers": offers, "default": def}, nil
+		return map[string]any{"provider": prov.Name(), "dcs": dcs, "offers": offers, "default": def, "places": placesOf(r.Context(), prov)}, nil
 	}
 	p, err := proberOf(prov)
 	if err != nil {
@@ -170,7 +170,7 @@ func (s *Server) regions(r *http.Request, svc *lifecycle.Service) (any, error) {
 			dcs = us
 		}
 	}
-	return map[string]any{"provider": prov.Name(), "dcs": dcs, "default": def}, nil
+	return map[string]any{"provider": prov.Name(), "dcs": dcs, "default": def, "places": placesOf(r.Context(), prov)}, nil
 }
 
 // shape is the vCPU/RAM/disk for an offered size ("" or "0" = the provider's

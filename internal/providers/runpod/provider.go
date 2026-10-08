@@ -3,6 +3,7 @@ package runpod
 import (
 	"context"
 	"os"
+	"sync"
 
 	"github.com/panyam/megh/internal/providers"
 )
@@ -11,7 +12,12 @@ import (
 // RUNPOD_API_KEY from the environment per call, which is what the CLI wants.
 // A server handling requests for whoever is signed in builds one per request
 // with NewWithKey instead, so one request's key is never another's.
-type Provider struct{ key string }
+type Provider struct {
+	key string
+
+	placesMu sync.Mutex
+	places   map[string]string
+}
 
 // New returns the RunPod backend that reads its key from the environment, for
 // the registration list in cmd/root.go.

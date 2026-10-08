@@ -41,6 +41,8 @@ func newFake(t *testing.T) *fakeAPI {
 		switch p := r.URL.Path; {
 		case r.Method == "GET" && p == "/blocks/b1":
 			io.WriteString(w, f.block)
+		case r.Method == "GET" && p == "/regions":
+			io.WriteString(w, `{"regions":[{"id":"ord","city":"Chicago","country":"US","continent":"North America"},{"id":"ams","city":"Amsterdam","country":"NL","continent":"Europe"}]}`)
 		case r.Method == "GET" && p == "/plans":
 			io.WriteString(w, plansJSON)
 		case r.Method == "GET" && p == "/os":
@@ -280,5 +282,13 @@ func TestUpLogsInWithTheCallersPullTokenOnly(t *testing.T) {
 	}
 	if ud := userData(""); strings.Contains(ud, "docker login") || strings.Contains(ud, "ghp_pull") {
 		t.Errorf("logged in with the environment's token:\n%s", ud)
+	}
+}
+
+func TestPlacesNamesEachRegion(t *testing.T) {
+	p := testProvider(t, newFake(t), cfg())
+	got, err := p.Places(context.Background())
+	if err != nil || got["ord"] != "Chicago, US" || got["ams"] != "Amsterdam, NL" {
+		t.Fatalf("got %v %v", got, err)
 	}
 }

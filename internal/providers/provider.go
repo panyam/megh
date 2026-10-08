@@ -116,3 +116,13 @@ type Locator interface {
 	// with the type Up would pick there.
 	Offers(ctx context.Context, vcpu, ramGiB, diskGiB int) ([]Offer, error)
 }
+
+// Placer names a backend's location codes for people: "Chicago, US" for
+// Vultr's "ord". The codes are what every API takes and returns; the names are
+// only for display. A backend answers from its own API, so a new location gets
+// its name with no change here, and caches the answer for the life of the
+// process. A code missing from the map has no known name, and callers show the
+// bare code.
+type Placer interface {
+	Places(ctx context.Context) (map[string]string, error)
+}

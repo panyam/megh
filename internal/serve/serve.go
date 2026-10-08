@@ -391,6 +391,7 @@ type BoxView struct {
 	ID        string           `json:"id"`
 	Status    string           `json:"status"`
 	DC        string           `json:"dc"`
+	Place     string           `json:"place,omitempty"`
 	CostPerHr float64          `json:"costPerHr"`
 	Links     []lifecycle.Link `json:"links"`
 	SSH       string           `json:"ssh,omitempty"`
@@ -412,10 +413,11 @@ func (s *Server) boxes(r *http.Request, svc *lifecycle.Service) (any, error) {
 			failed++
 			continue
 		}
+		places := placesOf(r.Context(), p)
 		for _, b := range boxes {
 			shell, tunnel := lifecycle.SSHCommands(b)
 			views = append(views, BoxView{
-				Name: b.DisplayName(), Provider: p.Name(), ID: b.ID, Status: b.Status, DC: b.DataCenter,
+				Name: b.DisplayName(), Provider: p.Name(), ID: b.ID, Status: b.Status, DC: b.DataCenter, Place: places[b.DataCenter],
 				CostPerHr: b.CostPerHr, Links: lifecycle.BoxLinks(s.Config, b), SSH: shell, Tunnel: tunnel,
 			})
 		}
@@ -446,6 +448,7 @@ type VolumeView struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	DC       string `json:"dc"`
+	Place    string `json:"place,omitempty"`
 	SizeGB   int    `json:"sizeGB"`
 }
 
@@ -458,9 +461,13 @@ func (s *Server) volumes(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if len(vols) == 0 && len(errs) > 0 {
 		return nil, errs[0]
 	}
+	places := map[string]map[string]string{}
+	for _, p := range svc.Providers {
+		places[p.Name()] = placesOf(r.Context(), p)
+	}
 	views := make([]VolumeView, 0, len(vols))
 	for _, v := range vols {
-		views = append(views, VolumeView{Provider: v.Provider, ID: v.ID, Name: v.Name, DC: v.DataCenter, SizeGB: v.Size})
+		views = append(views, VolumeView{Provider: v.Provider, ID: v.ID, Name: v.Name, DC: v.DataCenter, Place: places[v.Provider][v.DataCenter], SizeGB: v.Size})
 	}
 	names := make([]string, 0, len(svc.Providers))
 	for _, p := range svc.Providers {
@@ -580,6 +587,21 @@ func (s *Server) findBox(r *http.Request, svc *lifecycle.Service, name string) (
 		return nil, nil, &apiError{http.StatusNotFound, (&providers.NotFoundError{Name: name}).Error()}
 	}
 	return prov, box, nil
+}
+
+// placesOf is the backend's names for its location codes, or nil when it has
+// none or cannot answer. A missing name only costs the label, so a failure here
+// never fails the request.
+func placesOf(ctx context.Context, p providers.Provider) map[string]string {
+	pl, ok := p.(providers.Placer)
+	if !ok {
+		return nil
+	}
+	m, err := pl.Places(ctx)
+	if err != nil {
+		return nil
+	}
+	return m
 }
 
 func contains(list []string, s string) bool {
