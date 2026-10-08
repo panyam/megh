@@ -77,7 +77,7 @@ that will not work: a directory whose entries are absolute host symlinks.
 | `enable` | adds a feature to a box |
 | `doctor` | probes health and repairs Tailscale |
 | `storage` | manages volumes |
-| `regions` | finds a datacenter that will actually rent the box you want (RunPod only; a local box has one place to run) |
+| `regions` | where a box can run, with place names: RunPod data centers to probe, or every machine Vultr/Hetzner sell at or above `--vcpu/--ram/--disk` (`regions offers`); a local box has one place to run |
 | `hydrate` | clones repos onto a volume |
 | `profile` | holds per-context SSH and GitHub identities |
 | `portal` | publishes a bookmarkable index of boxes and URLs |
