@@ -123,6 +123,8 @@ providers:
     # fine with one. With two (colima and Docker Desktop, or two podman
     # machines), pin it: a box lives in ONE, and asking the other makes it
     # vanish from list/ssh/down. The image must be built into the same one.
+    # A context belongs to one engine, so name the engine with it: with podman
+    # installed, megh refuses a context whose engine it would have to guess.
     # context: colima
     # The host directory bound at the box's work mount: docker's network volume.
     # Tool logins persist here, separately from the host's own ~/.claude, so one

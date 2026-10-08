@@ -248,6 +248,10 @@ two podman machines. Ask the wrong one and the box vanishes: `megh list` says
 `no boxes` and `ssh`/`down` cannot find it, while it runs fine elsewhere.
 `providers.local.engine` pins the engine, and `providers.local.context` the
 daemon (`docker context ls` / `podman system connection ls` show the default).
+A context is one engine's, so with podman installed megh refuses a context that
+has no engine beside it, rather than handing a docker context to podman as an
+unknown `--connection` (which is what an old `providers.docker.context: default`
+did on a Mac with both). With only docker installed it is unambiguous and works.
 Installing podman on a machine whose boxes are in docker is the easy way to hit
 this, since detection then picks podman, so when the engine was detected and
 the other one holds megh containers, `megh list` and `doctor control-plane` say

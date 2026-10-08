@@ -569,9 +569,11 @@ Three ACL edits first, since the gateway joins under its own tag:
 ],
 ```
 
-If the credential was created with `tag:megh` only, edit it to add
-`tag:megh-gw` as well; otherwise minting fails and `up` says so. Set
-`tailscale.gateway_tag` to use a different tag.
+The credential itself needs no change. Tailscale lets an OAuth client mint keys
+for any tag its own tag owns, so `tag:megh` in `tag:megh-gw`'s owners above is
+what lets a credential scoped to `tag:megh` mint the gateway's key. Leave it out
+and minting fails, and `up` says so. Set `tailscale.gateway_tag` to use a
+different tag (and give it the same owner).
 
 ```
 megh gw up            # start (or restart) the container, join, print the URLs

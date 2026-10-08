@@ -13,7 +13,9 @@ import (
 func fakeRoute(t *testing.T, onTailnet, gwRunning bool) {
 	t.Helper()
 	savedLookup, savedUp, savedTailnet, savedEngine := lookupHost, gatewayUp, cfg.Tailnet, localEngine
-	t.Cleanup(func() { lookupHost, gatewayUp, cfg.Tailnet, localEngine = savedLookup, savedUp, savedTailnet, savedEngine })
+	t.Cleanup(func() {
+		lookupHost, gatewayUp, cfg.Tailnet, localEngine = savedLookup, savedUp, savedTailnet, savedEngine
+	})
 	localEngine = func() (local.Engine, error) { return local.Engine{Name: "docker", Bin: "docker"}, nil }
 	cfg.Tailnet = "tail123.ts.net"
 	lookupHost = func(string) ([]string, error) {

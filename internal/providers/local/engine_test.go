@@ -99,7 +99,7 @@ func TestContextMapsToEachEnginesFlag(t *testing.T) {
 	} {
 		log := fakeBins(t, tc.engine)
 		p := New(func() config.Config {
-			return config.Config{Providers: map[string]config.Provider{"local": {Context: "work"}}}
+			return config.Config{Providers: map[string]config.Provider{"local": {Engine: tc.engine, Context: "work"}}}
 		})
 		if _, err := p.List(context.Background()); err != nil {
 			t.Fatal(err)
@@ -178,5 +178,30 @@ func TestElsewhereFindsBoxesInTheOtherEngine(t *testing.T) {
 func TestBackendIsNamedLocal(t *testing.T) {
 	if n := New(func() config.Config { return config.Config{} }).Name(); n != "local" {
 		t.Errorf("got %q", n)
+	}
+}
+
+// A context belongs to one engine, and before podman support every context in
+// a megh.yaml was a docker one. Applied to a detected podman it becomes an
+// unknown --connection, so a context with no engine named is refused rather
+// than guessed at.
+func TestContextWithoutAnEngineIsRefused(t *testing.T) {
+	fakeBins(t, "podman", "docker")
+	_, err := ResolveEngine(config.Provider{Context: "default"})
+	if err == nil || !strings.Contains(err.Error(), "providers.local.engine") || !strings.Contains(err.Error(), "default") {
+		t.Fatalf("got %v", err)
+	}
+	if e, err := ResolveEngine(config.Provider{Engine: "docker", Context: "default"}); err != nil || e.Name != "docker" {
+		t.Errorf("engine named in config: got %+v, %v", e, err)
+	}
+	t.Setenv("MEGH_ENGINE", "docker")
+	if e, err := ResolveEngine(config.Provider{Context: "default"}); err != nil || e.Name != "docker" {
+		t.Errorf("engine named in env: got %+v, %v", e, err)
+	}
+	// With only docker installed there is nothing to guess: an existing docker
+	// config keeps working through the upgrade.
+	fakeBins(t, "docker")
+	if e, err := ResolveEngine(config.Provider{Context: "colima"}); err != nil || e.Name != "docker" || e.Context != "colima" {
+		t.Errorf("docker only: got %+v, %v", e, err)
 	}
 }
