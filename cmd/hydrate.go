@@ -137,18 +137,42 @@ const cloneTransport = `if ssh-add -l >/dev/null 2>&1; then via=ssh; else
 fi
 `
 
+// megh_clone clones one repo, and is the reason one bad repo no longer stops a
+// hydrate. A destination that exists without .git but holds only directories
+// is what the entrypoint leaves on a fresh volume (it makes the parents of
+// every symlink target, and some targets sit inside repos not yet cloned), so
+// those empty directories are removed and the clone goes ahead. A destination
+// with any file or symlink in it is never touched: it is skipped, named, and
+// the run carries on and exits non-zero at the end.
+const cloneFunc = `skipped=""
+megh_clone() {
+  dest="$repos/$1"; mkdir -p "$(dirname "$dest")"
+  if [ -d "$dest/.git" ]; then echo "exists  $1"; return 0; fi
+  if [ -e "$dest" ]; then
+    first=$(find "$dest" ! -type d -print 2>/dev/null | head -n 1)
+    if [ -n "$first" ]; then
+      echo "skip    $1: not a git repo and not empty (first: ${first#"$repos"/})" >&2
+      skipped="$skipped $1"; return 0
+    fi
+    find "$dest" -depth -type d -empty -delete
+    echo "cleared $1: only empty folders were there (made by the boot script's symlinks)"
+  fi
+  echo "clone   $1"
+  if ! git clone "$2" "$dest"; then echo "failed  $1" >&2; skipped="$skipped $1"; fi
+}
+`
+
 func applyScript(c config.Config) string {
 	var b strings.Builder
-	b.WriteString("set -e\nexport GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\nmkdir -p /mnt/work/repos\n")
+	b.WriteString("set -e\nexport GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new'\n")
+	b.WriteString("repos=\"${MEGH_REPOS_ROOT:-/mnt/work/repos}\"\nmkdir -p \"$repos\"\n")
 	b.WriteString(cloneTransport)
+	b.WriteString(cloneFunc)
 	for _, r := range c.Repos {
-		d := repoDest(r)
-		fmt.Fprintf(&b,
-			"dest=/mnt/work/repos/%s; mkdir -p \"$(dirname \"$dest\")\"; "+
-				"if [ -d \"$dest/.git\" ]; then echo 'exists  %s'; "+
-				"else echo 'clone   %s'; u=%q; [ \"$via\" = https ] && u=%q; git clone \"$u\" \"$dest\"; fi\n",
-			d, d, d, aliasedURL(r.URL, c.GHKey(r)), githubHTTPS(r.URL))
+		fmt.Fprintf(&b, "u=%q; [ \"$via\" = https ] && u=%q; megh_clone %q \"$u\"\n",
+			aliasedURL(r.URL, c.GHKey(r)), githubHTTPS(r.URL), repoDest(r))
 	}
+	b.WriteString(`if [ -n "$skipped" ]; then echo "megh: hydrate did not clone:$skipped" >&2; exit 1; fi` + "\n")
 	return b.String()
 }
 
