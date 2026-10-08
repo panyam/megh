@@ -181,7 +181,7 @@ the probe pods.`,
 			return fmt.Errorf("%s rents CPU but the volume could not be created there: %w", winner, err)
 		}
 		fmt.Printf("\ncreated volume %s  (%s, %dGB, %s)\n", v.ID, v.Name, v.Size, v.DataCenter)
-		fmt.Printf("launch onto it: megh up <name> --volume %s --dc %s\n", v.ID, v.DataCenter)
+		fmt.Println(launchHint(*v))
 		fmt.Printf("make it the default by setting default_volume/default_dc in megh.yaml\n")
 		return nil
 	},
