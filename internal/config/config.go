@@ -122,6 +122,10 @@ type Tailscale struct {
 	// already exist in the tailnet's ACL tagOwners. Empty disables per-box
 	// minting, falling back to the static AuthKeyEnv.
 	Tag string `yaml:"tag"`
+	// GatewayTag is the tag a `megh gateway` node joins with (default
+	// tag:megh-gw). A separate tag lets the tailnet ACL give the gateway
+	// exactly the worker ports it forwards and nothing else.
+	GatewayTag string `yaml:"gateway_tag"`
 	// MintKeys turns per-box auth keys on. When false (or no API key is set),
 	// `megh up` passes the static auth key through unchanged.
 	MintKeys bool `yaml:"mint_keys"`

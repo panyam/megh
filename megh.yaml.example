@@ -171,9 +171,11 @@ tailscale:
   # and a trust credential scoped to Devices>Core>Write + Keys>Auth Keys>Write.
   mint_keys: false
   tag: tag:megh
+  # The tag `megh gateway` joins under (SETUP.md section 10).
+  # gateway_tag: tag:megh-gw
 
 # Optional: your tailnet's MagicDNS suffix (see `megh doctor ts status` Self DNSName),
-# used to build box surface URLs in the portal.
+# used to build box surface URLs in the portal. `megh gateway` requires it.
 # tailnet: tailXXXXXX.ts.net
 
 # Optional: `megh portal` publishes a bookmarkable box+URL index (PORTAL.md) to a
