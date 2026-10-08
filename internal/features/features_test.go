@@ -1,7 +1,9 @@
 package features
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -261,5 +263,64 @@ func TestEveryFeatureDescribesItself(t *testing.T) {
 			t.Errorf("%s: summary spans lines, so a chooser row cannot hold it: %q", name, desc)
 		}
 		t.Logf("%-11s %s", name, desc)
+	}
+}
+
+// runAttach runs parts/tmux-attach.sh with a fake tmux that records its
+// arguments, and reports them ("" when tmux never ran) with the script's output.
+func runAttach(t *testing.T, args ...string) (tmuxArgs, out string, err error) {
+	t.Helper()
+	bin := t.TempDir()
+	rec := filepath.Join(bin, "tmux.args")
+	os.WriteFile(filepath.Join(bin, "tmux"), []byte("#!/bin/sh\necho \"$*\" > "+rec+"\n"), 0o755)
+	cmd := exec.Command("sh", append([]string{"parts/tmux-attach.sh"}, args...)...)
+	cmd.Env = []string{"PATH=" + bin + ":/usr/bin:/bin", "MEGH_ATTACH_REFUSE_WAIT=0"}
+	b, err := cmd.CombinedOutput()
+	got, _ := os.ReadFile(rec)
+	return strings.TrimSpace(string(got)), string(b), err
+}
+
+// The web terminals' URL picks the tmux session; with none it is main, as before.
+func TestTmuxAttachOpensTheSessionTheURLNames(t *testing.T) {
+	for args, want := range map[string]string{"": "new -A -s main", "book": "new -A -s book", "feat_x-2": "new -A -s feat_x-2"} {
+		var a []string
+		if args != "" {
+			a = []string{args}
+		}
+		if got, out, err := runAttach(t, a...); err != nil || got != want {
+			t.Errorf("args %q: tmux %q, want %q (%v %s)", args, got, want, err, out)
+		}
+	}
+}
+
+// A URL value reaches this command line, so anything but a plain name is
+// refused before tmux runs.
+func TestTmuxAttachRefusesAnythingButAPlainName(t *testing.T) {
+	for _, bad := range [][]string{{"bad;rm"}, {"../x"}, {"a.b"}, {"a:b"}, {"$(id)"}, {"two", "args"}, {strings.Repeat("x", 33)}} {
+		got, out, err := runAttach(t, bad...)
+		if err == nil || got != "" || !strings.Contains(out, "megh:") {
+			t.Errorf("%q: err=%v tmux=%q out=%s", bad, err, got, out)
+		}
+	}
+}
+
+// Both web terminals start through the attach script with -a, and the custom
+// page forwards its own query to the WebSocket, where ttyd reads ?arg=.
+func TestWebtermServesSessionsFromTheURL(t *testing.T) {
+	b, err := Script("webterm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{"exec tmux new -A -s \"$name\"", "/usr/local/bin/megh-tmux-attach}", "-a megh-tmux-attach", "'/ws' + location.search"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("webterm.sh lacks %q", want)
+		}
+	}
+	if strings.Contains(s, "@@TMUX_ATTACH@@") {
+		t.Error("attach script marker was not inlined")
+	}
+	if strings.Count(s, "-a megh-tmux-attach") < 2 {
+		t.Error("both :7681 and the webterm port must run the attach script")
 	}
 }
