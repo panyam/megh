@@ -538,8 +538,15 @@ formatted. If the first boot ever stops at this step, `/var/log/megh-boot.log`
 `megh gw up` runs a docker container on this machine that joins the tailnet
 in its place, so the machine itself never runs Tailscale (DESIGN.md "Roles"). It
 needs docker, `tailnet:` in megh.yaml, the Tailscale client id and secret (to
-mint the gateway's key), and an image new enough to have `megh gw serve` and `megh gw nc`
-(`providers.docker.image`, else the default image).
+mint the gateway's key), and the gateway image.
+
+That image is its own small one (`env/gw/Dockerfile`): the official tailscale
+image plus the megh binary, nothing from the dev image. CI publishes it as
+`megh-gw` for amd64 and arm64 on every merge that touches megh's code, so a Mac
+pulls it rather than building anything. It is private like the dev images, so
+log in once with `echo $GH_MEGH_TOKEN | docker login ghcr.io -u <you>
+--password-stdin`. To run one built from a local checkout instead, use `make
+image-local-gw` and set `tailscale.gateway_image` to the tag it prints.
 
 Three ACL edits first, since the gateway joins under its own tag:
 

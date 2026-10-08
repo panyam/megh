@@ -70,8 +70,11 @@ var gatewayUpCmd = &cobra.Command{
 		case "":
 			// The container runs `megh gw serve` and `megh gw nc` from the image,
 			// so an image older than both can't be a gateway.
-			if _, err := dockerOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
-				return fmt.Errorf("%s has no `megh gw nc`; pull or build a newer image (providers.docker.image, or `make image-local-slim`)", image)
+			if out, err := dockerOut(ctx, "run", "--rm", "--entrypoint", "megh", image, "gw", "nc", "--help"); err != nil {
+				if strings.Contains(out, "unknown command") {
+					return fmt.Errorf("%s has no `megh gw nc`; pull a newer one, or build one with `make image-local-gw` and set tailscale.gateway_image", image)
+				}
+				return fmt.Errorf("can't run %s (a private GHCR image needs `docker login ghcr.io` with GH_MEGH_TOKEN first): %w", image, err)
 			}
 			if _, err := dockerOut(ctx, gatewayRunArgs(image, cfg.Tailnet)...); err != nil {
 				return err
@@ -262,9 +265,10 @@ func gatewayState(ctx context.Context) string {
 	return strings.TrimSpace(out)
 }
 
-// gatewayImage is the docker backend's configured image, else the default.
+// gatewayImage is tailscale.gateway_image, else the published megh-gw image
+// (env/gw/Dockerfile): tailscale plus the megh binary, never a dev image.
 func gatewayImage() string {
-	return cmp.Or(cfg.Provider("docker").Image, cfg.DefaultImage(cmp.Or(cfg.DefaultFlavor, "slim")))
+	return cmp.Or(cfg.Tailscale.GatewayImage, cfg.DefaultImage("gw"))
 }
 
 // knownBoxes is the boxes this machine can list (any backend with a key), for
@@ -326,11 +330,14 @@ var gatewayShellCmd = &cobra.Command{
 		if gatewayState(context.Background()) != "running" {
 			return fmt.Errorf("the gateway isn't running (megh gw up)")
 		}
-		c := dockerCmd(context.Background(), "exec", "-it", gatewayName, "sh", "-c", "exec zsh 2>/dev/null || exec bash")
+		c := dockerCmd(context.Background(), gatewayShellArgs()...)
 		c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return c.Run()
 	},
 }
+
+// gatewayShellArgs opens sh in the gateway: the image is Alpine, with no bash.
+func gatewayShellArgs() []string { return []string{"exec", "-it", gatewayName, "sh"} }
 
 // gatewayProxyCommand is the ssh ProxyCommand that carries a connection
 // through the gateway: `megh gw nc` inside the container, in the same docker

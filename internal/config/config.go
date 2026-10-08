@@ -126,6 +126,10 @@ type Tailscale struct {
 	// tag:megh-gw). A separate tag lets the tailnet ACL give the gateway
 	// exactly the worker ports it forwards and nothing else.
 	GatewayTag string `yaml:"gateway_tag"`
+	// GatewayImage is the image `megh gw up` runs (default
+	// <registry>/<namespace>/megh-gw:latest, which CI publishes for amd64 and
+	// arm64). It is tailscale plus the megh binary, nothing from the dev image.
+	GatewayImage string `yaml:"gateway_image"`
 	// MintKeys turns per-box auth keys on. When false (or no API key is set),
 	// `megh up` passes the static auth key through unchanged.
 	MintKeys bool `yaml:"mint_keys"`
