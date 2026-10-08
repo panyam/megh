@@ -183,19 +183,13 @@ forwarded, and a port that is not gets explained rather than silently tunnelled
 to nothing.`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, err := resolveProvider(cmd, browseProvider)
-		if err != nil {
-			return err
-		}
 		req := parseBrowseArgs(args)
-
 		ctx := context.Background()
-		var pod *providers.Box
+		var boxArgs []string
 		if req.box != "" {
-			pod, err = providers.Find(ctx, prov, req.box)
-		} else {
-			pod, err = providers.Sole(ctx, prov)
+			boxArgs = []string{req.box}
 		}
+		prov, pod, err := locateBox(ctx, cmd, browseProvider, boxArgs)
 		if err != nil {
 			return err
 		}
@@ -350,7 +344,7 @@ func sshCaptureArgs(keyFile string, d dial, remote string) []string {
 }
 
 func init() {
-	browseCmd.Flags().StringVar(&browseProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	browseCmd.Flags().StringVar(&browseProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	browseCmd.Flags().BoolVarP(&browseBackground, "background", "b", false, "open the tunnel in the background and return")
 	browseCmd.Flags().BoolVar(&browseStop, "stop", false, "close the background tunnel to this box")
 	rootCmd.AddCommand(browseCmd)

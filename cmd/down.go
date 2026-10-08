@@ -28,16 +28,9 @@ durability; the volume copy survives regardless.
 With no argument it terminates the only box; otherwise pass a name or id.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := resolveProvider(cmd, downProvider); err != nil {
-			return err
-		}
 		ctx := context.Background()
 		svc := newService()
-		var name string
-		if len(args) > 0 {
-			name = args[0]
-		}
-		prov, pod, err := svc.Find(ctx, resolve(cmd, "provider", downProvider, "MEGH_PROVIDER", cfg.DefaultProvider, "runpod"), name)
+		prov, pod, err := locateBox(ctx, cmd, downProvider, args)
 		if err != nil {
 			return err
 		}
@@ -69,7 +62,7 @@ With no argument it terminates the only box; otherwise pass a name or id.`,
 }
 
 func init() {
-	downCmd.Flags().StringVar(&downProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	downCmd.Flags().StringVar(&downProvider, "provider", "", "look the box up on this provider only (default: every provider with a credential)")
 	downCmd.Flags().BoolVarP(&downYes, "yes", "y", false, "skip the confirmation prompt")
 	rootCmd.AddCommand(downCmd)
 }

@@ -87,6 +87,23 @@ func meshOn(cmd *cobra.Command) (providers.Provider, providers.Mesh, error) {
 	if err != nil {
 		return nil, providers.Mesh{}, err
 	}
+	return meshOf(prov)
+}
+
+// meshBox is meshOn for a command that acts on one box: it finds the box on
+// whichever backend holds it, then applies the same mesh check to that backend.
+func meshBox(ctx context.Context, cmd *cobra.Command, args []string) (providers.Provider, *providers.Box, error) {
+	prov, pod, err := locateBox(ctx, cmd, meshProvider, args)
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, _, err := meshOf(prov); err != nil {
+		return nil, nil, err
+	}
+	return prov, pod, nil
+}
+
+func meshOf(prov providers.Provider) (providers.Provider, providers.Mesh, error) {
 	m := prov.Mesh()
 	if !m.On() {
 		return nil, m, fmt.Errorf("%s boxes join no mesh; set providers.%s.mesh: %s in megh.yaml",
@@ -118,12 +135,8 @@ var meshLeaveCmd = &cobra.Command{
 	Short: "Log a box out of the mesh (an ephemeral node disappears)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		prov, _, err := meshOn(cmd)
-		if err != nil {
-			return err
-		}
 		ctx := context.Background()
-		pod, err := providers.FindOrSole(ctx, prov, args)
+		_, pod, err := meshBox(ctx, cmd, args)
 		if err != nil {
 			return err
 		}
@@ -239,12 +252,8 @@ func meshBoxCmd(verb, short string, withKey bool) *cobra.Command {
 				}
 				return tsBringUpLocal(action, key)
 			}
-			prov, _, err := meshOn(cmd)
-			if err != nil {
-				return err
-			}
 			ctx := context.Background()
-			pod, err := providers.FindOrSole(ctx, prov, args)
+			prov, pod, err := meshBox(ctx, cmd, args)
 			if err != nil {
 				return err
 			}

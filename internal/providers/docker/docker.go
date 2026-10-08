@@ -405,7 +405,7 @@ func parseInspect(out string) (*providers.Box, error) {
 // rather than letting every subcommand surface a raw exec error.
 func (p *Provider) check(ctx context.Context) error {
 	if _, err := exec.LookPath("docker"); err != nil {
-		return fmt.Errorf("docker is not on PATH (the local backend needs Docker Desktop or a docker CLI)")
+		return fmt.Errorf("%w: docker is not on PATH (the local backend needs Docker Desktop or a docker CLI)", providers.ErrNotConfigured)
 	}
 	if _, err := p.run(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
 		return fmt.Errorf("the docker daemon is not reachable: %w", err)
