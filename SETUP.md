@@ -533,6 +533,48 @@ only mount it, and `/workspace/.megh-volume` records when it was first
 formatted. If the first boot ever stops at this step, `/var/log/megh-boot.log`
 (through Vultr's web console) says which check refused.
 
+## 10. A gateway: workers from a machine that is not on the tailnet
+
+`megh gateway up` runs a docker container on this machine that joins the tailnet
+in its place, so the machine itself never runs Tailscale (DESIGN.md "Roles"). It
+needs docker, `tailnet:` in megh.yaml, the Tailscale client id and secret (to
+mint the gateway's key), and an image new enough to have `megh gateway serve`
+(`providers.docker.image`, else the default image).
+
+Two ACL edits first, since the gateway joins under its own tag:
+
+```jsonc
+"tagOwners": {
+  "tag:megh":    ["autogroup:admin"],
+  "tag:megh-gw": ["autogroup:admin", "tag:megh"],  // tag:megh lets the OAuth client mint it
+},
+"grants": [
+  // the gateway reaches the workers' web surfaces and nothing else
+  {"src": ["tag:megh-gw"], "dst": ["tag:megh"], "ip": ["tcp:7681", "tcp:7682", "tcp:8080", "tcp:6080"]},
+],
+```
+
+If the credential was created with `tag:megh` only, edit it to add
+`tag:megh-gw` as well; otherwise minting fails and `up` says so. Set
+`tailscale.gateway_tag` to use a different tag.
+
+```
+megh gateway up       # start (or restart) the container, join, print the URLs
+megh gateway status   # container state, whether it is on the tailnet, the URLs
+megh gateway down     # leave the tailnet and remove it (--purge drops its state volume)
+```
+
+Then open `http://dev.localhost:7682/` for webterm on `dev` (`?arg=book` for the
+`book` tmux session), `:7681` for ttyd, `:8080` for code-server, `:6080` for
+noVNC. These are plain HTTP between the browser and the container, which is all
+on this machine; the hop to the worker is TLS when the tailnet has certificates
+on, and WireGuard either way. A phone clipboard still needs HTTPS, so on a phone
+use the tailnet directly rather than a gateway.
+
+The gateway rejoins on its own after a `docker restart` (its state is in the
+`megh-gw-tailscale` volume). Its node is ephemeral, so after a long time stopped
+the tailnet drops it; `megh gateway up` notices and mints a new key.
+
 ## What is not here yet
 
 - The mesh (Headscale/Tailscale) so you reach the box by name without RunPod's
