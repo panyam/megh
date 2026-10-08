@@ -15,6 +15,7 @@ import (
 var (
 	upProvider  string
 	upFlavor    string
+	upType      string
 	upExposeSSH bool
 	upOpts      providers.Options
 )
@@ -115,6 +116,7 @@ filters on, but you never type it or see it: 'megh up work' joins the tailnet as
 			Name:       args[0],
 			Provider:   upProvider,
 			Flavor:     resolve(cmd, "flavor", upFlavor, "MEGH_FLAVOR", "", ""),
+			Type:       upType,
 			Image:      resolve(cmd, "image", upOpts.Image, "MEGH_IMAGE", "", ""),
 			VolumeID:   resolve(cmd, "volume", upOpts.VolumeID, "MEGH_VOLUME_ID", "", ""),
 			DataCenter: resolve(cmd, "dc", upOpts.DataCenter, "MEGH_DC", "", ""),
@@ -145,6 +147,7 @@ func init() {
 	// Defaults are empty/zero so `Changed` distinguishes an explicit flag from a
 	// fallback; real defaults come from env/config/builtin in RunE (see resolve).
 	f.StringVar(&upProvider, "provider", "", "provider (default: config default_provider, else runpod)")
+	f.StringVar(&upType, "type", "", "exact machine to create, as `megh regions offers` lists it (default: the cheapest meeting --vcpu/--ram/--disk)")
 	f.StringVar(&upFlavor, "flavor", "", "dev-env flavor; the image is megh-<flavor> (default: slim; use full for frontend)")
 	f.IntVar(&upOpts.VCPU, "vcpu", 0, "vCPU count (default: config, else 2)")
 	f.IntVar(&upOpts.RAMGiB, "ram", 0, "RAM in GiB (default: config, else 8)")

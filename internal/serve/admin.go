@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -45,16 +46,16 @@ func proberOf(prov providers.Provider) (Prober, error) {
 }
 
 // dataCenters is where prov can place a volume a box could then start on:
-// RunPod's data centers, or the locations a Locator sells the smallest
-// offered size in. ok is false when the backend can say neither.
+// RunPod's data centers (probed, since it publishes no catalog of what is
+// free), or every location a Locator sells anything in. ok is false when the
+// backend can say neither.
 func dataCenters(ctx context.Context, prov providers.Provider) (dcs []string, ok bool, err error) {
 	if p, isProber := prov.(Prober); isProber {
 		return p.DataCenters(ctx), true, nil
 	}
 	if l, isLocator := prov.(providers.Locator); isLocator {
-		small := boxSizes[2]
-		offers, err := l.Offers(ctx, 2, small.ram, small.disk)
-		for _, o := range offers {
+		offers, err := l.Offers(ctx, providers.Want{})
+		for _, o := range providers.CheapestPerDC(offers) {
 			dcs = append(dcs, o.DC)
 		}
 		return dcs, true, err
@@ -132,10 +133,10 @@ func (s *Server) deleteVolume(r *http.Request, svc *lifecycle.Service) (any, err
 }
 
 // regions answers "where can a box run" for one backend (?provider=, default
-// the request's default). A backend with a catalog (a Locator: Hetzner, Vultr)
-// answers with offers for the size in ?vcpu=, cheapest first, and the page
-// shows them as they are. RunPod has none, so it answers with data centers to
-// probe: the US ones by default, every one with ?all=1. Either way megh.yaml's
+// the request's default). RunPod publishes no catalog of what is free, so it
+// answers with data centers to probe: the US ones by default, every one with
+// ?all=1. A catalog backend (Vultr, Hetzner) answers with the cheapest machine
+// per location meeting ?vcpu/ram/disk, cheapest first. Either way megh.yaml's
 // default data center comes back so the page can mark it.
 func (s *Server) regions(r *http.Request, svc *lifecycle.Service) (any, error) {
 	q := r.URL.Query()
@@ -144,56 +145,90 @@ func (s *Server) regions(r *http.Request, svc *lifecycle.Service) (any, error) {
 		return nil, err
 	}
 	def := s.Config.Provider(prov.Name()).DefaultDC
-	if l, ok := prov.(providers.Locator); ok {
-		o, err := s.shape(prov.Name(), q.Get("vcpu"))
-		if err != nil {
-			return nil, err
+	if p, ok := prov.(Prober); ok {
+		all := p.DataCenters(r.Context())
+		dcs := all
+		if q.Get("all") != "1" {
+			if us := runpod.USDataCenters(all); len(us) > 0 {
+				dcs = us
+			}
 		}
-		offers, err := l.Offers(r.Context(), o.VCPU, o.RAMGiB, o.DiskGiB)
-		if err != nil {
-			return nil, err
-		}
-		dcs := make([]string, 0, len(offers))
-		for _, of := range offers {
-			dcs = append(dcs, of.DC)
-		}
-		return map[string]any{"provider": prov.Name(), "dcs": dcs, "offers": offers, "default": def, "places": placesOf(r.Context(), prov)}, nil
+		return map[string]any{"provider": prov.Name(), "dcs": dcs, "default": def, "places": placesOf(r.Context(), prov)}, nil
 	}
-	p, err := proberOf(prov)
+	l, ok := prov.(providers.Locator)
+	if !ok {
+		return nil, &apiError{http.StatusNotImplemented, prov.Name() + " has no region search"}
+	}
+	want, err := wantFrom(q)
 	if err != nil {
 		return nil, err
 	}
-	all := p.DataCenters(r.Context())
-	dcs := all
-	if q.Get("all") != "1" {
-		if us := runpod.USDataCenters(all); len(us) > 0 {
-			dcs = us
-		}
+	all, err := l.Offers(r.Context(), want)
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{"provider": prov.Name(), "dcs": dcs, "default": def, "places": placesOf(r.Context(), prov)}, nil
+	offers := providers.CheapestPerDC(all)
+	dcs := make([]string, 0, len(offers))
+	for _, of := range offers {
+		dcs = append(dcs, of.DC)
+	}
+	return map[string]any{"provider": prov.Name(), "dcs": dcs, "offers": offers, "default": def, "places": placesOf(r.Context(), prov)}, nil
 }
 
-// shape is the vCPU/RAM/disk for an offered size ("" or "0" = the provider's
-// configured default), as the launch form would ask for it.
-func (s *Server) shape(provider, vcpu string) (providers.Options, error) {
-	cfgP := s.Config.Provider(provider)
-	o := providers.Options{
-		VCPU:    firstPositive(cfgP.VCPU, 2),
-		RAMGiB:  firstPositive(cfgP.RAM, 8),
-		DiskGiB: firstPositive(cfgP.Disk, 20),
-	}
-	n, err := strconv.Atoi(cmp.Or(vcpu, "0"))
+// offers answers GET /api/offers: every machine one backend sells at or above
+// ?vcpu/ram/disk, in ?dc or everywhere, cheapest first, for the launch form's
+// table. RunPod prices per data center, so it needs ?dc (the volume's).
+func (s *Server) offers(r *http.Request, svc *lifecycle.Service) (any, error) {
+	q := r.URL.Query()
+	prov, err := s.backend(svc, q.Get("provider"))
 	if err != nil {
-		return o, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a vCPU count", vcpu)}
+		return nil, err
 	}
-	if n != 0 {
-		size, ok := boxSizes[n]
-		if !ok {
-			return o, &apiError{http.StatusBadRequest, fmt.Sprintf("%d vCPU is not an offered size (2, 4 or 8)", n)}
+	l, ok := prov.(providers.Locator)
+	if !ok {
+		return nil, &apiError{http.StatusNotImplemented, prov.Name() + " has no catalog"}
+	}
+	want, err := wantFrom(q)
+	if err != nil {
+		return nil, err
+	}
+	want.DC = q.Get("dc")
+	if _, needsDC := prov.(Prober); needsDC && want.DC == "" {
+		return nil, &apiError{http.StatusBadRequest, prov.Name() + " prices machines per data center: pick a volume (or pass dc)"}
+	}
+	all, err := l.Offers(r.Context(), want)
+	if err != nil {
+		return nil, err
+	}
+	if all == nil {
+		all = []providers.Offer{}
+	}
+	return map[string]any{"provider": prov.Name(), "offers": all, "places": placesOf(r.Context(), prov)}, nil
+}
+
+// wantFrom reads ?vcpu, ?ram and ?disk (absent = no minimum) and checks them
+// against what the form offers.
+func wantFrom(q url.Values) (providers.Want, error) {
+	n := func(k string) (int, error) {
+		v, err := strconv.Atoi(cmp.Or(q.Get(k), "0"))
+		if err != nil {
+			return 0, &apiError{http.StatusBadRequest, fmt.Sprintf("%s=%q is not a number", k, q.Get(k))}
 		}
-		o.VCPU, o.RAMGiB, o.DiskGiB = n, size.ram, size.disk
+		return v, nil
 	}
-	return o, nil
+	vcpu, err := n("vcpu")
+	if err != nil {
+		return providers.Want{}, err
+	}
+	ram, err := n("ram")
+	if err != nil {
+		return providers.Want{}, err
+	}
+	disk, err := n("disk")
+	if err != nil {
+		return providers.Want{}, err
+	}
+	return minimums(vcpu, ram, disk)
 }
 
 // ProbeView is one data center's answer to a probe.
@@ -214,7 +249,9 @@ func (s *Server) probe(r *http.Request, svc *lifecycle.Service) (any, error) {
 	var req struct {
 		Provider string `json:"provider"` // "" = the default backend
 		DC       string `json:"dc"`
-		VCPU     int    `json:"vcpu"` // 0 = megh.yaml's default size
+		VCPU     int    `json:"vcpu"` // minimums; 0 = megh.yaml's default
+		RAM      int    `json:"ram"`
+		Disk     int    `json:"disk"`
 	}
 	if err := decode(r, &req); err != nil {
 		return nil, err
@@ -230,9 +267,15 @@ func (s *Server) probe(r *http.Request, svc *lifecycle.Service) (any, error) {
 	if !slices.Contains(p.DataCenters(r.Context()), req.DC) {
 		return nil, &apiError{http.StatusBadRequest, fmt.Sprintf("%q is not a data center %s offers", req.DC, prov.Name())}
 	}
-	o, err := s.shape(prov.Name(), strconv.Itoa(req.VCPU))
+	want, err := minimums(req.VCPU, req.RAM, req.Disk)
 	if err != nil {
 		return nil, err
+	}
+	cfgP := s.Config.Provider(prov.Name())
+	o := providers.Options{
+		VCPU:    firstPositive(want.VCPU, cfgP.VCPU, 2),
+		RAMGiB:  firstPositive(want.RAMGiB, cfgP.RAM, 8),
+		DiskGiB: firstPositive(want.DiskGiB, cfgP.Disk, 20),
 	}
 	o.DataCenter = req.DC
 	o.Image = s.Config.DefaultImage(s.Config.DefaultFlavor)

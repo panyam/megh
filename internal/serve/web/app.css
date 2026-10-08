@@ -47,3 +47,8 @@ summary { cursor: pointer; color: var(--accent); }
 li.error { color: var(--danger); }
 label { display: inline-flex; gap: 4px; align-items: center; }
 #keystatus li { border: none; padding: 2px 0; margin: 0; background: none; }
+#offers { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+#offers th { text-align: left; color: var(--muted); font-weight: normal; padding: 4px 6px; }
+#offers td { padding: 4px 6px; border-top: 1px solid var(--line); cursor: pointer; }
+#offers tr.picked td { background: var(--code); font-weight: 600; }
+label { display: inline-flex; gap: 6px; align-items: center; }
