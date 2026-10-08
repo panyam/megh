@@ -23,7 +23,7 @@ func TestGatewayPublishesOnlyToTheHostsLoopback(t *testing.T) {
 		t.Errorf("published %d ports, want the 4 surfaces (SOCKS stays inside)", publishes)
 	}
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"--name megh-gw", "--entrypoint sh", "megh-gw-tailscale:/var/lib/tailscale", "MEGH_GATEWAY_TAILNET=tail123.ts.net", "--tun=userspace-networking", "--socks5-server=127.0.0.1:1055", "megh gateway serve"} {
+	for _, want := range []string{"--name megh-gw", "--entrypoint sh", "megh-gw-tailscale:/var/lib/tailscale", "MEGH_GATEWAY_TAILNET=tail123.ts.net", "--tun=userspace-networking", "--socks5-server=127.0.0.1:1055", "megh gw serve"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("run args lack %q:\n%s", want, joined)
 		}

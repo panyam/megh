@@ -157,7 +157,7 @@ what makes the split worth naming (#130).
 - **Control**: a machine holding a provider key, which is what lets it launch
   and terminate boxes (C3). A laptop, a phone in Termux, meghplane, or a worker
   that was deliberately elevated.
-- **Gateway**: a tailnet identity and nothing else. `megh gateway up` runs one as
+- **Gateway**: a tailnet identity and nothing else. `megh gw up` runs one as
   a local docker container so a machine that is NOT on the tailnet (a work
   laptop, say) can still open its workers' web surfaces. The container joins
   under its own tag (`tag:megh-gw`), so the ACL can give it exactly the surface
@@ -172,7 +172,16 @@ what makes the split worth naming (#130).
 A worker can take on the other two, since they are things it holds rather than
 things it is: one with a provider key is a control plane too, and every worker is
 already on the tailnet. The gateway exists for the machine that should hold
-neither. SSH through it (`megh ssh` from an off-tailnet machine) is the next step.
+neither.
+
+SSH uses it as a network path and nothing more. While the gateway is running,
+`dial.preflight` sends every cloud box's ssh by its tailnet name (even one with
+public SSH, since a box launched elsewhere may trust none of our keys) and adds a
+ProxyCommand (`megh gw nc` in the container, piping through tailscaled's SOCKS),
+so the ssh client, the box key and the scoped GitHub agent all stay on the
+control machine. We considered the gateway as a jump box you shell into, and
+dropped it: every key `megh ssh` uses would then have to live in the container,
+making it a second control machine to maintain.
 
 ## Control surface (how you drive megh)
 

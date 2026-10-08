@@ -535,13 +535,13 @@ formatted. If the first boot ever stops at this step, `/var/log/megh-boot.log`
 
 ## 10. A gateway: workers from a machine that is not on the tailnet
 
-`megh gateway up` runs a docker container on this machine that joins the tailnet
+`megh gw up` runs a docker container on this machine that joins the tailnet
 in its place, so the machine itself never runs Tailscale (DESIGN.md "Roles"). It
 needs docker, `tailnet:` in megh.yaml, the Tailscale client id and secret (to
-mint the gateway's key), and an image new enough to have `megh gateway serve`
+mint the gateway's key), and an image new enough to have `megh gw serve` and `megh gw nc`
 (`providers.docker.image`, else the default image).
 
-Two ACL edits first, since the gateway joins under its own tag:
+Three ACL edits first, since the gateway joins under its own tag:
 
 ```jsonc
 "tagOwners": {
@@ -549,8 +549,12 @@ Two ACL edits first, since the gateway joins under its own tag:
   "tag:megh-gw": ["autogroup:admin", "tag:megh"],  // tag:megh lets the OAuth client mint it
 },
 "grants": [
-  // the gateway reaches the workers' web surfaces and nothing else
-  {"src": ["tag:megh-gw"], "dst": ["tag:megh"], "ip": ["tcp:7681", "tcp:7682", "tcp:8080", "tcp:6080"]},
+  // the gateway reaches the workers' web surfaces and ssh, and nothing else
+  {"src": ["tag:megh-gw"], "dst": ["tag:megh"], "ip": ["tcp:22", "tcp:7681", "tcp:7682", "tcp:8080", "tcp:6080"]},
+],
+"ssh": [
+  // workers run Tailscale SSH, which answers :22 itself and authorizes the NODE
+  {"action": "accept", "src": ["tag:megh-gw"], "dst": ["tag:megh"], "users": ["root"]},
 ],
 ```
 
@@ -559,9 +563,10 @@ If the credential was created with `tag:megh` only, edit it to add
 `tailscale.gateway_tag` to use a different tag.
 
 ```
-megh gateway up       # start (or restart) the container, join, print the URLs
-megh gateway status   # container state, whether it is on the tailnet, the URLs
-megh gateway down     # leave the tailnet and remove it (--purge drops its state volume)
+megh gw up            # start (or restart) the container, join, print the URLs
+megh gw status        # container state, whether it is on the tailnet, the URLs
+megh gw down          # leave the tailnet and remove it (--purge drops its state volume)
+megh gw shell         # a shell inside the container (tailscale status, logs)
 ```
 
 Then open `http://dev.localhost:7682/` for webterm on `dev` (`?arg=book` for the
@@ -571,9 +576,23 @@ on this machine; the hop to the worker is TLS when the tailnet has certificates
 on, and WireGuard either way. A phone clipboard still needs HTTPS, so on a phone
 use the tailnet directly rather than a gateway.
 
+**SSH goes through it too, with nothing to configure.** While the gateway is
+running, `megh ssh dev` to any cloud box (and `tmux attach`, `browse`, `hydrate`,
+`enable`, `doctor`, `mesh`) goes by the box's tailnet name and adds
+`ProxyCommand docker exec -i megh-gw megh gw nc %h %p`, so ssh runs here, with
+this machine's profile and its scoped GitHub agent, and only the bytes cross the
+container. megh says so on stderr when it does. It takes this route even for a
+box with public SSH, because a box launched from meghplane trusts none of this
+machine's keys, and the tailnet route works whoever launched it. Because workers run Tailscale
+SSH, the worker authorizes the gateway node by the ssh rule above rather than by
+a box key, which means anyone who can `docker exec` on this machine can be root
+on a worker. That's the same reach the published terminal ports already give.
+`megh gw shell` opens a shell in the container for `tailscale status` and
+friends.
+
 The gateway rejoins on its own after a `docker restart` (its state is in the
 `megh-gw-tailscale` volume). Its node is ephemeral, so after a long time stopped
-the tailnet drops it; `megh gateway up` notices and mints a new key.
+the tailnet drops it; `megh gw up` notices and mints a new key.
 
 ## What is not here yet
 

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/panyam/megh/internal/iterm"
@@ -70,6 +71,9 @@ type dial struct {
 	host   string
 	port   int  // 0 -> default (tailnet / MagicDNS)
 	boxKey bool // authenticate with the profile box key
+	// proxy is an ssh ProxyCommand, set by preflight when this machine is off
+	// the tailnet and a gateway (megh gw up) can carry the connection.
+	proxy string
 }
 
 func dialFor(pod *providers.Box) dial {
@@ -95,21 +99,65 @@ func (d dial) tailnet() bool { return d.port == 0 }
 // not on the network that resolves it.
 //
 // A DNS lookup is the whole test, and it is honest either way: if MagicDNS
-// resolves, the tailnet path really is available.
-func (d dial) preflight(pod *providers.Box) error {
+// resolves to a tailnet address, the tailnet path really is available. When it
+// does not and a gateway is running here (megh gw up), the connection goes
+// through the gateway instead: ssh's ProxyCommand pipes it through the
+// container's tailscaled, so this machine needs no tailnet of its own.
+//
+// A running gateway also takes over a PUBLIC dial to a cloud box. A box
+// launched from another machine (meghplane) trusts none of this machine's
+// keys, while the worker's Tailscale SSH authorizes the gateway node, so the
+// tailnet is the route that works whoever launched the box. A local box is
+// left alone: it is on this machine, and docker isn't even asked.
+func (d *dial) preflight(pod *providers.Box) error {
+	if d.proxy != "" || d.loopback() {
+		return nil
+	}
 	if !d.tailnet() {
+		if cfg.Tailnet == "" || !gatewayUp() {
+			return nil
+		}
+		*d = dial{host: pod.DisplayName()}
+	} else if resolvesOnTailnet(d.host) {
 		return nil
 	}
-	if _, err := net.LookupHost(d.host); err == nil {
+	if gatewayUp() {
+		if cfg.Tailnet == "" {
+			return fmt.Errorf("a gateway is running but megh.yaml has no tailnet: (the MagicDNS suffix), so %s has no full name to dial through it", pod.DisplayName())
+		}
+		if !strings.HasSuffix(d.host, "."+cfg.Tailnet) {
+			d.host = providers.ShortName(d.host) + "." + cfg.Tailnet
+		}
+		d.proxy = gatewayProxyCommand(cfg.Provider("docker").Context)
+		fmt.Fprintf(os.Stderr, "megh: this machine is not on the tailnet; reaching %s through the gateway (%s)\n", d.host, gatewayName)
 		return nil
 	}
-	return fmt.Errorf(`cannot reach %s: it has no public SSH endpoint, and %q does not resolve.
+	return fmt.Errorf(`cannot reach %s: it has no public SSH endpoint, and %q does not resolve to a tailnet address.
 
 That name is MagicDNS, so it only resolves for a machine ON the tailnet. Either:
-  - this machine is not on the tailnet (check: megh doctor control-plane), or
+  - this machine is not on the tailnet: join it, or run `+"`megh gw up`"+` to reach boxes through a local gateway (SETUP.md section 10), or
   - the box has not finished joining yet (Tailscale comes up 1-2 min after RUNNING), or
-  - the box was launched with expose_ssh: false and never joined (check: megh doctor ts logs %s)`,
+  - the box was launched with expose_ssh: false and never joined (check: megh mesh logs %s)`,
 		pod.DisplayName(), d.host, pod.DisplayName())
+}
+
+// lookupHost and gatewayUp are what preflight asks about this machine; tests
+// replace them.
+var (
+	lookupHost = net.LookupHost
+	// Asked once per run: `megh mesh ls` preflights every box.
+	gatewayUp = sync.OnceValue(func() bool { return gatewayState(context.Background()) == "running" })
+)
+
+// resolvesOnTailnet reports whether host resolves here to a tailnet address.
+func resolvesOnTailnet(host string) bool {
+	addrs, _ := lookupHost(host)
+	for _, a := range addrs {
+		if isTailnetAddr(a) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d dial) userHost() string { return "root@" + d.host }
@@ -135,6 +183,9 @@ func (d dial) opts(extra ...string) []string {
 	}
 	if d.port != 0 {
 		a = append(a, "-p", strconv.Itoa(d.port))
+	}
+	if d.proxy != "" {
+		a = append(a, "-o", "ProxyCommand="+d.proxy)
 	}
 	return append(a, extra...)
 }
@@ -241,13 +292,10 @@ func tailnetOnlyBox(name string) (*providers.Box, string, error) {
 	if cfg.Tailnet != "" {
 		host = short + "." + cfg.Tailnet
 	}
-	addrs, err := net.LookupHost(host)
-	onTailnet := false
-	for _, a := range addrs {
-		onTailnet = onTailnet || isTailnetAddr(a)
-	}
-	if err != nil || !onTailnet {
-		return nil, "", fmt.Errorf("no backend this machine can ask knows %q, and %q does not resolve to a tailnet address (pass --provider, or check this machine is on the tailnet: megh doctor control-plane)", short, host)
+	// A running gateway resolves the name on its own side, so only the full
+	// name will do there; the caller's preflight routes the dial through it.
+	if !resolvesOnTailnet(host) && !(cfg.Tailnet != "" && gatewayUp()) {
+		return nil, "", fmt.Errorf("no backend this machine can ask knows %q, and %q does not resolve to a tailnet address (pass --provider, check this machine is on the tailnet with megh doctor control-plane, or run megh gw up)", short, host)
 	}
 	fmt.Fprintf(os.Stderr, "megh: no backend this machine can ask knows %q; connecting to %s over the tailnet\n", short, host)
 	return &providers.Box{Name: providers.PrefixName(short), Status: "RUNNING"}, host, nil
