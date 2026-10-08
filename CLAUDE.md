@@ -135,8 +135,8 @@ rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 `megh up --provider docker <name>` runs a box as a container on this machine.
 `list`, `ssh`, `down`, `enable`, `browse`, `doctor`, `storage` and `sessions` all
 work against it unchanged, because a local box runs sshd and megh reaches it the
-same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` stays
-RunPod-only, and says so, because capacity probing has no meaning locally.
+same way it reaches a pod: over SSH, at `127.0.0.1:<port>`. `regions` has nothing
+for it and says so: probing has no meaning locally and docker has no catalog.
 `megh mesh` works anywhere: it dials the box the same way every other command
 does, so it diagnoses a local box on the mesh exactly as it does a pod.
 
@@ -484,6 +484,31 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   repeated raw lines, and `ProbeResult.OutOfCapacity` checks that sentinel first
   (its text no longer carries RunPod's wording). When the whole pool is dry the
   answer is another backend, which is why Hetzner and Vultr exist.
+- **RunPod's GraphQL knows more than its REST API, but not everything.**
+  `dataCenters { id location }` gives only the COUNTRY ("United States" for all
+  28 US sites), so the state comes from the id (`US-IL-1`). `cpuFlavors` carries
+  the rules a catalog needs (RAM per vCPU, vCPU range, disk per vCPU), and
+  `specifics(dataCenterId, instanceId)` the price and a `stockStatus`. Stock
+  read "High" for US-IL-1 in the same hour it refused every size, so it is shown
+  as a hint and never trusted; only renting proves capacity.
+- **"Unauthorized IP address" from Vultr is the key's IP allowlist**, not a bad
+  key (Account > API > Access Control). meghplane needs "allow all": App Engine
+  has no fixed outbound address.
+- **A box launched from meghplane trusts only `extra_pubkeys`.** The server has
+  no key of its own, so another control machine's `megh ssh`/`doctor` over public
+  SSH gets `Permission denied (publickey)` though the box is healthy. Reach it by
+  its tailnet name (Tailscale SSH, no key), or add that machine's box key to
+  `extra_pubkeys` before launching. The page's Keys panel names the trusted key.
+- **Git worktrees made on the host are broken inside a local box.** Their `.git`
+  file holds an absolute host path (`gitdir: /Users/<you>/...`), so every git
+  command there fails with `not a git repository`, and a scan from the box simply
+  never sees them. Read one with `git --git-dir=<remapped path> --work-tree=<dir>`;
+  do NOT `git worktree repair` from the box, which rewrites the paths and breaks
+  them on the host. Another C6 case.
+- **A test that runs a script with hardcoded `/mnt/work` paths must override the
+  root.** On a local box `/mnt/work` IS the host's tree, so a red run against the
+  old hydrate script wrote stray folders into real repos. `applyScript` honours
+  `MEGH_REPOS_ROOT`, and its tests always set it.
 - **Compare VM providers on current prices, not on reputation.** Hetzner's April
   and June 2026 repricing roughly doubled its US CPX/CCX lines, which left Vultr
   at about half Hetzner's hourly price for 4 vCPU in the US, with 9 US regions to
