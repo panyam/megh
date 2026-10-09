@@ -335,7 +335,7 @@ func sshCaptureIn(ctx context.Context, keyFile string, d dial, remote string, st
 // recycled port trips a host-key MISMATCH, and a probe that pinned the key would
 // fail where `megh ssh` succeeds.
 func sshCaptureArgs(keyFile string, d dial, remote string) []string {
-	var args []string
+	args := []string{"-o", "ForwardAgent=no"} // a probe needs no agent; see agentArgs
 	if keyFile != "" {
 		args = append(args, "-i", config.ExpandPath(keyFile), "-o", "IdentitiesOnly=yes")
 	}

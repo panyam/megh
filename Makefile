@@ -93,7 +93,9 @@ image: ## push current HEAD to origin to trigger the GHCR image build
 # Override: make CONTAINER_CMD=docker ...
 # A box is created from the image in its OWN engine's store, so build with the
 # engine your boxes run under; `megh config` shows which that is.
-CONTAINER_CMD ?= $(or $(MEGH_ENGINE),$(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null || echo docker))
+# podman off PATH still counts (its installers use /opt/podman/bin and Homebrew);
+# same list as internal/providers/local podmanInstallPaths.
+CONTAINER_CMD ?= $(or $(MEGH_ENGINE),$(shell command -v podman 2>/dev/null || ls /opt/podman/bin/podman /opt/homebrew/bin/podman /usr/local/bin/podman 2>/dev/null | head -1 | grep . || command -v docker 2>/dev/null || echo docker))
 
 .PHONY: runtime
 runtime: ## show the container engine local images build with

@@ -463,14 +463,15 @@ func (p *Provider) run(ctx context.Context, args ...string) (string, error) {
 // on purpose is never second-guessed.
 func (p *Provider) Elsewhere(ctx context.Context) (string, int) {
 	e, err := p.engine()
-	if err != nil || e.Source != "auto-detected" {
+	if err != nil || !e.Detected() {
 		return "", 0
 	}
-	other := e.Other()
-	if _, err := exec.LookPath(other); err != nil {
+	o, ok := e.OtherInstalled()
+	if !ok {
 		return "", 0
 	}
-	out, err := exec.CommandContext(ctx, other, "ps", "-a", "--filter", "label="+managedLabel+"=1", "--format", "{{.ID}}").Output()
+	other := o.Name
+	out, err := exec.CommandContext(ctx, o.Bin, "ps", "-a", "--filter", "label="+managedLabel+"=1", "--format", "{{.ID}}").Output()
 	if err != nil {
 		return "", 0
 	}

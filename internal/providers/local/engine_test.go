@@ -24,7 +24,29 @@ func fakeBins(t *testing.T, names ...string) string {
 	}
 	t.Setenv("PATH", dir)
 	t.Setenv("MEGH_ENGINE", "")
+	noInstalledPodman(t)
 	return log
+}
+
+// noInstalledPodman hides the machine's real podman install locations, so a
+// test's PATH is the whole truth.
+func noInstalledPodman(t *testing.T) {
+	t.Helper()
+	saved := podmanInstallPaths
+	podmanInstallPaths = nil
+	t.Cleanup(func() { podmanInstallPaths = saved })
+}
+
+// installedPodman puts an executable podman at an install location that is not
+// on PATH, the way podman's macOS installer leaves it for a shell that resets
+// PATH.
+func installedPodman(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "opt", "podman", "bin", "podman")
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755)
+	podmanInstallPaths = []string{bin}
+	return bin
 }
 
 func calls(t *testing.T, log string) []string {
@@ -44,7 +66,7 @@ func TestEngineDetectionPrefersPodman(t *testing.T) {
 	} {
 		fakeBins(t, tc.bins...)
 		e, err := ResolveEngine(config.Provider{})
-		if err != nil || e.Name != tc.want || e.Source != "auto-detected" {
+		if err != nil || e.Name != tc.want || !e.Detected() {
 			t.Errorf("%v: got %+v, %v", tc.bins, e, err)
 		}
 	}
@@ -75,6 +97,43 @@ func TestAChosenEngineIsNeverSwappedForTheOther(t *testing.T) {
 	fakeBins(t, "docker")
 	if _, err := ResolveEngine(config.Provider{Engine: "podman"}); err == nil || !strings.Contains(err.Error(), "podman is not on PATH") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// The bug this pins: podman installed in /opt/podman/bin, Docker Desktop's
+// docker in /usr/local/bin, and a ~/.zshrc that sets PATH without the former.
+// Detection saw only docker and megh gw ran under it.
+func TestDetectionFindsPodmanOffPath(t *testing.T) {
+	fakeBins(t, "docker")
+	bin := installedPodman(t)
+	e, err := ResolveEngine(config.Provider{})
+	if err != nil || e.Name != "podman" || e.Bin != bin || !e.Detected() || !strings.Contains(e.Source, "not on PATH") {
+		t.Errorf("got %+v, %v", e, err)
+	}
+	// Docker stays reachable on purpose.
+	if e, _ := ResolveEngine(config.Provider{Engine: "docker"}); e.Name != "docker" {
+		t.Errorf("docker named: got %+v", e)
+	}
+	t.Setenv("MEGH_ENGINE", "docker")
+	if e, _ := ResolveEngine(config.Provider{}); e.Name != "docker" || e.Source != "MEGH_ENGINE" {
+		t.Errorf("docker in env: got %+v", e)
+	}
+}
+
+// Naming podman finds it off PATH too, rather than failing "not on PATH".
+func TestNamedPodmanFoundOffPath(t *testing.T) {
+	fakeBins(t)
+	bin := installedPodman(t)
+	if e, err := ResolveEngine(config.Provider{Engine: "podman"}); err != nil || e.Bin != bin {
+		t.Errorf("got %+v, %v", e, err)
+	}
+}
+
+// Docker by detection says it was a fallback, so megh config shows why.
+func TestDockerFallbackSaysWhy(t *testing.T) {
+	fakeBins(t, "docker")
+	if e, _ := ResolveEngine(config.Provider{}); !strings.Contains(e.Source, "no podman installed") {
+		t.Errorf("got %+v", e)
 	}
 }
 
@@ -133,6 +192,7 @@ func TestUnreachableEngineSaysHowToStartIt(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, engine), []byte("#!/bin/sh\necho 'cannot connect' >&2\nexit 125\n"), 0o755)
 		t.Setenv("PATH", dir)
 		t.Setenv("MEGH_ENGINE", "")
+		noInstalledPodman(t)
 		_, err := New(func() config.Config { return config.Config{} }).List(context.Background())
 		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "cannot connect") {
 			t.Errorf("%s: got %v", engine, err)
@@ -163,6 +223,7 @@ func TestElsewhereFindsBoxesInTheOtherEngine(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "docker"), []byte("#!/bin/sh\n[ \"$1\" = ps ] && printf 'abc\\ndef\\n'\n"), 0o755)
 	t.Setenv("PATH", dir)
 	t.Setenv("MEGH_ENGINE", "")
+	noInstalledPodman(t)
 	p := New(func() config.Config { return config.Config{} })
 	if other, n := p.Elsewhere(context.Background()); other != "docker" || n != 2 {
 		t.Errorf("auto-detected: got %q %d", other, n)
