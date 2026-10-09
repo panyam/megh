@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"errors"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/panyam/megh/internal/config"
+	"github.com/panyam/megh/internal/providers/local"
 )
 
 // Every port the gateway publishes is bound to the host's 127.0.0.1: the proxy
@@ -100,5 +105,24 @@ func TestGatewayImageCheckNamesTheRealFailure(t *testing.T) {
 		if !strings.Contains(err.Error(), tc.want) || (tc.notWant != "" && strings.Contains(err.Error(), tc.notWant)) {
 			t.Errorf("%q: got %v", tc.out, err)
 		}
+	}
+}
+
+// A gateway left in docker from before podman was detected is invisible to
+// podman, yet still a tailnet node with root on every worker, so gw up says so.
+func TestGatewayUpWarnsOfAGatewayInTheOtherEngine(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "docker"), []byte("#!/bin/sh\n[ \"$1\" = inspect ] && echo running\n"), 0o755)
+	t.Setenv("PATH", dir)
+
+	r, w, _ := os.Pipe()
+	saved := os.Stderr
+	os.Stderr = w
+	warnGatewayElsewhere(context.Background(), local.Engine{Name: "podman", Bin: "podman"})
+	os.Stderr = saved
+	w.Close()
+	out, _ := io.ReadAll(r)
+	if !strings.Contains(string(out), "under docker (running)") || !strings.Contains(string(out), "docker rm -f megh-gw") {
+		t.Errorf("got %q", out)
 	}
 }

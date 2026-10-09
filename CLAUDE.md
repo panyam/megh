@@ -142,8 +142,12 @@ rather than on, since forgetting `--cc` in iTerm2 costs only native tabs.
 
 `megh up --provider local <name>` runs a box as a container on this machine,
 under podman or docker (`providers.local.engine`; unset auto-detects, podman
-first, the same order as the Makefile's `CONTAINER_CMD`; `MEGH_ENGINE` overrides
-both; `megh config` says which it picked and why). It was called `docker`
+whenever it is installed and docker only when it is not, the same order as the
+Makefile's `CONTAINER_CMD`; `MEGH_ENGINE` overrides both; `megh config` and
+`megh gw up` say which it picked and why). "Installed" includes podman's install
+locations off PATH (`/opt/podman/bin`, Homebrew): a dotfiles `~/.zshrc` that sets
+PATH drops `/etc/paths.d`, so podman vanished from PATH while Docker Desktop's
+`/usr/local/bin/docker` did not, and detection quietly picked docker. It was called `docker`
 until it ran podman too, and that name still works for `--provider`,
 `MEGH_PROVIDER`, `default_provider` and the `providers:` key, with a note. A
 named engine that is not installed is an error, never a switch to the other,
@@ -637,6 +641,11 @@ clipboard panel, not the `pbcopy` / OSC 52 route, which is terminal-only.
   Only `22/tcp` is public (key auth).
 - **RunPod containers have no TUN device.** Tailscale must run userspace mode +
   `tailscale serve` (not normal tun mode).
+- **megh forwards an agent ONLY when it built a scoped one.** `runSSH` drops
+  `-A` and leads with `-o ForwardAgent=no` whenever the profile has no GitHub
+  keys; before, such a profile forwarded the AMBIENT agent (on a work machine,
+  work keys) to the box, usable by anything running as root there.
+  `TestUnscopedSSHForwardsNoAgent` pins it.
 - **A forwarded agent dies with its connection, so tmux loses it.** `ssh -A`
   makes a NEW socket per connection and deletes it on logout, while tmux keeps
   whatever `SSH_AUTH_SOCK` held when the session was created. Reattach the next

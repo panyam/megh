@@ -14,10 +14,13 @@ import (
 // runSSH runs ssh. It connects to the box authenticating ONLY with boxKey (if
 // set), and forwards an agent scoped to exactly fwdKeys, so a corporate key in
 // your normal agent never reaches a third-party VM, and each GitHub identity is
-// available on the box for git. If boxKey and fwdKeys are both empty it uses the
-// ambient agent/config (legacy). stdin defaults to os.Stdin.
+// available on the box for git. With no fwdKeys NOTHING is forwarded, whatever
+// the caller or ~/.ssh/config asks (see agentArgs); the ambient agent may still
+// authenticate this connection, it just never leaves this machine. stdin
+// defaults to os.Stdin.
 func runSSH(boxKey string, fwdKeys []string, sshArgs []string, stdin io.Reader) error {
 	env := os.Environ()
+	sshArgs = agentArgs(len(fwdKeys) > 0, sshArgs)
 	if len(fwdKeys) > 0 {
 		expanded := make([]string, len(fwdKeys))
 		for i, k := range fwdKeys {
@@ -42,6 +45,27 @@ func runSSH(boxKey string, fwdKeys []string, sshArgs []string, stdin io.Reader) 
 	c.Stdin = stdin
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	return c.Run()
+}
+
+// agentArgs makes forwarding follow the agent megh built rather than the args.
+// Every caller that wants git on the box passes -A, and with a scoped agent
+// that forwards exactly the profile's GitHub keys. Without one -A would forward
+// the AMBIENT agent, which on a work machine holds work keys, to a box where
+// anything running as root can use them while the connection lasts. A profile
+// with no GitHub identity (git via gh login on the box) hit exactly that. So
+// unscoped, -A is dropped and ForwardAgent=no is put first, where it beats a
+// ForwardAgent yes from ssh_config (the first value ssh obtains wins).
+func agentArgs(scoped bool, sshArgs []string) []string {
+	if scoped {
+		return sshArgs
+	}
+	out := []string{"-o", "ForwardAgent=no"}
+	for _, a := range sshArgs {
+		if a != "-A" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // scopedAgent starts a throwaway ssh-agent holding exactly keyFiles, returning

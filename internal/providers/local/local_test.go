@@ -158,6 +158,7 @@ func TestEveryDockerCallCarriesTheConfiguredContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
+	noInstalledPodman(t)
 
 	cfgWith := func(ctx string) func() config.Config {
 		return func() config.Config {
@@ -334,6 +335,7 @@ func TestParseInspectHandlesAStoppedBox(t *testing.T) {
 // otherwise carry a docker error.
 func TestNoDockerCLIIsNotConfigured(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
+	noInstalledPodman(t)
 	p := New(func() config.Config { return config.Default() })
 	if _, err := p.List(context.Background()); !errors.Is(err, providers.ErrNotConfigured) {
 		t.Errorf("got %v", err)

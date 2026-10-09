@@ -65,9 +65,12 @@ var gatewayUpCmd = &cobra.Command{
 		if cfg.Tailnet == "" {
 			return fmt.Errorf("set tailnet: in megh.yaml (the MagicDNS suffix, e.g. tail1234.ts.net); the gateway routes <box>.localhost to <box>.<tailnet>")
 		}
-		if _, err := localEngine(); err != nil {
+		e, err := localEngine()
+		if err != nil {
 			return err
 		}
+		fmt.Printf("engine: %s (%s)\n", e.Bin, e.Source)
+		warnGatewayElsewhere(ctx, e)
 		image := gatewayImage()
 		switch state := gatewayState(ctx); state {
 		case "running":
@@ -269,6 +272,23 @@ func gatewayState(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// warnGatewayElsewhere names a gateway container left in the OTHER engine,
+// typically from before podman was detected. It is invisible to this one, so
+// nothing else would mention it, yet while it runs it is still a tailnet node
+// that is root on every worker.
+func warnGatewayElsewhere(ctx context.Context, e local.Engine) {
+	o, ok := e.OtherInstalled()
+	if !ok {
+		return
+	}
+	state, err := o.Command(ctx, "inspect", "-f", "{{.State.Status}}", gatewayName).Output()
+	if err != nil {
+		return // none there, or that engine isn't running
+	}
+	fmt.Fprintf(os.Stderr, "megh: warning: a %s container also exists under %s (%s). It is still a tailnet node with root on your workers; remove it with:\n  %s rm -f %s && %s volume rm %s\n",
+		gatewayName, o.Name, strings.TrimSpace(string(state)), o.Bin, gatewayName, o.Bin, gatewayVolume)
 }
 
 // gatewayImage is tailscale.gateway_image, else the published megh-gw image
