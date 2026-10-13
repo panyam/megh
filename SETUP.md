@@ -11,13 +11,24 @@ below.
 ## Before any of this: a box on your own machine
 
 If you only want to see what a box IS, the local backend gets you one in a couple
-of minutes with no account, no key, and no bill. It needs a container engine:
-podman (`brew install podman && podman machine init && podman machine start` on
-a Mac) or docker. megh uses podman when both are installed; `make runtime` and
-`megh config` show which, and `providers.local.engine` or `MEGH_ENGINE` picks.
+of minutes with no account, no key, and no bill. It needs a container engine.
+On a Mac that is Docker Desktop (`brew install --cask docker-desktop`, then open
+it once); colima proved unreliable, and podman also works. Pin it in megh.yaml
+so megh never guesses:
+
+```yaml
+providers:
+  local:
+    engine: docker
+    context: desktop-linux     # Docker Desktop's context (`docker context ls`)
+```
+
+megh uses podman when both are installed and nothing is pinned, and so does the
+Makefile, so with podman also installed build with `CONTAINER_CMD=docker`.
+`make runtime` and `megh config` show which engine is in play.
 
 ```sh
-make image-local-full                  # builds for this machine's arch, with that engine
+make CONTAINER_CMD=docker image-local-full   # builds for this machine's arch
 megh up   --provider local local1
 megh ssh  --provider local local1     # tmux 'main', claude and codex already installed
 megh down --provider local local1

@@ -47,8 +47,12 @@ and installs to `~/.local/bin` or `$PREFIX/bin`. Re-run to upgrade.
 
 ## A box on your own machine
 
+On a Mac the engine is Docker Desktop: set `providers.local.engine: docker` and
+`context: desktop-linux` in megh.yaml (SETUP.md has the details, including
+podman).
+
 ```sh
-make image-local-full                  # build the dev-env image for this machine's arch
+make CONTAINER_CMD=docker image-local-full   # build the dev-env image for this machine's arch
                                        # (image-local-slim drops the frontend stack)
 megh up --provider local local1
 megh ssh --provider local local1

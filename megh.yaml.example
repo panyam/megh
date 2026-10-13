@@ -111,7 +111,8 @@ providers:
     # auto-detects, podman first; MEGH_ENGINE overrides both. A box lives in
     # ONE engine's store, so if you have both installed and boxes in docker,
     # say docker here or they vanish from list/ssh/down (megh list warns).
-    # engine: podman
+    # On a Mac, Docker Desktop is the recommended engine (colima proved unreliable).
+    # engine: docker
     # Built by `make image-local-full` (or `-slim`) for this machine's
     # architecture. The published images are linux/amd64 only, so on an arm64
     # laptop they would emulate. One tag per flavor, so the two do not overwrite
@@ -120,12 +121,13 @@ providers:
     # Which daemon or VM megh talks to: a docker context (`docker context ls`)
     # or a podman connection (`podman system connection ls`); megh passes it as
     # --context or --connection. Absent follows the engine's default, which is
-    # fine with one. With two (colima and Docker Desktop, or two podman
-    # machines), pin it: a box lives in ONE, and asking the other makes it
-    # vanish from list/ssh/down. The image must be built into the same one.
+    # fine with one. Docker Desktop's is desktop-linux. With two (two docker
+    # daemons, or two podman machines), pin it: a box lives in ONE, and asking
+    # the other makes it vanish from list/ssh/down. The image must be built into
+    # the same one.
     # A context belongs to one engine, so name the engine with it: with podman
     # installed, megh refuses a context whose engine it would have to guess.
-    # context: colima
+    # context: desktop-linux
     # The host directory bound at the box's work mount: docker's network volume.
     # Tool logins persist here, separately from the host's own ~/.claude, so one
     # `claude login` in the box survives rebuilds and never touches yours.
