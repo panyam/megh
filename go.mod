@@ -1,6 +1,6 @@
 module github.com/panyam/megh
 
-go 1.26.4
+go 1.27.4
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.2

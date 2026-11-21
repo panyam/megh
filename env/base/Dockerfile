@@ -23,7 +23,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99 \
     PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 
-ARG GO_VERSION=1.26.4
+ARG GO_VERSION=1.27.4
 ARG TTYD_VERSION=1.7.7
 ARG MEGH_SLIM=0
 
